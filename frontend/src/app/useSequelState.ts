@@ -29,22 +29,45 @@ export function useSequelState() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [status, setStatus] = useState<StatusMessage>({ tone: "neutral", text: "Ready" });
   const [busy, setBusy] = useState(false);
+  const [initializing, setInitializing] = useState(true);
 
   const activeProfile = useMemo(
     () => profiles.find((profile) => profile.id === activeConnectionId) || null,
     [activeConnectionId, profiles]
   );
 
+  const connectAndLoadMetadata = useCallback(async (profileId: string, password = "") => {
+    const result = await connectionService.connect({ profileId, password });
+    setActiveConnectionId(profileId);
+    setStatus({ tone: "success", text: result.message });
+    const nextSchemas = await schemaService.schemas(profileId);
+    setSchemas(nextSchemas);
+    const tableEntries = await Promise.all(
+      nextSchemas.map(async (schema) => [schema.name, await schemaService.tables(profileId, schema.name)] as const)
+    );
+    setTablesBySchema(Object.fromEntries(tableEntries));
+  }, []);
+
   const loadProfiles = useCallback(async () => {
     const nextProfiles = await connectionService.list();
     setProfiles(nextProfiles);
+    setActiveConnectionId((current) => current || nextProfiles[0]?.id || "");
+    return nextProfiles;
   }, []);
 
   useEffect(() => {
-    void Promise.all([loadProfiles(), settingsService.get().then(setSettings)]).catch((error: unknown) => {
-      setStatus({ tone: "danger", text: error instanceof Error ? error.message : "Could not initialize app" });
-    });
-  }, [loadProfiles]);
+    void Promise.all([loadProfiles(), settingsService.get().then(setSettings)])
+      .then(async ([nextProfiles]) => {
+        const firstProfileId = nextProfiles[0]?.id;
+        if (firstProfileId) {
+          await connectAndLoadMetadata(firstProfileId);
+        }
+      })
+      .catch((error: unknown) => {
+        setStatus({ tone: "danger", text: error instanceof Error ? error.message : "Could not initialize app" });
+      })
+      .finally(() => setInitializing(false));
+  }, [connectAndLoadMetadata, loadProfiles]);
 
   const saveConnection = useCallback(
     async (input: SaveConnectionRequest) => {
@@ -81,22 +104,14 @@ export function useSequelState() {
   const connect = useCallback(async (profileId: string, password = "") => {
     setBusy(true);
     try {
-      const result = await connectionService.connect({ profileId, password });
-      setActiveConnectionId(profileId);
-      setStatus({ tone: "success", text: result.message });
-      const nextSchemas = await schemaService.schemas(profileId);
-      setSchemas(nextSchemas);
-      const tableEntries = await Promise.all(
-        nextSchemas.map(async (schema) => [schema.name, await schemaService.tables(profileId, schema.name)] as const)
-      );
-      setTablesBySchema(Object.fromEntries(tableEntries));
+      await connectAndLoadMetadata(profileId, password);
     } catch (error) {
       setStatus({ tone: "danger", text: error instanceof Error ? error.message : "Could not connect" });
       throw error;
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [connectAndLoadMetadata]);
 
   const disconnect = useCallback(async () => {
     if (!activeConnectionId) return;
@@ -199,6 +214,7 @@ export function useSequelState() {
     settings,
     status,
     busy,
+    initializing,
     saveConnection,
     testConnection,
     connect,
@@ -210,4 +226,3 @@ export function useSequelState() {
     updateSettings
   };
 }
-

@@ -1,4 +1,4 @@
-import { Bot, Clock3, Database, PanelRight, Search } from "lucide-react";
+import { Bot, Clock3, PanelRight, Search } from "lucide-react";
 import { useState } from "react";
 import { AppSidebar } from "../components/AppSidebar";
 import {
@@ -23,15 +23,15 @@ import { ResultsGrid } from "../features/results-grid/ResultsGrid";
 import { SettingsPanel } from "../features/settings/SettingsPanel";
 import { cn } from "../lib/cn";
 import type { ConnectionProfile } from "../lib/types";
+import { RightActionPanel, type RightPanel } from "./RightActionPanel";
 import { useSequelState } from "./useSequelState";
-
-type RightPanel = "ai" | "history" | "panels" | null;
+import { EmptyWorkspace, WorkspaceLoader } from "./WorkspaceStates";
 
 export function App() {
   const model = useSequelState();
   const [connectionModalOpen, setConnectionModalOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [rightPanel, setRightPanel] = useState<RightPanel>(null);
+  const [rightPanel, setRightPanel] = useState<RightPanel | null>(null);
   const [editingProfile, setEditingProfile] =
     useState<ConnectionProfile | null>(null);
 
@@ -53,7 +53,7 @@ export function App() {
     }
   }
 
-  function toggleRightPanel(panel: Exclude<RightPanel, null>) {
+  function toggleRightPanel(panel: RightPanel) {
     setRightPanel((current) => (current === panel ? null : panel));
   }
 
@@ -128,11 +128,11 @@ export function App() {
               <Clock3 size={14} />
             </Button>
             <Button
-              className={cn(
-                rightPanel && "bg-surface-700 text-zinc-200",
-              )}
+              className={cn(rightPanel && "bg-surface-700 text-zinc-200")}
               size="icon"
-              onClick={() => setRightPanel((current) => (current ? null : "history"))}
+              onClick={() =>
+                setRightPanel((current) => (current ? null : "history"))
+              }
               title="Panels"
             >
               <PanelRight size={14} />
@@ -141,16 +141,22 @@ export function App() {
         </header>
 
         <section className="flex min-h-0 overflow-hidden">
-          <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[48%_minmax(0,1fr)]">
-            <QueryEditor
-              activeConnectionId={model.activeConnectionId}
-              busy={Boolean(model.runningRequestId)}
-              settings={model.settings}
-              onCancel={model.cancelQuery}
-              onRun={model.runQuery}
-            />
-            <ResultsGrid result={model.queryResult} />
-          </div>
+          {model.initializing ? (
+            <WorkspaceLoader />
+          ) : model.activeProfile ? (
+            <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[48%_minmax(0,1fr)]">
+              <QueryEditor
+                activeConnectionId={model.activeConnectionId}
+                busy={Boolean(model.runningRequestId)}
+                settings={model.settings}
+                onCancel={model.cancelQuery}
+                onRun={model.runQuery}
+              />
+              <ResultsGrid result={model.queryResult} />
+            </div>
+          ) : (
+            <EmptyWorkspace onCreateConnection={openNewConnection} />
+          )}
 
           <aside
             className={cn(
@@ -210,47 +216,6 @@ export function App() {
         />
       </Modal>
     </SidebarProvider>
-  );
-}
-
-function RightActionPanel({
-  panel,
-  activeProfileName,
-}: {
-  panel: Exclude<RightPanel, null>;
-  activeProfileName?: string;
-}) {
-  const titles = {
-    ai: "AI assistant",
-    history: "Query history",
-    panels: "Panels",
-  };
-
-  return (
-    <div className="flex h-full flex-col gap-4 p-4">
-      <div className="flex items-center gap-2">
-        <Database size={14} className="text-muted" />
-        <div>
-          <h2 className="text-sm font-semibold text-zinc-100">
-            {titles[panel]}
-          </h2>
-          <p className="text-xs text-muted">
-            {activeProfileName || "No active connection"}
-          </p>
-        </div>
-      </div>
-      <div className="rounded-xl border border-line bg-surface-850 p-3 text-sm text-muted">
-        {panel === "ai"
-          ? "AI schema assistance will appear here once providers are configured."
-          : null}
-        {panel === "history"
-          ? "Recent query executions will appear here."
-          : null}
-        {panel === "panels"
-          ? "Panel controls for schema, results, and assistant views will appear here."
-          : null}
-      </div>
-    </div>
   );
 }
 

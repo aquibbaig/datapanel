@@ -9,8 +9,10 @@ export function ResultsGrid({ result }: Props) {
   if (!result) {
     return (
       <section className="grid min-h-0 place-items-center gap-2 bg-surface-900 text-muted">
-        <TableProperties size={14} />
-        <p>Run a query to see results.</p>
+        <div className="flex flex-col items-center justify-center gap-4">
+          <TableProperties size={24} />
+          <p>Run a query to see results.</p>
+        </div>
       </section>
     );
   }
@@ -29,14 +31,19 @@ export function ResultsGrid({ result }: Props) {
         <span>{result.rows.length} rows</span>
         <span>{result.affectedRows} affected</span>
         <span>{result.durationMs}ms</span>
-        {result.truncated ? <span className="text-yellow-200">truncated</span> : null}
+        {result.truncated ? (
+          <span className="text-yellow-200">truncated</span>
+        ) : null}
       </div>
       <div className="h-[calc(100%-28px)] overflow-auto">
         <table className="text-xs">
           <thead>
             <tr>
               {result.columns.map((column) => (
-                <th className="sticky top-0 bg-surface-800 px-3 py-2 text-left font-medium text-zinc-300" key={column.name}>
+                <th
+                  className="sticky top-0 bg-surface-800 px-3 py-2 text-left font-medium text-zinc-300"
+                  key={column.name}
+                >
                   {column.name}
                 </th>
               ))}
@@ -46,7 +53,9 @@ export function ResultsGrid({ result }: Props) {
             {result.rows.map((row, rowIndex) => (
               <tr key={rowIndex}>
                 {row.map((cell, cellIndex) => (
-                  <td className="px-3 py-2 text-zinc-300" key={cellIndex}>{formatCell(cell)}</td>
+                  <td className="px-3 py-2 text-zinc-300" key={cellIndex}>
+                    {formatCell(cell)}
+                  </td>
                 ))}
               </tr>
             ))}

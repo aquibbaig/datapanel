@@ -42,12 +42,13 @@ export function AppSidebar({
   onSelectTable,
 }: Props) {
   const sidebar = useSidebar();
+  const showSubnav = sidebar.open && Boolean(activeProfile);
 
   return (
     <aside
       className={cn(
         "flex h-full shrink-0 bg-surface-800 transition-[width] duration-150",
-        sidebar.open ? "w-[368px]" : "w-12",
+        showSubnav ? "w-[368px]" : "w-12",
       )}
     >
       <div className="flex w-12 flex-col items-center gap-2 border-r border-line px-2 py-3">
@@ -98,7 +99,7 @@ export function AppSidebar({
         </Button>
       </div>
 
-      {sidebar.open ? (
+      {showSubnav ? (
         <SchemaBrowser
           activeConnectionId={activeConnectionId}
           activeProfile={activeProfile}
