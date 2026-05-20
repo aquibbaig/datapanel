@@ -1,0 +1,408 @@
+package postgres
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"net/url"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"sequel/internal/apperrors"
+	"sequel/internal/connections"
+	"sequel/internal/query"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+type Adapter struct {
+	mu    sync.RWMutex
+	pools map[string]*pgxpool.Pool
+}
+
+func NewAdapter() *Adapter {
+	return &Adapter{pools: map[string]*pgxpool.Pool{}}
+}
+
+func (a *Adapter) Test(ctx context.Context, profile connections.ConnectionProfile, password string) error {
+	pool, err := pgxpool.New(ctx, connectionString(profile, password))
+	if err != nil {
+		return apperrors.New(apperrors.CodeDatabase, "could not create Postgres connection")
+	}
+	defer pool.Close()
+
+	if err := pool.Ping(ctx); err != nil {
+		return apperrors.New(apperrors.CodeDatabase, "could not reach Postgres database")
+	}
+	return nil
+}
+
+func (a *Adapter) Connect(ctx context.Context, profile connections.ConnectionProfile, password string) error {
+	pool, err := pgxpool.New(ctx, connectionString(profile, password))
+	if err != nil {
+		return apperrors.New(apperrors.CodeDatabase, "could not create Postgres connection")
+	}
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return apperrors.New(apperrors.CodeDatabase, "could not reach Postgres database")
+	}
+
+	a.mu.Lock()
+	old := a.pools[profile.ID]
+	a.pools[profile.ID] = pool
+	a.mu.Unlock()
+
+	if old != nil {
+		old.Close()
+	}
+	return nil
+}
+
+func (a *Adapter) Disconnect(ctx context.Context, profileID string) error {
+	_ = ctx
+	a.mu.Lock()
+	pool := a.pools[profileID]
+	delete(a.pools, profileID)
+	a.mu.Unlock()
+	if pool != nil {
+		pool.Close()
+	}
+	return nil
+}
+
+func (a *Adapter) CloseAll() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for id, pool := range a.pools {
+		pool.Close()
+		delete(a.pools, id)
+	}
+}
+
+func (a *Adapter) ListSchemas(ctx context.Context, connectionID string) ([]SchemaSummary, error) {
+	pool, err := a.pool(connectionID)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := pool.Query(ctx, `
+		select schema_name
+		from information_schema.schemata
+		where schema_name not in ('pg_catalog', 'information_schema')
+		  and schema_name not like 'pg_toast%'
+		order by schema_name
+	`)
+	if err != nil {
+		return nil, apperrors.New(apperrors.CodeDatabase, "could not load schemas")
+	}
+	defer rows.Close()
+
+	schemas := []SchemaSummary{}
+	for rows.Next() {
+		var schema SchemaSummary
+		if err := rows.Scan(&schema.Name); err != nil {
+			return nil, apperrors.New(apperrors.CodeDatabase, "could not read schema metadata")
+		}
+		schemas = append(schemas, schema)
+	}
+	return schemas, rows.Err()
+}
+
+func (a *Adapter) ListTables(ctx context.Context, connectionID string, schema string) ([]TableSummary, error) {
+	pool, err := a.pool(connectionID)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := pool.Query(ctx, `
+		select
+			n.nspname as table_schema,
+			c.relname as table_name,
+			case c.relkind
+				when 'r' then 'BASE TABLE'
+				when 'v' then 'VIEW'
+				when 'm' then 'MATERIALIZED VIEW'
+				when 'f' then 'FOREIGN TABLE'
+				else c.relkind::text
+			end as table_type,
+			coalesce(c.reltuples::bigint, 0) as row_estimate
+		from pg_class c
+		join pg_namespace n on n.oid = c.relnamespace
+		where n.nspname = $1
+		  and c.relkind in ('r', 'v', 'm', 'f')
+		order by c.relname
+	`, schema)
+	if err != nil {
+		return nil, apperrors.New(apperrors.CodeDatabase, "could not load tables")
+	}
+	defer rows.Close()
+
+	tables := []TableSummary{}
+	for rows.Next() {
+		var table TableSummary
+		if err := rows.Scan(&table.Schema, &table.Name, &table.Type, &table.RowEstimate); err != nil {
+			return nil, apperrors.New(apperrors.CodeDatabase, "could not read table metadata")
+		}
+		tables = append(tables, table)
+	}
+	return tables, rows.Err()
+}
+
+func (a *Adapter) DescribeTable(ctx context.Context, connectionID string, schema string, table string) (TableDetails, error) {
+	pool, err := a.pool(connectionID)
+	if err != nil {
+		return TableDetails{}, err
+	}
+
+	details := TableDetails{Schema: schema, Name: table}
+	details.Columns, err = loadColumns(ctx, pool, schema, table)
+	if err != nil {
+		return TableDetails{}, err
+	}
+	details.Indexes, err = loadIndexes(ctx, pool, schema, table)
+	if err != nil {
+		return TableDetails{}, err
+	}
+	details.Constraints, err = loadConstraints(ctx, pool, schema, table)
+	if err != nil {
+		return TableDetails{}, err
+	}
+	details.Type, _ = loadTableType(ctx, pool, schema, table)
+	return details, nil
+}
+
+func (a *Adapter) Execute(ctx context.Context, request query.QueryRequest) (query.QueryResult, error) {
+	pool, err := a.pool(request.ConnectionID)
+	if err != nil {
+		return query.QueryResult{}, err
+	}
+
+	started := time.Now()
+	rows, err := pool.Query(ctx, request.SQL)
+	if err != nil {
+		if ctx.Err() != nil {
+			return query.QueryResult{}, apperrors.New(apperrors.CodeCanceled, "query was canceled")
+		}
+		return query.QueryResult{}, apperrors.New(apperrors.CodeDatabase, sanitizeDatabaseError(err))
+	}
+	defer rows.Close()
+
+	fields := rows.FieldDescriptions()
+	columns := make([]query.QueryColumn, 0, len(fields))
+	for _, field := range fields {
+		columns = append(columns, query.QueryColumn{
+			Name:     string(field.Name),
+			DataType: strconv.FormatUint(uint64(field.DataTypeOID), 10),
+		})
+	}
+
+	limit := request.MaxRows
+	if limit <= 0 {
+		limit = 500
+	}
+	data := make([][]any, 0)
+	for rows.Next() {
+		if len(data) >= limit {
+			break
+		}
+		values, err := rows.Values()
+		if err != nil {
+			return query.QueryResult{}, apperrors.New(apperrors.CodeDatabase, "could not read query row")
+		}
+		data = append(data, normalizeRow(values))
+	}
+	if rows.Err() != nil {
+		if ctx.Err() != nil {
+			return query.QueryResult{}, apperrors.New(apperrors.CodeCanceled, "query was canceled")
+		}
+		return query.QueryResult{}, apperrors.New(apperrors.CodeDatabase, sanitizeDatabaseError(rows.Err()))
+	}
+
+	tag := rows.CommandTag()
+	return query.QueryResult{
+		Columns:      columns,
+		Rows:         data,
+		AffectedRows: tag.RowsAffected(),
+		DurationMS:   time.Since(started).Milliseconds(),
+		Truncated:    len(data) >= limit,
+	}, nil
+}
+
+func (a *Adapter) pool(connectionID string) (*pgxpool.Pool, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	pool := a.pools[connectionID]
+	if pool == nil {
+		return nil, apperrors.New(apperrors.CodeNotFound, "connection is not active")
+	}
+	return pool, nil
+}
+
+func connectionString(profile connections.ConnectionProfile, password string) string {
+	host := profile.Host
+	if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
+		host = "[" + host + "]"
+	}
+
+	u := url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(profile.Username, password),
+		Host:   net.JoinHostPort(host, strconv.Itoa(profile.Port)),
+		Path:   profile.Database,
+	}
+	q := u.Query()
+	q.Set("sslmode", profile.SSLMode)
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+func loadColumns(ctx context.Context, pool *pgxpool.Pool, schema string, table string) ([]ColumnSummary, error) {
+	rows, err := pool.Query(ctx, `
+		with primary_keys as (
+			select kcu.column_name
+			from information_schema.table_constraints tc
+			join information_schema.key_column_usage kcu
+			  on tc.constraint_name = kcu.constraint_name
+			 and tc.table_schema = kcu.table_schema
+			where tc.constraint_type = 'PRIMARY KEY'
+			  and tc.table_schema = $1
+			  and tc.table_name = $2
+		)
+		select
+			c.column_name,
+			coalesce(c.udt_name, c.data_type),
+			c.is_nullable = 'YES',
+			coalesce(c.column_default, ''),
+			c.ordinal_position,
+			pk.column_name is not null
+		from information_schema.columns c
+		left join primary_keys pk on pk.column_name = c.column_name
+		where c.table_schema = $1 and c.table_name = $2
+		order by c.ordinal_position
+	`, schema, table)
+	if err != nil {
+		return nil, apperrors.New(apperrors.CodeDatabase, "could not load columns")
+	}
+	defer rows.Close()
+
+	columns := []ColumnSummary{}
+	for rows.Next() {
+		var column ColumnSummary
+		if err := rows.Scan(&column.Name, &column.DataType, &column.Nullable, &column.Default, &column.Position, &column.IsPrimary); err != nil {
+			return nil, apperrors.New(apperrors.CodeDatabase, "could not read column metadata")
+		}
+		columns = append(columns, column)
+	}
+	return columns, rows.Err()
+}
+
+func loadIndexes(ctx context.Context, pool *pgxpool.Pool, schema string, table string) ([]IndexSummary, error) {
+	rows, err := pool.Query(ctx, `
+		select indexname, indexdef
+		from pg_indexes
+		where schemaname = $1 and tablename = $2
+		order by indexname
+	`, schema, table)
+	if err != nil {
+		return nil, apperrors.New(apperrors.CodeDatabase, "could not load indexes")
+	}
+	defer rows.Close()
+
+	indexes := []IndexSummary{}
+	for rows.Next() {
+		var index IndexSummary
+		if err := rows.Scan(&index.Name, &index.Definition); err != nil {
+			return nil, apperrors.New(apperrors.CodeDatabase, "could not read index metadata")
+		}
+		indexes = append(indexes, index)
+	}
+	return indexes, rows.Err()
+}
+
+func loadConstraints(ctx context.Context, pool *pgxpool.Pool, schema string, table string) ([]ConstraintSummary, error) {
+	rows, err := pool.Query(ctx, `
+		select
+			con.conname,
+			case con.contype
+				when 'p' then 'PRIMARY KEY'
+				when 'f' then 'FOREIGN KEY'
+				when 'u' then 'UNIQUE'
+				when 'c' then 'CHECK'
+				else con.contype::text
+			end,
+			pg_get_constraintdef(con.oid)
+		from pg_constraint con
+		join pg_class rel on rel.oid = con.conrelid
+		join pg_namespace nsp on nsp.oid = con.connamespace
+		where nsp.nspname = $1 and rel.relname = $2
+		order by con.conname
+	`, schema, table)
+	if err != nil {
+		return nil, apperrors.New(apperrors.CodeDatabase, "could not load constraints")
+	}
+	defer rows.Close()
+
+	constraints := []ConstraintSummary{}
+	for rows.Next() {
+		var constraint ConstraintSummary
+		if err := rows.Scan(&constraint.Name, &constraint.Type, &constraint.Definition); err != nil {
+			return nil, apperrors.New(apperrors.CodeDatabase, "could not read constraint metadata")
+		}
+		constraints = append(constraints, constraint)
+	}
+	return constraints, rows.Err()
+}
+
+func loadTableType(ctx context.Context, pool *pgxpool.Pool, schema string, table string) (string, error) {
+	var tableType string
+	err := pool.QueryRow(ctx, `
+		select case c.relkind
+			when 'r' then 'BASE TABLE'
+			when 'v' then 'VIEW'
+			when 'm' then 'MATERIALIZED VIEW'
+			when 'f' then 'FOREIGN TABLE'
+			else c.relkind::text
+		end
+		from pg_class c
+		join pg_namespace n on n.oid = c.relnamespace
+		where n.nspname = $1 and c.relname = $2
+	`, schema, table).Scan(&tableType)
+	if err != nil {
+		return "", err
+	}
+	return tableType, nil
+}
+
+func normalizeRow(values []any) []any {
+	row := make([]any, len(values))
+	for index, value := range values {
+		switch typed := value.(type) {
+		case nil:
+			row[index] = nil
+		case []byte:
+			row[index] = string(typed)
+		case time.Time:
+			row[index] = typed.Format(time.RFC3339Nano)
+		default:
+			row[index] = typed
+		}
+	}
+	return row
+}
+
+func sanitizeDatabaseError(err error) string {
+	if err == nil {
+		return ""
+	}
+	if err == pgx.ErrNoRows {
+		return "no rows returned"
+	}
+	message := err.Error()
+	if len(message) > 600 {
+		message = message[:600] + "..."
+	}
+	return fmt.Sprintf("Postgres error: %s", message)
+}

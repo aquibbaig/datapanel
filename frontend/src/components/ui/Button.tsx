@@ -1,0 +1,52 @@
+import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { cn } from "../../lib/cn";
+
+type Variant = "primary" | "secondary" | "ghost" | "danger";
+type Size = "default" | "icon" | "tab" | "row";
+
+interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: Variant;
+  size?: Size;
+  children: ReactNode;
+}
+
+const variants: Record<Variant, string> = {
+  primary:
+    "border-[#6f77df] bg-accent text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14)] hover:bg-[#7079df]",
+  secondary: "border-line bg-surface-700 text-zinc-200 hover:bg-[#28282c]",
+  ghost:
+    "border-transparent bg-transparent text-zinc-500 hover:bg-surface-700 hover:text-zinc-200",
+  danger: "border-red-400/40 bg-red-500/15 text-red-100 hover:bg-red-500/25",
+};
+
+const sizes: Record<Size, string> = {
+  default: "h-7 px-3",
+  icon: "h-7 w-7 px-0 !bg-surface-700 !rounded-full",
+  tab: "h-[38px] px-4",
+  row: "h-7 px-2",
+};
+
+export function Button({
+  className,
+  variant,
+  size = "default",
+  children,
+  ...props
+}: Props) {
+  const resolvedVariant =
+    variant ?? (size === "icon" || size === "row" ? "ghost" : "secondary");
+
+  return (
+    <button
+      className={cn(
+        "inline-flex items-center justify-center gap-2 rounded-md border text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-65 [&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:shrink-0",
+        variants[resolvedVariant],
+        sizes[size],
+        className,
+      )}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}

@@ -1,0 +1,49 @@
+package connections
+
+type ConnectionProfile struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Host      string `json:"host"`
+	Port      int    `json:"port"`
+	Database  string `json:"database"`
+	Username  string `json:"username"`
+	SSLMode   string `json:"sslMode"`
+	Color     string `json:"color"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+type SaveConnectionRequest struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Database string `json:"database"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	SSLMode  string `json:"sslMode"`
+	Color    string `json:"color"`
+}
+
+type TestConnectionRequest struct {
+	ProfileID string `json:"profileId"`
+	Name      string `json:"name"`
+	Host      string `json:"host"`
+	Port      int    `json:"port"`
+	Database  string `json:"database"`
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+	SSLMode   string `json:"sslMode"`
+	Color     string `json:"color"`
+}
+
+type ConnectRequest struct {
+	ProfileID string `json:"profileId"`
+	Password  string `json:"password"`
+}
+
+type ConnectionStatus struct {
+	ProfileID string `json:"profileId"`
+	Connected bool   `json:"connected"`
+	Message   string `json:"message"`
+}
