@@ -8,6 +8,7 @@ import type {
   TableSummary,
 } from "../lib/types";
 import { Button } from "./ui/Button";
+import { useSidebar } from "./ui/sidebar";
 
 interface Props {
   activeConnectionId: string;
@@ -40,8 +41,15 @@ export function AppSidebar({
   onRefresh,
   onSelectTable,
 }: Props) {
+  const sidebar = useSidebar();
+
   return (
-    <aside className="flex h-full w-[368px] shrink-0 bg-surface-800">
+    <aside
+      className={cn(
+        "flex h-full shrink-0 bg-surface-800 transition-[width] duration-150",
+        sidebar.open ? "w-[368px]" : "w-12",
+      )}
+    >
       <div className="flex w-12 flex-col items-center gap-2 border-r border-line px-2 py-3">
         <div className="mb-2 flex gap-1.5">
           <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
@@ -90,17 +98,19 @@ export function AppSidebar({
         </Button>
       </div>
 
-      <SchemaBrowser
-        activeConnectionId={activeConnectionId}
-        activeProfile={activeProfile}
-        schemas={schemas}
-        selectedTable={selectedTable}
-        tableDetails={tableDetails}
-        tablesBySchema={tablesBySchema}
-        onEditConnection={onEditConnection}
-        onRefresh={onRefresh}
-        onSelectTable={onSelectTable}
-      />
+      {sidebar.open ? (
+        <SchemaBrowser
+          activeConnectionId={activeConnectionId}
+          activeProfile={activeProfile}
+          schemas={schemas}
+          selectedTable={selectedTable}
+          tableDetails={tableDetails}
+          tablesBySchema={tablesBySchema}
+          onEditConnection={onEditConnection}
+          onRefresh={onRefresh}
+          onSelectTable={onSelectTable}
+        />
+      ) : null}
     </aside>
   );
 }

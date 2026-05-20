@@ -32,7 +32,7 @@ export function SchemaBrowser({
   onSelectTable,
 }: Props) {
   return (
-    <aside className="flex min-w-0 flex-col bg-surface-800 w-full pt-[11px]">
+    <aside className="flex min-w-0 flex-col bg-surface-800 w-full pt-[11px] ml-2">
       <div className="flex h-[54px] items-center justify-between border-b border-line px-4">
         <div className="min-w-0">
           <p className="mb-0.5 text-[11px] font-semibold uppercase text-muted">

@@ -1,7 +1,6 @@
 import { Bot, Clock3, Database, PanelRight, Search } from "lucide-react";
 import { useState } from "react";
 import { AppSidebar } from "../components/AppSidebar";
-import { Button } from "../components/ui/Button";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -10,15 +9,20 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "../components/ui/breadcrumb";
+import { Button } from "../components/ui/Button";
 import { Modal } from "../components/ui/Modal";
 import { Separator } from "../components/ui/separator";
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "../components/ui/sidebar";
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "../components/ui/sidebar";
 import { ConnectionPanel } from "../features/connections/ConnectionPanel";
 import { QueryEditor } from "../features/query-editor/QueryEditor";
 import { ResultsGrid } from "../features/results-grid/ResultsGrid";
 import { SettingsPanel } from "../features/settings/SettingsPanel";
-import type { ConnectionProfile } from "../lib/types";
 import { cn } from "../lib/cn";
+import type { ConnectionProfile } from "../lib/types";
 import { useSequelState } from "./useSequelState";
 
 type RightPanel = "ai" | "history" | "panels" | null;
@@ -28,7 +32,8 @@ export function App() {
   const [connectionModalOpen, setConnectionModalOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rightPanel, setRightPanel] = useState<RightPanel>(null);
-  const [editingProfile, setEditingProfile] = useState<ConnectionProfile | null>(null);
+  const [editingProfile, setEditingProfile] =
+    useState<ConnectionProfile | null>(null);
 
   function openNewConnection() {
     setEditingProfile(null);
@@ -70,7 +75,7 @@ export function App() {
         onSelectTable={model.inspectTable}
       />
 
-      <SidebarInset className={cn("grid grid-rows-[56px_minmax(0,1fr)_28px]", rightPanel ? "mr-0" : "")}>
+      <SidebarInset className={cn("grid grid-rows-[56px_minmax(0,1fr)_28px]")}>
         <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-line px-4">
           <div className="flex min-w-0 items-center gap-2">
             <SidebarTrigger className="-ml-1" />
@@ -78,11 +83,17 @@ export function App() {
             <Breadcrumb>
               <BreadcrumbList>
                 <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink>{model.activeProfile ? model.activeProfile.name : "Sequel"}</BreadcrumbLink>
+                  <BreadcrumbLink>
+                    {model.activeProfile ? model.activeProfile.name : "Sequel"}
+                  </BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:flex" />
                 <BreadcrumbItem>
-                  <BreadcrumbPage>{model.selectedTable ? model.selectedTable.name : "Query workspace"}</BreadcrumbPage>
+                  <BreadcrumbPage>
+                    {model.selectedTable
+                      ? model.selectedTable.name
+                      : "Query workspace"}
+                  </BreadcrumbPage>
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>
@@ -92,10 +103,14 @@ export function App() {
             <div className="hidden h-7 w-[320px] items-center gap-2 rounded-full border border-line bg-surface-850 px-2 text-sm text-muted lg:flex">
               <Search size={14} />
               <span className="truncate">Search tables, columns, queries</span>
-              <kbd className="ml-auto rounded-md border border-line bg-surface-700 px-1.5 py-0.5 text-[11px] text-zinc-300">Cmd K</kbd>
+              <kbd className="ml-auto rounded-md border border-line bg-surface-700 px-1.5 py-0.5 text-[11px] text-zinc-300">
+                Cmd K
+              </kbd>
             </div>
             <Button
-              className={cn(rightPanel === "ai" && "bg-surface-700 text-zinc-200")}
+              className={cn(
+                rightPanel === "ai" && "bg-surface-700 text-zinc-200",
+              )}
               size="icon"
               onClick={() => toggleRightPanel("ai")}
               title="AI assistant"
@@ -103,7 +118,9 @@ export function App() {
               <Bot size={14} />
             </Button>
             <Button
-              className={cn(rightPanel === "history" && "bg-surface-700 text-zinc-200")}
+              className={cn(
+                rightPanel === "history" && "bg-surface-700 text-zinc-200",
+              )}
               size="icon"
               onClick={() => toggleRightPanel("history")}
               title="Query history"
@@ -111,9 +128,11 @@ export function App() {
               <Clock3 size={14} />
             </Button>
             <Button
-              className={cn(rightPanel === "panels" && "bg-surface-700 text-zinc-200")}
+              className={cn(
+                rightPanel && "bg-surface-700 text-zinc-200",
+              )}
               size="icon"
-              onClick={() => toggleRightPanel("panels")}
+              onClick={() => setRightPanel((current) => (current ? null : "history"))}
               title="Panels"
             >
               <PanelRight size={14} />
@@ -121,8 +140,8 @@ export function App() {
           </div>
         </header>
 
-        <section className={cn("grid min-h-0", rightPanel ? "grid-cols-[minmax(0,1fr)_320px]" : "grid-cols-1")}>
-          <div className="grid min-h-0 grid-rows-[48%_minmax(0,1fr)]">
+        <section className="flex min-h-0 overflow-hidden">
+          <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[48%_minmax(0,1fr)]">
             <QueryEditor
               activeConnectionId={model.activeConnectionId}
               busy={Boolean(model.runningRequestId)}
@@ -133,20 +152,43 @@ export function App() {
             <ResultsGrid result={model.queryResult} />
           </div>
 
-          {rightPanel ? (
-            <aside className="min-h-0 border-l border-line bg-surface-900">
-              <RightActionPanel panel={rightPanel} activeProfileName={model.activeProfile?.name} />
-            </aside>
-          ) : null}
+          <aside
+            className={cn(
+              "min-h-0 shrink-0 overflow-hidden border-l border-line bg-surface-900 transition-[width] duration-200 ease-out",
+              rightPanel ? "w-[320px]" : "w-0 border-l-0",
+            )}
+          >
+            {rightPanel ? (
+              <div className="h-full w-[320px]">
+                <RightActionPanel
+                  panel={rightPanel}
+                  activeProfileName={model.activeProfile?.name}
+                />
+              </div>
+            ) : null}
+          </aside>
         </section>
 
-        <footer className={cn("flex items-center justify-between border-t border-line px-3 text-xs", statusTone(model.status.tone))}>
+        <footer
+          className={cn(
+            "flex items-center justify-between border-t border-line px-3 text-xs",
+            statusTone(model.status.tone),
+          )}
+        >
           <span>{model.status.text}</span>
-          <span>{model.activeProfile ? `${model.activeProfile.host}:${model.activeProfile.port}` : "Local app"}</span>
+          <span>
+            {model.activeProfile
+              ? `${model.activeProfile.host}:${model.activeProfile.port}`
+              : "Local app"}
+          </span>
         </footer>
       </SidebarInset>
 
-      <Modal title={editingProfile ? "Edit connection" : "Add connection"} open={connectionModalOpen} onClose={() => setConnectionModalOpen(false)}>
+      <Modal
+        title={editingProfile ? "Edit connection" : "Add connection"}
+        open={connectionModalOpen}
+        onClose={() => setConnectionModalOpen(false)}
+      >
         <ConnectionPanel
           busy={model.busy}
           initialProfile={editingProfile}
@@ -157,14 +199,27 @@ export function App() {
         />
       </Modal>
 
-      <Modal title="Settings" open={settingsOpen} onClose={() => setSettingsOpen(false)}>
-        <SettingsPanel settings={model.settings} onUpdate={model.updateSettings} />
+      <Modal
+        title="Settings"
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      >
+        <SettingsPanel
+          settings={model.settings}
+          onUpdate={model.updateSettings}
+        />
       </Modal>
     </SidebarProvider>
   );
 }
 
-function RightActionPanel({ panel, activeProfileName }: { panel: Exclude<RightPanel, null>; activeProfileName?: string }) {
+function RightActionPanel({
+  panel,
+  activeProfileName,
+}: {
+  panel: Exclude<RightPanel, null>;
+  activeProfileName?: string;
+}) {
   const titles = {
     ai: "AI assistant",
     history: "Query history",
@@ -176,14 +231,24 @@ function RightActionPanel({ panel, activeProfileName }: { panel: Exclude<RightPa
       <div className="flex items-center gap-2">
         <Database size={14} className="text-muted" />
         <div>
-          <h2 className="text-sm font-semibold text-zinc-100">{titles[panel]}</h2>
-          <p className="text-xs text-muted">{activeProfileName || "No active connection"}</p>
+          <h2 className="text-sm font-semibold text-zinc-100">
+            {titles[panel]}
+          </h2>
+          <p className="text-xs text-muted">
+            {activeProfileName || "No active connection"}
+          </p>
         </div>
       </div>
       <div className="rounded-xl border border-line bg-surface-850 p-3 text-sm text-muted">
-        {panel === "ai" ? "AI schema assistance will appear here once providers are configured." : null}
-        {panel === "history" ? "Recent query executions will appear here." : null}
-        {panel === "panels" ? "Panel controls for schema, results, and assistant views will appear here." : null}
+        {panel === "ai"
+          ? "AI schema assistance will appear here once providers are configured."
+          : null}
+        {panel === "history"
+          ? "Recent query executions will appear here."
+          : null}
+        {panel === "panels"
+          ? "Panel controls for schema, results, and assistant views will appear here."
+          : null}
       </div>
     </div>
   );
