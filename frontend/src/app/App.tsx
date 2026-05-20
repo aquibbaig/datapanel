@@ -4,10 +4,8 @@ import { AppSidebar } from "../components/AppSidebar";
 import {
   Breadcrumb,
   BreadcrumbItem,
-  BreadcrumbLink,
   BreadcrumbList,
   BreadcrumbPage,
-  BreadcrumbSeparator,
 } from "../components/ui/breadcrumb";
 import { Button } from "../components/ui/Button";
 import { Modal } from "../components/ui/Modal";
@@ -82,12 +80,6 @@ export function App() {
             <Separator orientation="vertical" className="mr-1" />
             <Breadcrumb>
               <BreadcrumbList>
-                <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink>
-                    {model.activeProfile ? model.activeProfile.name : "Sequel"}
-                  </BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator className="hidden md:flex" />
                 <BreadcrumbItem>
                   <BreadcrumbPage>
                     {model.selectedTable
@@ -185,7 +177,7 @@ export function App() {
           <span>
             {model.activeProfile
               ? `${model.activeProfile.host}:${model.activeProfile.port}`
-              : "Local app"}
+              : ""}
           </span>
         </footer>
       </SidebarInset>

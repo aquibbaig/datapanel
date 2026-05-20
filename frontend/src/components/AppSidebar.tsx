@@ -52,12 +52,6 @@ export function AppSidebar({
       )}
     >
       <div className="flex w-12 flex-col items-center gap-2 border-r border-line px-2 py-3">
-        <div className="mb-2 flex gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
-          <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
-          <span className="h-2.5 w-2.5 rounded-full bg-green-400" />
-        </div>
-
         <div className="grid h-7 w-7 place-items-center rounded-full bg-blue-500 text-[11px] font-semibold text-white">
           SQ
         </div>
