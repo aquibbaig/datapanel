@@ -4,7 +4,9 @@ import { toast } from "sonner";
 import { connectionService, queryService, schemaService, settingsService } from "../lib/backend";
 import type {
   AppSettings,
+  ConnectionHealth,
   ConnectionProfile,
+  QueryHistoryEntry,
   QueryRequest,
   QueryResult,
   SaveConnectionRequest,
@@ -22,6 +24,8 @@ export interface StatusMessage {
 interface QueryToastOptions {
   successMessage?: string;
   successTitle?: string;
+  recordHistory?: boolean;
+  historyMode?: "query" | "explain";
 }
 
 export function useDataPanelState() {
@@ -35,6 +39,8 @@ export function useDataPanelState() {
   const [runningRequestId, setRunningRequestId] = useState<string>("");
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [status, setStatus] = useState<StatusMessage>({ tone: "neutral", text: "Ready" });
+  const [connectionHealth, setConnectionHealth] = useState<ConnectionHealth>({ connected: false });
+  const [queryHistory, setQueryHistory] = useState<QueryHistoryEntry[]>([]);
   const [busy, setBusy] = useState(false);
   const [initializing, setInitializing] = useState(true);
 
@@ -44,9 +50,17 @@ export function useDataPanelState() {
   );
 
   const connectAndLoadMetadata = useCallback(async (profileId: string, password = "") => {
+    const started = performance.now();
     const result = await connectionService.connect({ profileId, password });
+    const now = new Date().toISOString();
     setActiveConnectionId(profileId);
     setStatus({ tone: "success", text: result.message });
+    setConnectionHealth({
+      connected: true,
+      latencyMs: Math.max(0, Math.round(performance.now() - started)),
+      lastPingAt: now,
+      connectedAt: now,
+    });
     const nextSchemas = await schemaService.schemas(profileId);
     setSchemas(nextSchemas);
     const tableEntries = await Promise.all(
@@ -74,6 +88,7 @@ export function useDataPanelState() {
       .catch((error: unknown) => {
         const message = errorMessage(error, "Could not initialize app");
         setStatus({ tone: "danger", text: message });
+        setConnectionHealth({ connected: false, error: message });
         notify("danger", "Could not initialize app", message);
       })
       .finally(() => setInitializing(false));
@@ -108,12 +123,14 @@ export function useDataPanelState() {
       if (result.connected) {
         notify("success", "Connection test passed", input.name || input.host);
       } else {
+        setConnectionHealth({ connected: false, error: result.message });
         notify("danger", "Connection test failed", result.message);
       }
       return result;
     } catch (error) {
       const message = errorMessage(error, "Connection failed");
       setStatus({ tone: "danger", text: message });
+      setConnectionHealth({ connected: false, error: message });
       notify("danger", "Connection test failed", message);
       throw error;
     } finally {
@@ -130,6 +147,7 @@ export function useDataPanelState() {
     } catch (error) {
       const message = errorMessage(error, "Could not connect");
       setStatus({ tone: "danger", text: message });
+      setConnectionHealth({ connected: false, error: message });
       notify("danger", "Could not connect", message);
       throw error;
     } finally {
@@ -145,6 +163,7 @@ export function useDataPanelState() {
     setTablesBySchema({});
     setSelectedTable(null);
     setTableDetails(null);
+    setConnectionHealth({ connected: false });
     setStatus({ tone: "neutral", text: "Disconnected" });
     notify("neutral", "Disconnected");
   }, [activeConnectionId]);
@@ -153,12 +172,19 @@ export function useDataPanelState() {
     if (!activeConnectionId) return;
     setBusy(true);
     try {
+      const started = performance.now();
       const nextSchemas = await schemaService.schemas(activeConnectionId);
       setSchemas(nextSchemas);
       const tableEntries = await Promise.all(
         nextSchemas.map(async (schema) => [schema.name, await schemaService.tables(activeConnectionId, schema.name)] as const)
       );
       setTablesBySchema(Object.fromEntries(tableEntries));
+      setConnectionHealth((current) => ({
+        ...current,
+        connected: true,
+        latencyMs: Math.max(0, Math.round(performance.now() - started)),
+        lastPingAt: new Date().toISOString(),
+      }));
       setStatus({ tone: "success", text: "Metadata refreshed" });
       notify("success", "Metadata refreshed");
     } catch (error) {
@@ -189,6 +215,10 @@ export function useDataPanelState() {
     [activeConnectionId]
   );
 
+  const recordQueryHistory = useCallback((item: QueryHistoryEntry) => {
+    setQueryHistory((current) => [item, ...current.filter((entry) => entry.sql !== item.sql)].slice(0, 50));
+  }, []);
+
   const runQuery = useCallback(
     async (sql: string, confirmDestructive = false, toastOptions: QueryToastOptions = {}) => {
       if (!activeConnectionId || !settings) {
@@ -210,6 +240,7 @@ export function useDataPanelState() {
       setRunningRequestId(requestId);
       setStatus({ tone: "neutral", text: "Running query..." });
       notify("loading", "Running query", undefined, requestId);
+      const started = performance.now();
       try {
         const result = await queryService.execute(request);
         setQueryResult(result);
@@ -227,18 +258,113 @@ export function useDataPanelState() {
             querySuccessMessage(result.rows.length, result.affectedRows, result.durationMs);
           setStatus({ tone: "success", text: message });
           notify(toastOptions.successTitle ? "success" : "neutral", toastOptions.successTitle || "Query finished", message, requestId);
+          if (toastOptions.recordHistory) {
+            recordQueryHistory({
+              id: requestId,
+              connectionId: activeConnectionId,
+              sql,
+              mode: toastOptions.historyMode || "query",
+              durationMs: result.durationMs,
+              executedAt: new Date().toISOString(),
+              success: true,
+              rowCount: result.rows.length,
+              affectedRows: result.affectedRows,
+            });
+          }
         }
         return result;
       } catch (error) {
         const message = errorMessage(error, "Query failed");
         setStatus({ tone: "danger", text: message });
         notify("danger", "Query failed", message, requestId);
+        if (toastOptions.recordHistory) {
+          recordQueryHistory({
+            id: requestId,
+            connectionId: activeConnectionId,
+            sql,
+            mode: toastOptions.historyMode || "query",
+            durationMs: Math.max(0, Math.round(performance.now() - started)),
+            executedAt: new Date().toISOString(),
+            success: false,
+            rowCount: 0,
+            affectedRows: 0,
+            error: message,
+          });
+        }
         throw error;
       } finally {
         setRunningRequestId("");
       }
     },
-    [activeConnectionId, settings]
+    [activeConnectionId, recordQueryHistory, settings]
+  );
+
+  const explainQuery = useCallback(
+    async (sql: string, toastOptions: QueryToastOptions = {}) => {
+      if (!activeConnectionId || !settings) {
+        setStatus({ tone: "warning", text: "Connect to a database before running SQL" });
+        notify("warning", "Connect to a database before running SQL");
+        return null;
+      }
+
+      const requestId = crypto.randomUUID();
+      const request: QueryRequest = {
+        requestId,
+        connectionId: activeConnectionId,
+        sql,
+        maxRows: settings.queryLimit,
+        timeoutSeconds: settings.queryTimeoutSeconds,
+        confirmDestructive: true
+      };
+
+      setRunningRequestId(requestId);
+      setStatus({ tone: "neutral", text: "Explaining query..." });
+      notify("loading", "Explaining query", undefined, requestId);
+      const started = performance.now();
+      try {
+        const result = await queryService.explain(request);
+        setQueryResult(result);
+        const message = querySuccessMessage(result.rows.length, result.affectedRows, result.durationMs);
+        setStatus({ tone: "success", text: message });
+        notify("neutral", "Explain finished", message, requestId);
+        if (toastOptions.recordHistory) {
+          recordQueryHistory({
+            id: requestId,
+            connectionId: activeConnectionId,
+            sql,
+            mode: toastOptions.historyMode || "explain",
+            durationMs: result.durationMs,
+            executedAt: new Date().toISOString(),
+            success: true,
+            rowCount: result.rows.length,
+            affectedRows: result.affectedRows,
+          });
+        }
+        return result;
+      } catch (error) {
+        const message = errorMessage(error, "Explain failed");
+        setStatus({ tone: "danger", text: message });
+        notify("danger", "Explain failed", message, requestId);
+        if (toastOptions.recordHistory) {
+          recordQueryHistory({
+            id: requestId,
+            connectionId: activeConnectionId,
+            sql,
+            mode: toastOptions.historyMode || "explain",
+            durationMs: Math.max(0, Math.round(performance.now() - started)),
+            executedAt: new Date().toISOString(),
+            success: false,
+            rowCount: 0,
+            affectedRows: 0,
+            error: message,
+          });
+        }
+        throw error;
+      } finally {
+        setRunningRequestId("");
+      }
+    },
+    [activeConnectionId, recordQueryHistory, settings]
   );
 
   const cancelQuery = useCallback(async () => {
@@ -264,9 +390,11 @@ export function useDataPanelState() {
     selectedTable,
     tableDetails,
     queryResult,
+    queryHistory,
     runningRequestId,
     settings,
     status,
+    connectionHealth,
     busy,
     initializing,
     saveConnection,
@@ -276,6 +404,7 @@ export function useDataPanelState() {
     refreshMetadata,
     inspectTable,
     runQuery,
+    explainQuery,
     cancelQuery,
     updateSettings
   };

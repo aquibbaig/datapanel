@@ -1,5 +1,5 @@
 import { Bot, Clock3, PanelRight, Search } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Toaster } from "sonner";
 import { AppSidebar } from "../components/AppSidebar";
 import {
@@ -23,18 +23,35 @@ import { SettingsPanel } from "../features/settings/SettingsPanel";
 import { TableDataEditor } from "../features/table-editor/TableDataEditor";
 import { cn } from "../lib/cn";
 import type { ConnectionProfile } from "../lib/types";
+import { CommandPalette } from "./CommandPalette";
 import { RightActionPanel, type RightPanel } from "./RightActionPanel";
 import { useDataPanelState } from "./useDataPanelState";
 import { EmptyWorkspace, WorkspaceLoader } from "./WorkspaceStates";
 
+const starterSQL = "select *\nfrom users\nlimit 50;";
+
 export function App() {
   const model = useDataPanelState();
   const [connectionModalOpen, setConnectionModalOpen] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rightPanel, setRightPanel] = useState<RightPanel | null>(null);
   const [bottomView, setBottomView] = useState<"results" | "table">("results");
+  const [sqlDraft, setSqlDraft] = useState(starterSQL);
   const [editingProfile, setEditingProfile] =
     useState<ConnectionProfile | null>(null);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setCommandOpen(true);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   function openNewConnection() {
     setEditingProfile(null);
@@ -73,14 +90,48 @@ export function App() {
     setBottomView("table");
   }
 
+  async function runTypedSQL(sql: string, confirmDestructive = false) {
+    setBottomView("results");
+    return model.runQuery(sql, confirmDestructive, {
+      historyMode: "query",
+      recordHistory: true,
+    });
+  }
+
+  async function explainTypedSQL(sql: string) {
+    setBottomView("results");
+    return model.explainQuery(sql, {
+      historyMode: "explain",
+      recordHistory: true,
+    });
+  }
+
   async function runSQL(sql: string, confirmDestructive = false) {
     setBottomView("results");
     return model.runQuery(sql, confirmDestructive);
   }
 
+  function loadHistoryQuery(sql: string) {
+    setSqlDraft(sql);
+    setRightPanel(null);
+  }
+
   return (
     <>
       <Toaster closeButton position="top-right" theme="dark" />
+      <CommandPalette
+        activeProfile={model.activeProfile}
+        open={commandOpen}
+        tablesBySchema={model.tablesBySchema}
+        onAddConnection={openNewConnection}
+        onClose={() => setCommandOpen(false)}
+        onEditConnection={() => openEditConnection(model.activeProfile)}
+        onOpenHistory={() => setRightPanel("history")}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onRefreshMetadata={() => void model.refreshMetadata()}
+        onSelectTable={(table) => void selectTableForEditing(table)}
+        onShowResults={() => setBottomView("results")}
+      />
       <SidebarProvider>
         <AppSidebar
           activeConnectionId={model.activeConnectionId}
@@ -119,7 +170,18 @@ export function App() {
             </div>
 
             <div className="flex min-w-0 items-center gap-2">
-              <div className="hidden h-7 w-[320px] items-center gap-2 rounded-full border border-line bg-surface-850 px-2 text-sm text-muted lg:flex">
+              <div
+                className="hidden h-7 w-[320px] cursor-pointer items-center gap-2 rounded-full border border-line bg-surface-850 px-2 text-sm text-muted transition hover:border-zinc-600 hover:text-zinc-300 lg:flex"
+                role="button"
+                tabIndex={0}
+                onClick={() => setCommandOpen(true)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setCommandOpen(true);
+                  }
+                }}
+              >
                 <Search size={14} />
                 <span className="truncate">
                   Search tables, columns, queries
@@ -174,7 +236,10 @@ export function App() {
                   settings={model.settings}
                   tablesBySchema={model.tablesBySchema}
                   onCancel={model.cancelQuery}
-                  onRun={runSQL}
+                  value={sqlDraft}
+                  onChange={setSqlDraft}
+                  onExplain={explainTypedSQL}
+                  onRun={runTypedSQL}
                 />
                 <section className="grid min-h-0 grid-rows-[34px_minmax(0,1fr)] bg-surface-900">
                   <div className="flex items-center justify-between border-b border-line px-2">
@@ -241,6 +306,8 @@ export function App() {
                   <RightActionPanel
                     panel={rightPanel}
                     activeProfileName={model.activeProfile?.name}
+                    queryHistory={model.queryHistory}
+                    onUseQuery={loadHistoryQuery}
                   />
                 </div>
               ) : null}
@@ -248,10 +315,7 @@ export function App() {
           </section>
 
           <footer className="flex items-center justify-between border-t border-line px-3 text-xs text-zinc-400">
-            <span
-              className="flex min-w-0 items-center gap-2"
-              title={model.status.text}
-            >
+            <span className="group relative flex min-w-0 items-center gap-2">
               <span
                 className={cn(
                   "h-2 w-2 rounded-full",
@@ -262,6 +326,9 @@ export function App() {
                 {model.activeProfile
                   ? model.activeProfile.name
                   : "No connection"}
+              </span>
+              <span className="pointer-events-none absolute bottom-6 left-0 z-40 hidden min-w-[260px] rounded-ui border border-line bg-surface-800 p-3 text-left text-xs text-zinc-300 shadow-xl group-hover:block">
+                {connectionTooltip(model)}
               </span>
             </span>
             <span>
@@ -307,4 +374,62 @@ function statusDot(tone: string, connected: boolean) {
   if (tone === "warning") return "bg-yellow-300";
   if (connected) return "bg-green-400";
   return "bg-zinc-600";
+}
+
+function connectionTooltip(model: ReturnType<typeof useDataPanelState>) {
+  const profile = model.activeProfile;
+  if (!profile) {
+    return (
+      <div className="flex flex-col gap-1">
+        <b className="font-medium text-zinc-100">No active connection</b>
+        <span>{model.status.text}</span>
+      </div>
+    );
+  }
+
+  const health = model.connectionHealth;
+  return (
+    <div className="flex flex-col gap-1">
+      <b className="font-medium text-zinc-100">
+        {profile.driver === "mysql" ? "MySQL" : "Postgres"} / {profile.database}
+      </b>
+      <span>
+        {health.connected ? "Connected" : health.error || model.status.text}
+      </span>
+      <span>
+        Last ping{" "}
+        {health.latencyMs !== undefined
+          ? `${health.latencyMs}ms`
+          : "not available"}
+        {health.lastPingAt ? ` at ${formatClock(health.lastPingAt)}` : ""}
+      </span>
+      {health.connectedAt ? (
+        <span>Connected {relativeTime(health.connectedAt)}</span>
+      ) : null}
+      <span className="truncate text-muted">
+        {profile.host}:{profile.port}
+      </span>
+    </div>
+  );
+}
+
+function formatClock(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(value));
+}
+
+function relativeTime(value: string) {
+  const elapsedSeconds = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(value).getTime()) / 1000),
+  );
+  if (elapsedSeconds < 60) return "just now";
+  const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+  if (elapsedMinutes < 60) return `${elapsedMinutes}m ago`;
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) return `${elapsedHours}h ago`;
+  return `${Math.floor(elapsedHours / 24)}d ago`;
 }

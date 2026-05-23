@@ -1,4 +1,4 @@
-import { AlertTriangle, Play, Square } from "lucide-react";
+import { AlertTriangle, FileQuestion, Play, Square } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../components/ui/Button";
 import { queryService } from "../../lib/backend";
@@ -17,11 +17,12 @@ interface Props {
   schemas: SchemaSummary[];
   settings: AppSettings | null;
   tablesBySchema: Record<string, TableSummary[]>;
+  value: string;
+  onChange(sql: string): void;
   onRun(sql: string, confirmDestructive?: boolean): Promise<unknown>;
+  onExplain(sql: string): Promise<unknown>;
   onCancel(): Promise<void>;
 }
-
-const starterSQL = "select *\nfrom users\nlimit 50;";
 
 export function QueryEditor({
   activeConnectionId,
@@ -30,15 +31,17 @@ export function QueryEditor({
   schemas,
   settings,
   tablesBySchema,
+  value,
+  onChange,
   onRun,
+  onExplain,
   onCancel,
 }: Props) {
-  const [sql, setSQL] = useState(starterSQL);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [pendingSQL, setPendingSQL] = useState("");
 
   async function run(confirmDestructive = false, sqlOverride?: string) {
-    const sqlToRun = (sqlOverride || (confirmDestructive ? pendingSQL : "") || sql).trim();
+    const sqlToRun = (sqlOverride || (confirmDestructive ? pendingSQL : "") || value).trim();
     if (!sqlToRun) return;
 
     if (!confirmDestructive && settings?.confirmDestructiveSql) {
@@ -52,6 +55,15 @@ export function QueryEditor({
     setWarnings([]);
     setPendingSQL("");
     await onRun(sqlToRun, confirmDestructive);
+  }
+
+  async function explain() {
+    const sqlToExplain = value.trim();
+    if (!sqlToExplain) return;
+
+    setWarnings([]);
+    setPendingSQL("");
+    await onExplain(sqlToExplain);
   }
 
   return (
@@ -70,8 +82,8 @@ export function QueryEditor({
           activeProfile={activeProfile}
           schemas={schemas}
           tablesBySchema={tablesBySchema}
-          value={sql}
-          onChange={setSQL}
+          value={value}
+          onChange={onChange}
           onRun={(selectedSQL) => void run(false, selectedSQL)}
         />
       </div>
@@ -94,6 +106,10 @@ export function QueryEditor({
       ) : null}
 
       <div className="flex justify-end gap-2 border-t border-line p-2">
+        <Button disabled={!activeConnectionId || busy} onClick={() => void explain()}>
+          <FileQuestion size={14} />
+          Explain
+        </Button>
         <Button variant="primary" disabled={!activeConnectionId || busy} onClick={() => void run(false)}>
           <Play size={14} />
           Run

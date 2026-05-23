@@ -108,3 +108,33 @@ td {
   background-color: #2a2a30;
   color: #ffffff;
 }
+
+[cmdk-group-heading] {
+  padding: 10px 8px 6px;
+  color: #8a8a93;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+[cmdk-item] {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  color: #d8d8dc;
+  cursor: pointer;
+}
+
+[cmdk-item][aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+[cmdk-item][data-selected="true"] {
+  background: #2a2a30;
+  color: #ffffff;
+}
