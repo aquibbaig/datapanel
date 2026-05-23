@@ -122,7 +122,7 @@ export function SchemaBrowser({
             Tables
           </div>
           <Button
-            className="text-zinc-400"
+            className="text-zinc-400 text-[11px]"
             disabled={!activeConnectionId}
             onClick={() => void onRefresh()}
             title="Refresh metadata"
@@ -215,9 +215,7 @@ function ColumnList({ tableDetails }: { tableDetails: TableDetails }) {
               ) : null}
               <span className="min-w-0 truncate">{column.name}</span>
             </span>
-            <code className="text-[11px] text-muted">
-              {column.dataType}
-            </code>
+            <code className="text-[11px] text-muted">{column.dataType}</code>
           </Button>
         );
       })}
@@ -227,7 +225,9 @@ function ColumnList({ tableDetails }: { tableDetails: TableDetails }) {
 
 function ColumnTypeIcon({ dataType }: { dataType: string }) {
   const normalized = dataType.toLowerCase();
-  if (/\b(int|serial|decimal|numeric|float|double|real|bit)\b/.test(normalized)) {
+  if (
+    /\b(int|serial|decimal|numeric|float|double|real|bit)\b/.test(normalized)
+  ) {
     return <Hash className="text-zinc-500" size={12} />;
   }
   if (/\b(bool|boolean|tinyint\(1\))\b/.test(normalized)) {

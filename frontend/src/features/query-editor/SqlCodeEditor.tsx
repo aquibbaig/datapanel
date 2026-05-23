@@ -7,7 +7,6 @@ import {
 } from "@codemirror/autocomplete";
 import { defaultKeymap, indentWithTab } from "@codemirror/commands";
 import { PostgreSQL, sql } from "@codemirror/lang-sql";
-import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { Compartment, EditorState, Extension } from "@codemirror/state";
 import {
   EditorView,
@@ -17,7 +16,10 @@ import {
   placeholder,
   tooltips
 } from "@codemirror/view";
+import shiki from "codemirror-shiki";
 import { useEffect, useMemo, useRef } from "react";
+import { createHighlighterCore } from "shiki/core";
+import { createOnigurumaEngine } from "shiki/engine/oniguruma";
 import type { ConnectionProfile, SchemaSummary, TableSummary } from "../../lib/types";
 
 interface Props {
@@ -65,6 +67,12 @@ const sqlKeywords = [
   "COMMIT",
   "ROLLBACK"
 ];
+
+const shikiHighlighter = createHighlighterCore({
+  langs: [import("@shikijs/langs/sql")],
+  themes: [import("@shikijs/themes/github-dark-high-contrast")],
+  engine: createOnigurumaEngine(import("shiki/wasm")),
+});
 
 export function SqlCodeEditor({
   activeProfile,
@@ -121,7 +129,11 @@ export function SqlCodeEditor({
           bottom: window.innerHeight
         })
       }),
-      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      shiki({
+        highlighter: shikiHighlighter,
+        language: "sql",
+        theme: "github-dark-high-contrast",
+      }),
       autocompletion({
         override: [sqlCompletion(schemaCompletions)],
         activateOnTyping: true,

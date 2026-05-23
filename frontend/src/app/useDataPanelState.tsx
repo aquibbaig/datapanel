@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Check, Info, Loader2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { connectionService, queryService, schemaService, settingsService } from "../lib/backend";
 import type {
@@ -73,7 +74,7 @@ export function useDataPanelState() {
       .catch((error: unknown) => {
         const message = errorMessage(error, "Could not initialize app");
         setStatus({ tone: "danger", text: message });
-        toast.error("Could not initialize app", { description: message });
+        notify("danger", "Could not initialize app", message);
       })
       .finally(() => setInitializing(false));
   }, [connectAndLoadMetadata, loadProfiles]);
@@ -85,12 +86,12 @@ export function useDataPanelState() {
         const profile = await connectionService.save(input);
         await loadProfiles();
         setStatus({ tone: "success", text: `${profile.name} saved` });
-        toast.success("Connection saved", { description: profile.name });
+        notify("success", "Connection saved", profile.name);
         return profile;
       } catch (error) {
         const message = errorMessage(error, "Could not save connection");
         setStatus({ tone: "danger", text: message });
-        toast.error("Could not save connection", { description: message });
+        notify("danger", "Could not save connection", message);
         throw error;
       } finally {
         setBusy(false);
@@ -105,15 +106,15 @@ export function useDataPanelState() {
       const result = await connectionService.test(input);
       setStatus({ tone: result.connected ? "success" : "danger", text: result.message });
       if (result.connected) {
-        toast.success("Connection test passed", { description: input.name || input.host });
+        notify("success", "Connection test passed", input.name || input.host);
       } else {
-        toast.error("Connection test failed", { description: result.message });
+        notify("danger", "Connection test failed", result.message);
       }
       return result;
     } catch (error) {
       const message = errorMessage(error, "Connection failed");
       setStatus({ tone: "danger", text: message });
-      toast.error("Connection test failed", { description: message });
+      notify("danger", "Connection test failed", message);
       throw error;
     } finally {
       setBusy(false);
@@ -125,11 +126,11 @@ export function useDataPanelState() {
     try {
       const result = await connectAndLoadMetadata(profileId, password);
       const profile = profiles.find((item) => item.id === profileId);
-      toast.success("Connected", { description: profile?.name || result.message });
+      notify("success", "Connected", profile?.name || result.message);
     } catch (error) {
       const message = errorMessage(error, "Could not connect");
       setStatus({ tone: "danger", text: message });
-      toast.error("Could not connect", { description: message });
+      notify("danger", "Could not connect", message);
       throw error;
     } finally {
       setBusy(false);
@@ -145,7 +146,7 @@ export function useDataPanelState() {
     setSelectedTable(null);
     setTableDetails(null);
     setStatus({ tone: "neutral", text: "Disconnected" });
-    toast("Disconnected");
+    notify("neutral", "Disconnected");
   }, [activeConnectionId]);
 
   const refreshMetadata = useCallback(async () => {
@@ -159,11 +160,11 @@ export function useDataPanelState() {
       );
       setTablesBySchema(Object.fromEntries(tableEntries));
       setStatus({ tone: "success", text: "Metadata refreshed" });
-      toast.success("Metadata refreshed");
+      notify("success", "Metadata refreshed");
     } catch (error) {
       const message = errorMessage(error, "Could not refresh metadata");
       setStatus({ tone: "danger", text: message });
-      toast.error("Could not refresh metadata", { description: message });
+      notify("danger", "Could not refresh metadata", message);
       throw error;
     } finally {
       setBusy(false);
@@ -181,7 +182,7 @@ export function useDataPanelState() {
       } catch (error) {
         const message = errorMessage(error, "Could not load table metadata");
         setStatus({ tone: "danger", text: message });
-        toast.error("Could not load table metadata", { description: message });
+        notify("danger", "Could not load table metadata", message);
         throw error;
       }
     },
@@ -192,7 +193,7 @@ export function useDataPanelState() {
     async (sql: string, confirmDestructive = false, toastOptions: QueryToastOptions = {}) => {
       if (!activeConnectionId || !settings) {
         setStatus({ tone: "warning", text: "Connect to a database before running SQL" });
-        toast.warning("Connect to a database before running SQL");
+        notify("warning", "Connect to a database before running SQL");
         return null;
       }
 
@@ -208,31 +209,30 @@ export function useDataPanelState() {
 
       setRunningRequestId(requestId);
       setStatus({ tone: "neutral", text: "Running query..." });
-      toast.loading("Running query", { id: requestId });
+      notify("loading", "Running query", undefined, requestId);
       try {
         const result = await queryService.execute(request);
         setQueryResult(result);
         if (result.error === "confirmation_required") {
           setStatus({ tone: "warning", text: "Confirmation required" });
-          toast.warning("Confirmation required", {
-            description: "Review the destructive SQL warning before running.",
-            id: requestId
-          });
+          notify(
+            "warning",
+            "Confirmation required",
+            "Review the destructive SQL warning before running.",
+            requestId,
+          );
         } else {
           const message =
             toastOptions.successMessage ||
             querySuccessMessage(result.rows.length, result.affectedRows, result.durationMs);
           setStatus({ tone: "success", text: message });
-          toast.success(toastOptions.successTitle || "Query finished", {
-            description: message,
-            id: requestId
-          });
+          notify(toastOptions.successTitle ? "success" : "neutral", toastOptions.successTitle || "Query finished", message, requestId);
         }
         return result;
       } catch (error) {
         const message = errorMessage(error, "Query failed");
         setStatus({ tone: "danger", text: message });
-        toast.error("Query failed", { description: message, id: requestId });
+        notify("danger", "Query failed", message, requestId);
         throw error;
       } finally {
         setRunningRequestId("");
@@ -245,14 +245,14 @@ export function useDataPanelState() {
     if (!runningRequestId) return;
     await queryService.cancel(runningRequestId);
     setStatus({ tone: "warning", text: "Cancel requested" });
-    toast.warning("Cancel requested", { id: runningRequestId });
+    notify("warning", "Cancel requested", undefined, runningRequestId);
   }, [runningRequestId]);
 
   const updateSettings = useCallback(async (nextSettings: AppSettings) => {
     const saved = await settingsService.update(nextSettings);
     setSettings(saved);
     setStatus({ tone: "success", text: "Settings updated" });
-    toast.success("Settings updated");
+    notify("success", "Settings updated");
   }, []);
 
   return {
@@ -293,4 +293,26 @@ function querySuccessMessage(rows: number, affectedRows: number, durationMs: num
     return `${affectedRows} ${affectedRows === 1 ? "row" : "rows"} affected in ${durationMs}ms`;
   }
   return `Query completed in ${durationMs}ms`;
+}
+
+function notify(
+  tone: "success" | "danger" | "warning" | "loading" | "neutral",
+  title: string,
+  description?: string,
+  id?: string,
+) {
+  toast(title, {
+    description,
+    id,
+    icon: toastIcon(tone),
+  });
+}
+
+function toastIcon(tone: "success" | "danger" | "warning" | "loading" | "neutral") {
+  const className = "h-4 w-4";
+  if (tone === "success") return <Check className={`${className} text-green-300`} />;
+  if (tone === "danger") return <XCircle className={`${className} text-red-300`} />;
+  if (tone === "warning") return <AlertTriangle className={`${className} text-yellow-300`} />;
+  if (tone === "loading") return <Loader2 className={`${className} animate-spin text-zinc-300`} />;
+  return <Info className={`${className} text-zinc-300`} />;
 }
