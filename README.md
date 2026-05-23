@@ -1,6 +1,6 @@
-# Sequel
+# datapanel
 
-Sequel is a local-first desktop database GUI client. The MVP is a Wails app with a Go backend, React + TypeScript frontend, and Postgres support.
+datapanel is a local-first desktop database GUI client. The MVP is a Wails app with a Go backend, React + TypeScript frontend, and Postgres support.
 
 ## Goals
 
@@ -62,4 +62,3 @@ wails build
 - `frontend/src/app`: app shell, layout, and top-level state.
 - `frontend/src/features`: feature-local UI and behavior.
 - `frontend/src/lib`: typed Wails service boundary.
-

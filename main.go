@@ -4,11 +4,13 @@ import (
 	"embed"
 	"log"
 
-	appcore "sequel/internal/app"
-	"sequel/internal/connections"
-	"sequel/internal/postgres"
-	"sequel/internal/query"
-	"sequel/internal/settings"
+	appcore "datapanel/internal/app"
+	"datapanel/internal/connections"
+	"datapanel/internal/database"
+	"datapanel/internal/mysql"
+	"datapanel/internal/postgres"
+	"datapanel/internal/query"
+	"datapanel/internal/settings"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -19,7 +21,7 @@ import (
 var assets embed.FS
 
 func main() {
-	paths, err := appcore.NewPaths("Sequel")
+	paths, err := appcore.NewPaths("datapanel")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -29,20 +31,25 @@ func main() {
 
 	profileStore := connections.NewFileProfileStore(paths.ConnectionsPath)
 	var secretStore connections.SecretStore
-	secretStore, err = connections.NewOSKeyringStore("Sequel")
+	secretStore, err = connections.NewOSKeyringStore("datapanel")
 	if err != nil {
 		log.Printf("falling back to local session secrets: %v", err)
 		secretStore = connections.NewMemorySecretStore()
 	}
 
 	postgresAdapter := postgres.NewAdapter()
-	connectionService := connections.NewService(profileStore, secretStore, postgresAdapter)
-	schemaService := postgres.NewSchemaService(postgresAdapter)
-	queryService := query.NewService(postgresAdapter, settingsService)
-	application := appcore.NewApplication(paths, postgresAdapter)
+	mysqlAdapter := mysql.NewAdapter()
+	databaseRouter := database.NewRouter(map[string]database.Adapter{
+		"postgres": postgresAdapter,
+		"mysql":    mysqlAdapter,
+	})
+	connectionService := connections.NewService(profileStore, secretStore, databaseRouter)
+	schemaService := postgres.NewSchemaService(databaseRouter)
+	queryService := query.NewService(databaseRouter, settingsService)
+	application := appcore.NewApplication(paths, databaseRouter)
 
 	err = wails.Run(&options.App{
-		Title:     "Sequel",
+		Title:     "datapanel",
 		Width:     1440,
 		Height:    920,
 		MinWidth:  1040,

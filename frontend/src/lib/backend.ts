@@ -21,6 +21,7 @@ import * as SettingsBindings from "../../wailsjs/go/settings/Service";
 const mockProfiles: ConnectionProfile[] = [
   {
     id: "demo",
+    driver: "postgres",
     name: "Demo Postgres",
     host: "localhost",
     port: 5432,

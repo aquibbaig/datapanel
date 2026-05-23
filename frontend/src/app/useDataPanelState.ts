@@ -17,7 +17,7 @@ export interface StatusMessage {
   text: string;
 }
 
-export function useSequelState() {
+export function useDataPanelState() {
   const [profiles, setProfiles] = useState<ConnectionProfile[]>([]);
   const [activeConnectionId, setActiveConnectionId] = useState<string>("");
   const [schemas, setSchemas] = useState<SchemaSummary[]>([]);

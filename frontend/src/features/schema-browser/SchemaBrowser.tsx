@@ -69,6 +69,12 @@ export function SchemaBrowser({
             </summary>
             <div className="mt-2 grid gap-2 rounded-ui border border-line bg-surface-850 p-2 text-xs text-zinc-400">
               <div className="flex items-center justify-between gap-2">
+                <span>Driver</span>
+                <code className="truncate text-zinc-200">
+                  {activeProfile.driver === "mysql" ? "MySQL" : "Postgres"}
+                </code>
+              </div>
+              <div className="flex items-center justify-between gap-2">
                 <span>Host</span>
                 <code className="truncate text-zinc-200">
                   {activeProfile.host}:{activeProfile.port}

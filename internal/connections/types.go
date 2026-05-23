@@ -2,6 +2,7 @@ package connections
 
 type ConnectionProfile struct {
 	ID        string `json:"id"`
+	Driver    string `json:"driver"`
 	Name      string `json:"name"`
 	Host      string `json:"host"`
 	Port      int    `json:"port"`
@@ -15,6 +16,7 @@ type ConnectionProfile struct {
 
 type SaveConnectionRequest struct {
 	ID       string `json:"id"`
+	Driver   string `json:"driver"`
 	Name     string `json:"name"`
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
@@ -27,6 +29,7 @@ type SaveConnectionRequest struct {
 
 type TestConnectionRequest struct {
 	ProfileID string `json:"profileId"`
+	Driver    string `json:"driver"`
 	Name      string `json:"name"`
 	Host      string `json:"host"`
 	Port      int    `json:"port"`

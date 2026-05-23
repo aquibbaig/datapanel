@@ -13,7 +13,7 @@ interface Props {
   onCancel(): Promise<void>;
 }
 
-const starterSQL = "select *\nfrom public.users\nlimit 50;";
+const starterSQL = "select *\nfrom users\nlimit 50;";
 
 export function QueryEditor({ activeConnectionId, busy, settings, onRun, onCancel }: Props) {
   const [sql, setSQL] = useState(starterSQL);

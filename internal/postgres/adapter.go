@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"sequel/internal/apperrors"
-	"sequel/internal/connections"
-	"sequel/internal/query"
+	"datapanel/internal/apperrors"
+	"datapanel/internal/connections"
+	"datapanel/internal/query"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"

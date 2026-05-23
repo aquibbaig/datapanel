@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"sequel/internal/apperrors"
+	"datapanel/internal/apperrors"
 )
 
 const defaultConnectTimeout = 8 * time.Second
@@ -128,6 +128,7 @@ func profileFromSaveInput(input SaveConnectionRequest) (ConnectionProfile, error
 	now := time.Now().UTC().Format(time.RFC3339)
 	profile := ConnectionProfile{
 		ID:        id,
+		Driver:    normalizeDriver(input.Driver),
 		Name:      strings.TrimSpace(input.Name),
 		Host:      strings.TrimSpace(input.Host),
 		Port:      input.Port,
@@ -144,6 +145,7 @@ func profileFromSaveInput(input SaveConnectionRequest) (ConnectionProfile, error
 func profileFromTestInput(input TestConnectionRequest) (ConnectionProfile, error) {
 	saveInput := SaveConnectionRequest{
 		ID:       input.ProfileID,
+		Driver:   input.Driver,
 		Name:     input.Name,
 		Host:     input.Host,
 		Port:     input.Port,
@@ -156,6 +158,9 @@ func profileFromTestInput(input TestConnectionRequest) (ConnectionProfile, error
 }
 
 func validateProfile(profile ConnectionProfile) error {
+	if profile.Driver != "postgres" && profile.Driver != "mysql" {
+		return apperrors.New(apperrors.CodeValidation, "database driver must be postgres or mysql")
+	}
 	if strings.TrimSpace(profile.Name) == "" {
 		return apperrors.New(apperrors.CodeValidation, "connection name is required")
 	}
@@ -172,6 +177,15 @@ func validateProfile(profile ConnectionProfile) error {
 		return apperrors.New(apperrors.CodeValidation, "username is required")
 	}
 	return nil
+}
+
+func normalizeDriver(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "mysql":
+		return "mysql"
+	default:
+		return "postgres"
+	}
 }
 
 func normalizeSSLMode(value string) string {
