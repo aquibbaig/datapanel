@@ -1,5 +1,6 @@
 import { Bot, Clock3, PanelRight, Search } from "lucide-react";
 import { useState } from "react";
+import { Toaster } from "sonner";
 import { AppSidebar } from "../components/AppSidebar";
 import {
   Breadcrumb,
@@ -19,6 +20,7 @@ import { ConnectionPanel } from "../features/connections/ConnectionPanel";
 import { QueryEditor } from "../features/query-editor/QueryEditor";
 import { ResultsGrid } from "../features/results-grid/ResultsGrid";
 import { SettingsPanel } from "../features/settings/SettingsPanel";
+import { TableDataEditor } from "../features/table-editor/TableDataEditor";
 import { cn } from "../lib/cn";
 import type { ConnectionProfile } from "../lib/types";
 import { RightActionPanel, type RightPanel } from "./RightActionPanel";
@@ -30,6 +32,7 @@ export function App() {
   const [connectionModalOpen, setConnectionModalOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rightPanel, setRightPanel] = useState<RightPanel | null>(null);
+  const [bottomView, setBottomView] = useState<"results" | "table">("results");
   const [editingProfile, setEditingProfile] =
     useState<ConnectionProfile | null>(null);
 
@@ -55,8 +58,20 @@ export function App() {
     setRightPanel((current) => (current === panel ? null : panel));
   }
 
+  async function selectTableForEditing(table: Parameters<typeof model.inspectTable>[0]) {
+    await model.inspectTable(table);
+    setBottomView("table");
+  }
+
+  async function runSQL(sql: string, confirmDestructive = false) {
+    setBottomView("results");
+    return model.runQuery(sql, confirmDestructive);
+  }
+
   return (
-    <SidebarProvider>
+    <>
+      <Toaster closeButton richColors position="top-right" theme="dark" />
+      <SidebarProvider>
       <AppSidebar
         activeConnectionId={model.activeConnectionId}
         activeProfile={model.activeProfile}
@@ -70,7 +85,7 @@ export function App() {
         onEditConnection={() => openEditConnection(model.activeProfile)}
         onOpenSettings={() => setSettingsOpen(true)}
         onRefresh={model.refreshMetadata}
-        onSelectTable={model.inspectTable}
+        onSelectTable={selectTableForEditing}
       />
 
       <SidebarInset className={cn("grid grid-rows-[56px_minmax(0,1fr)_28px]")}>
@@ -142,9 +157,55 @@ export function App() {
                 busy={Boolean(model.runningRequestId)}
                 settings={model.settings}
                 onCancel={model.cancelQuery}
-                onRun={model.runQuery}
+                onRun={runSQL}
               />
-              <ResultsGrid result={model.queryResult} />
+              <section className="grid min-h-0 grid-rows-[34px_minmax(0,1fr)] bg-surface-900">
+                <div className="flex items-center justify-between border-b border-line px-2">
+                  <div className="flex items-center gap-1">
+                    <Button
+                      className={cn(
+                        "h-7",
+                        bottomView === "results" && "bg-surface-700 text-zinc-100",
+                      )}
+                      onClick={() => setBottomView("results")}
+                    >
+                      Results
+                    </Button>
+                    <Button
+                      className={cn(
+                        "h-7",
+                        bottomView === "table" && "bg-surface-700 text-zinc-100",
+                      )}
+                      disabled={!model.selectedTable}
+                      onClick={() => setBottomView("table")}
+                    >
+                      Table data
+                    </Button>
+                  </div>
+                  {model.selectedTable ? (
+                    <span className="truncate px-2 text-xs text-muted">
+                      {model.selectedTable.schema}.{model.selectedTable.name}
+                    </span>
+                  ) : null}
+                </div>
+                {bottomView === "table" ? (
+                  <TableDataEditor
+                    activeConnectionId={model.activeConnectionId}
+                    activeProfile={model.activeProfile}
+                    selectedTable={model.selectedTable}
+                    settings={model.settings}
+                    tableDetails={model.tableDetails}
+                    onCommitSQL={(sql, summary) =>
+                      model.runQuery(sql, true, {
+                        successMessage: `${summary.total} row(s) changed`,
+                        successTitle: "Query successful",
+                      })
+                    }
+                  />
+                ) : (
+                  <ResultsGrid result={model.queryResult} />
+                )}
+              </section>
             </div>
           ) : (
             <EmptyWorkspace onCreateConnection={openNewConnection} />
@@ -207,7 +268,8 @@ export function App() {
           onUpdate={model.updateSettings}
         />
       </Modal>
-    </SidebarProvider>
+      </SidebarProvider>
+    </>
   );
 }
 
