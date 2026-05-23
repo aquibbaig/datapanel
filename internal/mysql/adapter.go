@@ -272,6 +272,7 @@ func connectionString(profile connections.ConnectionProfile, password string) st
 	cfg.Timeout = 8 * time.Second
 	cfg.ReadTimeout = 60 * time.Second
 	cfg.WriteTimeout = 60 * time.Second
+	cfg.MultiStatements = true
 
 	switch strings.ToLower(strings.TrimSpace(profile.SSLMode)) {
 	case "require", "verify-ca", "verify-full":
