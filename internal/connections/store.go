@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"sequel/internal/apperrors"
+	"datapanel/internal/apperrors"
 )
 
 type ProfileStore interface {
@@ -103,6 +103,9 @@ func (s *FileProfileStore) read() ([]ConnectionProfile, error) {
 	var profiles []ConnectionProfile
 	if err := json.Unmarshal(data, &profiles); err != nil {
 		return nil, apperrors.New(apperrors.CodeStorage, "connection profiles file is invalid")
+	}
+	for index := range profiles {
+		profiles[index].Driver = normalizeDriver(profiles[index].Driver)
 	}
 	return profiles, nil
 }

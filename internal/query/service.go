@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"sequel/internal/apperrors"
-	"sequel/internal/settings"
+	"datapanel/internal/apperrors"
+	"datapanel/internal/settings"
 )
 
 type Executor interface {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"sequel/internal/apperrors"
+	"datapanel/internal/apperrors"
 
 	"github.com/99designs/keyring"
 )

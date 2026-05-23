@@ -14,6 +14,7 @@ interface Props {
 
 const emptyForm: SaveConnectionRequest = {
   id: "",
+  driver: "postgres",
   name: "",
   host: "localhost",
   port: 5432,
@@ -22,6 +23,11 @@ const emptyForm: SaveConnectionRequest = {
   password: "",
   sslMode: "prefer",
   color: "#5E6AD2"
+};
+
+const defaultPorts: Record<string, number> = {
+  postgres: 5432,
+  mysql: 3306
 };
 
 export function ConnectionPanel({ busy, initialProfile, onConnect, onSave, onTest, onDone }: Props) {
@@ -34,6 +40,7 @@ export function ConnectionPanel({ busy, initialProfile, onConnect, onSave, onTes
     }
     setForm({
       id: initialProfile.id,
+      driver: initialProfile.driver || "postgres",
       name: initialProfile.name,
       host: initialProfile.host,
       port: initialProfile.port,
@@ -44,6 +51,17 @@ export function ConnectionPanel({ busy, initialProfile, onConnect, onSave, onTes
       color: initialProfile.color
     });
   }, [initialProfile]);
+
+  function updateDriver(driver: string) {
+    setForm((current) => {
+      const previousDefaultPort = defaultPorts[current.driver || "postgres"];
+      const nextPort =
+        !current.port || current.port === previousDefaultPort
+          ? defaultPorts[driver]
+          : current.port;
+      return { ...current, driver, port: nextPort };
+    });
+  }
 
   async function handleSave(event: FormEvent) {
     event.preventDefault();
@@ -59,6 +77,13 @@ export function ConnectionPanel({ busy, initialProfile, onConnect, onSave, onTes
   return (
     <form className="flex flex-col gap-4" onSubmit={handleSave}>
       <div className="grid gap-2">
+        <label className="grid gap-2">
+          <span className="text-xs text-muted">Driver</span>
+          <select value={form.driver || "postgres"} onChange={(event) => updateDriver(event.target.value)}>
+            <option value="postgres">Postgres</option>
+            <option value="mysql">MySQL</option>
+          </select>
+        </label>
         <label className="grid gap-2">
           <span className="text-xs text-muted">Name</span>
           <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Production" />

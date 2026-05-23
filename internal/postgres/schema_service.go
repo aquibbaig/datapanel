@@ -5,16 +5,22 @@ import (
 	"strings"
 	"time"
 
-	"sequel/internal/apperrors"
+	"datapanel/internal/apperrors"
 )
 
 const metadataTimeout = 12 * time.Second
 
-type SchemaService struct {
-	adapter *Adapter
+type MetadataProvider interface {
+	ListSchemas(ctx context.Context, connectionID string) ([]SchemaSummary, error)
+	ListTables(ctx context.Context, connectionID string, schema string) ([]TableSummary, error)
+	DescribeTable(ctx context.Context, connectionID string, schema string, table string) (TableDetails, error)
 }
 
-func NewSchemaService(adapter *Adapter) *SchemaService {
+type SchemaService struct {
+	adapter MetadataProvider
+}
+
+func NewSchemaService(adapter MetadataProvider) *SchemaService {
 	return &SchemaService{adapter: adapter}
 }
 

@@ -16,6 +16,7 @@ export namespace connections {
 	}
 	export class ConnectionProfile {
 	    id: string;
+	    driver: string;
 	    name: string;
 	    host: string;
 	    port: number;
@@ -33,6 +34,7 @@ export namespace connections {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
+	        this.driver = source["driver"];
 	        this.name = source["name"];
 	        this.host = source["host"];
 	        this.port = source["port"];
@@ -62,6 +64,7 @@ export namespace connections {
 	}
 	export class SaveConnectionRequest {
 	    id: string;
+	    driver: string;
 	    name: string;
 	    host: string;
 	    port: number;
@@ -78,6 +81,7 @@ export namespace connections {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
+	        this.driver = source["driver"];
 	        this.name = source["name"];
 	        this.host = source["host"];
 	        this.port = source["port"];
@@ -90,6 +94,7 @@ export namespace connections {
 	}
 	export class TestConnectionRequest {
 	    profileId: string;
+	    driver: string;
 	    name: string;
 	    host: string;
 	    port: number;
@@ -106,6 +111,7 @@ export namespace connections {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.profileId = source["profileId"];
+	        this.driver = source["driver"];
 	        this.name = source["name"];
 	        this.host = source["host"];
 	        this.port = source["port"];

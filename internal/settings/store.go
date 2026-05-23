@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"sequel/internal/apperrors"
+	"datapanel/internal/apperrors"
 )
 
 type Store interface {

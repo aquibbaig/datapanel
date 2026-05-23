@@ -22,11 +22,11 @@ import { SettingsPanel } from "../features/settings/SettingsPanel";
 import { cn } from "../lib/cn";
 import type { ConnectionProfile } from "../lib/types";
 import { RightActionPanel, type RightPanel } from "./RightActionPanel";
-import { useSequelState } from "./useSequelState";
+import { useDataPanelState } from "./useDataPanelState";
 import { EmptyWorkspace, WorkspaceLoader } from "./WorkspaceStates";
 
 export function App() {
-  const model = useSequelState();
+  const model = useDataPanelState();
   const [connectionModalOpen, setConnectionModalOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rightPanel, setRightPanel] = useState<RightPanel | null>(null);
