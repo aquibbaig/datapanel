@@ -1,5 +1,6 @@
 import { Bot, Clock3, PanelRight, Search } from "lucide-react";
 import { useState } from "react";
+import { Toaster } from "sonner";
 import { AppSidebar } from "../components/AppSidebar";
 import {
   Breadcrumb,
@@ -68,7 +69,9 @@ export function App() {
   }
 
   return (
-    <SidebarProvider>
+    <>
+      <Toaster closeButton richColors position="top-right" theme="dark" />
+      <SidebarProvider>
       <AppSidebar
         activeConnectionId={model.activeConnectionId}
         activeProfile={model.activeProfile}
@@ -192,7 +195,12 @@ export function App() {
                     selectedTable={model.selectedTable}
                     settings={model.settings}
                     tableDetails={model.tableDetails}
-                    onCommitSQL={(sql) => model.runQuery(sql, true)}
+                    onCommitSQL={(sql, summary) =>
+                      model.runQuery(sql, true, {
+                        successMessage: `${summary.total} row(s) changed`,
+                        successTitle: "Query successful",
+                      })
+                    }
                   />
                 ) : (
                   <ResultsGrid result={model.queryResult} />
@@ -260,7 +268,8 @@ export function App() {
           onUpdate={model.updateSettings}
         />
       </Modal>
-    </SidebarProvider>
+      </SidebarProvider>
+    </>
   );
 }
 

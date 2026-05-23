@@ -26,7 +26,7 @@ interface Props {
   selectedTable: TableSummary | null;
   tableDetails: TableDetails | null;
   settings: AppSettings | null;
-  onCommitSQL(sql: string): Promise<unknown>;
+  onCommitSQL(sql: string, summary: ChangeSummary): Promise<unknown>;
 }
 
 interface CellDraft {
@@ -37,6 +37,13 @@ interface CellDraft {
 type RowChanges = Record<string, CellDraft>;
 type ChangeMap = Record<string, RowChanges>;
 type DeletedMap = Record<string, boolean>;
+
+interface ChangeSummary {
+  cells: number;
+  deletes: number;
+  updates: number;
+  total: number;
+}
 
 const rowLimit = 100;
 
@@ -183,7 +190,7 @@ export function TableDataEditor({
     setCommitting(true);
     setError("");
     try {
-      await onCommitSQL(generatedSQL);
+      await onCommitSQL(generatedSQL, pendingChanges);
       discardChanges();
       await loadRows();
     } catch (commitError) {
