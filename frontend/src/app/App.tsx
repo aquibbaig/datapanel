@@ -154,8 +154,11 @@ export function App() {
             <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[48%_minmax(0,1fr)]">
               <QueryEditor
                 activeConnectionId={model.activeConnectionId}
+                activeProfile={model.activeProfile}
                 busy={Boolean(model.runningRequestId)}
+                schemas={model.schemas}
                 settings={model.settings}
+                tablesBySchema={model.tablesBySchema}
                 onCancel={model.cancelQuery}
                 onRun={runSQL}
               />
@@ -229,12 +232,19 @@ export function App() {
         </section>
 
         <footer
-          className={cn(
-            "flex items-center justify-between border-t border-line px-3 text-xs",
-            statusTone(model.status.tone),
-          )}
+          className="flex items-center justify-between border-t border-line px-3 text-xs text-zinc-400"
         >
-          <span>{model.status.text}</span>
+          <span
+            className="flex min-w-0 items-center gap-2"
+            title={model.status.text}
+          >
+            <span
+              className={cn("h-2 w-2 rounded-full", statusDot(model.status.tone, Boolean(model.activeProfile)))}
+            />
+            <span className="truncate">
+              {model.activeProfile ? model.activeProfile.name : "No connection"}
+            </span>
+          </span>
           <span>
             {model.activeProfile
               ? `${model.activeProfile.host}:${model.activeProfile.port}`
@@ -273,9 +283,9 @@ export function App() {
   );
 }
 
-function statusTone(tone: string) {
-  if (tone === "success") return "text-green-200";
-  if (tone === "warning") return "text-yellow-200";
-  if (tone === "danger") return "text-red-200";
-  return "text-zinc-400";
+function statusDot(tone: string, connected: boolean) {
+  if (tone === "danger") return "bg-red-400";
+  if (tone === "warning") return "bg-yellow-300";
+  if (connected) return "bg-green-400";
+  return "bg-zinc-600";
 }

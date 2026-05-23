@@ -81,3 +81,30 @@ td {
   white-space: nowrap;
   border-bottom: 1px solid #202022;
 }
+
+.cm-tooltip.cm-tooltip-autocomplete {
+  z-index: 1000;
+  max-height: 320px;
+  overflow: hidden;
+  border: 1px solid #242426;
+  border-radius: 10px;
+  background: #1f1f23;
+  color: #ededee;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.35);
+}
+
+.cm-tooltip.cm-tooltip-autocomplete > ul {
+  max-height: 320px;
+  overflow-y: auto;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+}
+
+.cm-tooltip.cm-tooltip-autocomplete > ul > li {
+  padding: 6px 8px;
+}
+
+.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected] {
+  background-color: #2a2a30;
+  color: #ffffff;
+}

@@ -1,14 +1,32 @@
-import { autocompletion, CompletionContext, CompletionResult, startCompletion } from "@codemirror/autocomplete";
+import {
+  acceptCompletion,
+  autocompletion,
+  CompletionContext,
+  CompletionResult,
+  startCompletion
+} from "@codemirror/autocomplete";
 import { defaultKeymap, indentWithTab } from "@codemirror/commands";
 import { PostgreSQL, sql } from "@codemirror/lang-sql";
 import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
-import { EditorState, Extension } from "@codemirror/state";
-import { EditorView, highlightActiveLine, keymap, lineNumbers, placeholder } from "@codemirror/view";
+import { Compartment, EditorState, Extension } from "@codemirror/state";
+import {
+  EditorView,
+  highlightActiveLine,
+  keymap,
+  lineNumbers,
+  placeholder,
+  tooltips
+} from "@codemirror/view";
 import { useEffect, useMemo, useRef } from "react";
+import type { ConnectionProfile, SchemaSummary, TableSummary } from "../../lib/types";
 
 interface Props {
+  activeProfile: ConnectionProfile | null;
+  schemas: SchemaSummary[];
+  tablesBySchema: Record<string, TableSummary[]>;
   value: string;
   onChange(value: string): void;
+  onRun(sql: string): void;
 }
 
 const sqlKeywords = [
@@ -48,18 +66,44 @@ const sqlKeywords = [
   "ROLLBACK"
 ];
 
-export function SqlCodeEditor({ value, onChange }: Props) {
+export function SqlCodeEditor({
+  activeProfile,
+  schemas,
+  tablesBySchema,
+  value,
+  onChange,
+  onRun,
+}: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const extensionCompartmentRef = useRef(new Compartment());
   const initialValueRef = useRef(value);
   const onChangeRef = useRef(onChange);
+  const onRunRef = useRef(onRun);
   onChangeRef.current = onChange;
+  onRunRef.current = onRun;
+
+  const schemaCompletions = useMemo(
+    () => buildSchemaCompletions(activeProfile, schemas, tablesBySchema),
+    [activeProfile, schemas, tablesBySchema]
+  );
 
   const extensions = useMemo<Extension[]>(
     () => [
       lineNumbers(),
       highlightActiveLine(),
       keymap.of([
+        {
+          key: "Mod-Enter",
+          run: (view) => {
+            onRunRef.current(selectedSQL(view));
+            return true;
+          }
+        },
+        {
+          key: "Tab",
+          run: acceptCompletion
+        },
         ...defaultKeymap,
         indentWithTab,
         {
@@ -68,9 +112,18 @@ export function SqlCodeEditor({ value, onChange }: Props) {
         }
       ]),
       sql({ dialect: PostgreSQL }),
+      tooltips({
+        parent: document.body,
+        tooltipSpace: () => ({
+          left: 0,
+          right: window.innerWidth,
+          top: 0,
+          bottom: window.innerHeight
+        })
+      }),
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
       autocompletion({
-        override: [sqlKeywordCompletion],
+        override: [sqlCompletion(schemaCompletions)],
         activateOnTyping: true,
         icons: false
       }),
@@ -126,7 +179,9 @@ export function SqlCodeEditor({ value, onChange }: Props) {
         },
         ".cm-tooltip-autocomplete ul": {
           fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
-          fontSize: "13px"
+          fontSize: "13px",
+          maxHeight: "320px",
+          overflowY: "auto"
         },
         ".cm-tooltip-autocomplete ul li": {
           padding: "6px 8px"
@@ -137,7 +192,7 @@ export function SqlCodeEditor({ value, onChange }: Props) {
         }
       })
     ],
-    []
+    [schemaCompletions]
   );
 
   useEffect(() => {
@@ -147,7 +202,7 @@ export function SqlCodeEditor({ value, onChange }: Props) {
       parent: containerRef.current,
       state: EditorState.create({
         doc: initialValueRef.current,
-        extensions
+        extensions: extensionCompartmentRef.current.of(extensions)
       })
     });
 
@@ -155,6 +210,14 @@ export function SqlCodeEditor({ value, onChange }: Props) {
       viewRef.current?.destroy();
       viewRef.current = null;
     };
+  }, []);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: extensionCompartmentRef.current.reconfigure(extensions)
+    });
   }, [extensions]);
 
   useEffect(() => {
@@ -174,32 +237,118 @@ export function SqlCodeEditor({ value, onChange }: Props) {
   return <div className="min-h-0 flex-1 overflow-hidden" ref={containerRef} />;
 }
 
-function sqlKeywordCompletion(context: CompletionContext): CompletionResult | null {
-  const word = context.matchBefore(/[A-Za-z_][\w\s]*/);
-  if (!word || (word.from === word.to && !context.explicit)) {
-    return null;
-  }
+function sqlCompletion(schemaCompletions: CompletionOption[]) {
+  return function completeSQL(context: CompletionContext): CompletionResult | null {
+    const word = context.matchBefore(/[A-Za-z_][\w."]*/);
+    if (!word || (word.from === word.to && !context.explicit)) {
+      return null;
+    }
 
-  const fragment = word.text.trim().toUpperCase();
-  if (!fragment && !context.explicit) {
-    return null;
-  }
+    const fragment = word.text.trim().toLowerCase();
+    if (!fragment && !context.explicit) {
+      return null;
+    }
 
-  const options = sqlKeywords
-    .filter((keyword) => keyword.startsWith(fragment))
-    .map((keyword) => ({
-      label: keyword,
-      type: "keyword",
-      apply: keyword
-    }));
+    const keywordOptions = sqlKeywords
+      .filter((keyword) => keyword.toLowerCase().startsWith(fragment))
+      .map((keyword) => ({
+        label: keyword,
+        type: "keyword",
+        apply: keyword
+      }));
 
-  if (options.length === 0) {
-    return null;
-  }
+    const schemaOptions = schemaCompletions.filter((option) =>
+      matchesCompletion(option, fragment)
+    );
+    const options = [...keywordOptions, ...schemaOptions].slice(0, 80);
 
-  return {
-    from: word.from,
-    options,
-    validFor: /^[A-Za-z_][\w\s]*$/
+    if (options.length === 0) {
+      return null;
+    }
+
+    return {
+      from: word.from,
+      options,
+      validFor: /^[A-Za-z_][\w."]*$/
+    };
   };
+}
+
+interface CompletionOption {
+  label: string;
+  type: string;
+  apply: string;
+  detail?: string;
+  matchText: string;
+  boost?: number;
+}
+
+function buildSchemaCompletions(
+  activeProfile: ConnectionProfile | null,
+  schemas: SchemaSummary[],
+  tablesBySchema: Record<string, TableSummary[]>,
+): CompletionOption[] {
+  const quote = activeProfile?.driver === "mysql" ? quoteMySQL : quotePostgres;
+  const options: CompletionOption[] = [];
+
+  for (const schema of schemas) {
+    const schemaTables = tablesBySchema[schema.name] || [];
+    for (const table of schemaTables) {
+      const qualified = `${schema.name}.${table.name}`;
+      options.push({
+        label: table.name,
+        type: "variable",
+        apply: quote(table.name),
+        detail: `${schema.name} ${table.type.replace("BASE ", "")}`,
+        matchText: table.name.toLowerCase(),
+        boost: 80,
+      });
+      options.push({
+        label: qualified,
+        type: "variable",
+        apply: `${quote(schema.name)}.${quote(table.name)}`,
+        detail: table.type.replace("BASE ", ""),
+        matchText: qualified.toLowerCase(),
+        boost: 60,
+      });
+    }
+  }
+
+  return options;
+}
+
+function matchesCompletion(option: CompletionOption, fragment: string) {
+  if (option.matchText.startsWith(fragment)) return true;
+  return camelCasePrefix(option.label, fragment);
+}
+
+function camelCasePrefix(label: string, fragment: string) {
+  const capitals = label
+    .replace(/[^A-Za-z0-9]+/g, " ")
+    .split(/\s+/)
+    .flatMap((part) => {
+      const upperLetters = part.match(/[A-Z0-9]/g);
+      return upperLetters && upperLetters.length > 0
+        ? upperLetters
+        : [part.charAt(0)];
+    })
+    .join("")
+    .toLowerCase();
+  return capitals.startsWith(fragment);
+}
+
+function selectedSQL(view: EditorView) {
+  const selection = view.state.selection.main;
+  const selectedText = view.state.sliceDoc(selection.from, selection.to).trim();
+  return selectedText || view.state.doc.toString().trim();
+}
+
+function quotePostgres(identifier: string) {
+  if (/^[a-z_][a-z0-9_]*$/.test(identifier)) return identifier;
+  return `"${identifier.split('"').join('""')}"`;
+}
+
+function quoteMySQL(identifier: string) {
+  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(identifier)) return identifier;
+  return `\`${identifier.split("`").join("``")}\``;
 }
