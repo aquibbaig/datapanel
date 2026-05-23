@@ -1,34 +1,69 @@
-import { AlertTriangle, Play, Square } from "lucide-react";
+import { AlertTriangle, FileQuestion, Play, Square } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../components/ui/Button";
 import { queryService } from "../../lib/backend";
-import type { AppSettings } from "../../lib/types";
+import type {
+  AppSettings,
+  ConnectionProfile,
+  SchemaSummary,
+  TableSummary,
+} from "../../lib/types";
 import { SqlCodeEditor } from "./SqlCodeEditor";
 
 interface Props {
   activeConnectionId: string;
+  activeProfile: ConnectionProfile | null;
   busy: boolean;
+  schemas: SchemaSummary[];
   settings: AppSettings | null;
+  tablesBySchema: Record<string, TableSummary[]>;
+  value: string;
+  onChange(sql: string): void;
   onRun(sql: string, confirmDestructive?: boolean): Promise<unknown>;
+  onExplain(sql: string): Promise<unknown>;
   onCancel(): Promise<void>;
 }
 
-const starterSQL = "select *\nfrom users\nlimit 50;";
-
-export function QueryEditor({ activeConnectionId, busy, settings, onRun, onCancel }: Props) {
-  const [sql, setSQL] = useState(starterSQL);
+export function QueryEditor({
+  activeConnectionId,
+  activeProfile,
+  busy,
+  schemas,
+  settings,
+  tablesBySchema,
+  value,
+  onChange,
+  onRun,
+  onExplain,
+  onCancel,
+}: Props) {
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [pendingSQL, setPendingSQL] = useState("");
 
-  async function run(confirmDestructive = false) {
+  async function run(confirmDestructive = false, sqlOverride?: string) {
+    const sqlToRun = (sqlOverride || (confirmDestructive ? pendingSQL : "") || value).trim();
+    if (!sqlToRun) return;
+
     if (!confirmDestructive && settings?.confirmDestructiveSql) {
-      const analysis = await queryService.analyze(sql);
+      const analysis = await queryService.analyze(sqlToRun);
       if (analysis.destructive) {
+        setPendingSQL(sqlToRun);
         setWarnings(analysis.warnings);
         return;
       }
     }
     setWarnings([]);
-    await onRun(sql, confirmDestructive);
+    setPendingSQL("");
+    await onRun(sqlToRun, confirmDestructive);
+  }
+
+  async function explain() {
+    const sqlToExplain = value.trim();
+    if (!sqlToExplain) return;
+
+    setWarnings([]);
+    setPendingSQL("");
+    await onExplain(sqlToExplain);
   }
 
   return (
@@ -43,7 +78,14 @@ export function QueryEditor({ activeConnectionId, busy, settings, onRun, onCance
       </div>
 
       <div className="relative min-h-0">
-        <SqlCodeEditor value={sql} onChange={setSQL} />
+        <SqlCodeEditor
+          activeProfile={activeProfile}
+          schemas={schemas}
+          tablesBySchema={tablesBySchema}
+          value={value}
+          onChange={onChange}
+          onRun={(selectedSQL) => void run(false, selectedSQL)}
+        />
       </div>
 
       {warnings.length > 0 ? (
@@ -56,11 +98,18 @@ export function QueryEditor({ activeConnectionId, busy, settings, onRun, onCance
             ))}
           </div>
           <Button variant="danger" onClick={() => void run(true)}>Run anyway</Button>
-          <Button onClick={() => setWarnings([])}>Cancel</Button>
+          <Button onClick={() => {
+            setPendingSQL("");
+            setWarnings([]);
+          }}>Cancel</Button>
         </div>
       ) : null}
 
       <div className="flex justify-end gap-2 border-t border-line p-2">
+        <Button disabled={!activeConnectionId || busy} onClick={() => void explain()}>
+          <FileQuestion size={14} />
+          Explain
+        </Button>
         <Button variant="primary" disabled={!activeConnectionId || busy} onClick={() => void run(false)}>
           <Play size={14} />
           Run

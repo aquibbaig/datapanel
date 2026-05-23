@@ -142,6 +142,26 @@ export const queryService = {
     }
     return QueryBindings.ExecuteQuery(request);
   },
+  async explain(request: QueryRequest): Promise<QueryResult> {
+    if (!isWailsRuntime()) {
+      return {
+        columns: [
+          { name: "QUERY PLAN", dataType: "text" },
+          { name: "cost", dataType: "text" }
+        ],
+        rows: [
+          ["Seq Scan on users", "0.00..18.20"],
+          ["Filter: active = true", ""]
+        ],
+        affectedRows: 0,
+        durationMs: 9,
+        notices: [],
+        error: "",
+        truncated: false
+      };
+    }
+    return QueryBindings.ExplainQuery(request);
+  },
   async cancel(requestId: string): Promise<void> {
     if (!isWailsRuntime()) return;
     return QueryBindings.CancelQuery(requestId);

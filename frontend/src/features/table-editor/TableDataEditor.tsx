@@ -68,7 +68,9 @@ export function TableDataEditor({
     [tableDetails],
   );
   const columnDetails = useMemo(() => {
-    return new Map((tableDetails?.columns || []).map((column) => [column.name, column]));
+    return new Map(
+      (tableDetails?.columns || []).map((column) => [column.name, column]),
+    );
   }, [tableDetails]);
   const qualifiedTable = useMemo(() => {
     if (!selectedTable) return "";
@@ -91,11 +93,20 @@ export function TableDataEditor({
       setResult(nextResult);
     } catch (loadError) {
       setResult(null);
-      setError(loadError instanceof Error ? loadError.message : "Could not load table rows");
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Could not load table rows",
+      );
     } finally {
       setLoading(false);
     }
-  }, [activeConnectionId, qualifiedTable, selectedTable, settings?.queryTimeoutSeconds]);
+  }, [
+    activeConnectionId,
+    qualifiedTable,
+    selectedTable,
+    settings?.queryTimeoutSeconds,
+  ]);
 
   useEffect(() => {
     setResult(null);
@@ -106,15 +117,17 @@ export function TableDataEditor({
   }, [loadRows]);
 
   const columnIndexes = useMemo(() => {
-    return new Map((result?.columns || []).map((column, index) => [column.name, index]));
+    return new Map(
+      (result?.columns || []).map((column, index) => [column.name, index]),
+    );
   }, [result]);
 
   const rows = result?.rows || [];
   const editable = Boolean(
     selectedTable &&
-      tableDetails &&
-      tableDetails.type.toUpperCase().includes("TABLE") &&
-      primaryColumns.length > 0,
+    tableDetails &&
+    tableDetails.type.toUpperCase().includes("TABLE") &&
+    primaryColumns.length > 0,
   );
 
   const pendingChanges = useMemo(
@@ -194,7 +207,11 @@ export function TableDataEditor({
       discardChanges();
       await loadRows();
     } catch (commitError) {
-      setError(commitError instanceof Error ? commitError.message : "Could not commit table changes");
+      setError(
+        commitError instanceof Error
+          ? commitError.message
+          : "Could not commit table changes",
+      );
     } finally {
       setCommitting(false);
     }
@@ -202,8 +219,8 @@ export function TableDataEditor({
 
   if (!selectedTable) {
     return (
-      <section className="grid min-h-0 place-items-center text-muted">
-        <div className="flex flex-col items-center gap-4">
+      <section className="grid min-h-0 place-items-center bg-surface-900 text-muted">
+        <div className="flex flex-col items-center justify-center gap-4">
           <TableProperties size={24} />
           <p>Select a table to edit rows.</p>
         </div>
@@ -213,8 +230,8 @@ export function TableDataEditor({
 
   if (!tableDetails) {
     return (
-      <section className="grid min-h-0 place-items-center text-muted">
-        <div className="flex flex-col items-center gap-4">
+      <section className="grid min-h-0 place-items-center bg-surface-900 text-muted">
+        <div className="flex flex-col items-center justify-center gap-4">
           <RefreshCw className="animate-spin" size={20} />
           <p>Loading table metadata.</p>
         </div>
@@ -272,8 +289,8 @@ export function TableDataEditor({
             <div className="flex max-w-md flex-col items-center gap-3">
               <AlertTriangle size={20} className="text-yellow-200" />
               <p>
-                This table is read-only here because it does not expose a primary key
-                or is not a base table.
+                This table is read-only here because it does not expose a
+                primary key or is not a base table.
               </p>
             </div>
           </div>
@@ -334,7 +351,8 @@ export function TableDataEditor({
                             <input
                               className={cn(
                                 "h-7 min-w-[144px] border-transparent bg-transparent px-2 text-xs text-zinc-200 focus:border-accent focus:bg-surface-850",
-                                changed && "border-accent/40 bg-accent/10 text-white",
+                                changed &&
+                                  "border-accent/40 bg-accent/10 text-white",
                                 deleted && "line-through",
                               )}
                               disabled={deleted}
@@ -352,7 +370,9 @@ export function TableDataEditor({
                       })}
                       <td className="sticky right-0 z-10 bg-surface-900 px-2 py-1">
                         <Button
-                          className={cn(deleted && "bg-red-500/25 text-red-100")}
+                          className={cn(
+                            deleted && "bg-red-500/25 text-red-100",
+                          )}
                           onClick={() => toggleDeleted(row)}
                           size="icon"
                           title={deleted ? "Restore row" : "Delete row"}
@@ -371,7 +391,9 @@ export function TableDataEditor({
 
       <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_minmax(120px,36%)] border-l border-line bg-surface-950">
         <div className="border-b border-line p-3">
-          <div className="mb-2 text-sm font-medium text-zinc-200">Changed rows</div>
+          <div className="mb-2 text-sm font-medium text-zinc-200">
+            Changed rows
+          </div>
           <div className="grid grid-cols-3 gap-2 text-xs">
             <div>
               <div className="text-lg font-semibold text-zinc-100">
@@ -408,7 +430,9 @@ export function TableDataEditor({
                     <span
                       className={cn(
                         "font-medium",
-                        item.kind === "delete" ? "text-red-100" : "text-zinc-200",
+                        item.kind === "delete"
+                          ? "text-red-100"
+                          : "text-zinc-200",
                       )}
                     >
                       {item.kind === "delete" ? "Delete" : "Update"}
@@ -428,7 +452,9 @@ export function TableDataEditor({
 
         <div className="grid min-h-0 grid-rows-[28px_minmax(0,1fr)] p-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-zinc-200">SQL preview</span>
+            <span className="text-sm font-medium text-zinc-200">
+              SQL preview
+            </span>
             <span className="text-xs text-muted">
               {generatedSQL ? "ready" : "empty"}
             </span>
@@ -501,7 +527,11 @@ function buildMutationSQL({
   selectedTable: TableSummary;
 }) {
   const statements: string[] = [];
-  const tableName = qualifiedName(driver, selectedTable.schema, selectedTable.name);
+  const tableName = qualifiedName(
+    driver,
+    selectedTable.schema,
+    selectedTable.name,
+  );
 
   for (const row of result.rows) {
     const rowKey = getRowKey(row, primaryColumns, columnIndexes);
@@ -519,10 +549,12 @@ function buildMutationSQL({
     const rowChanges = changes[rowKey];
     if (!rowChanges || Object.keys(rowChanges).length === 0) continue;
 
-    const assignments = Object.entries(rowChanges).map(([columnName, draft]) => {
-      const column = columnDetails.get(columnName);
-      return `${quoteIdentifier(driver, columnName)} = ${sqlValue(draft, column)}`;
-    });
+    const assignments = Object.entries(rowChanges).map(
+      ([columnName, draft]) => {
+        const column = columnDetails.get(columnName);
+        return `${quoteIdentifier(driver, columnName)} = ${sqlValue(draft, column)}`;
+      },
+    );
     statements.push(
       `update ${tableName} set ${assignments.join(", ")} where ${whereClause(
         row,
@@ -579,7 +611,10 @@ function toDraft(value: unknown): CellDraft {
   if (value === null || value === undefined) {
     return { value: "", isNull: true };
   }
-  return { value: typeof value === "object" ? JSON.stringify(value) : String(value), isNull: false };
+  return {
+    value: typeof value === "object" ? JSON.stringify(value) : String(value),
+    isNull: false,
+  };
 }
 
 function sameDraft(left: CellDraft, right: CellDraft) {
@@ -603,14 +638,20 @@ function sqlValue(draft: CellDraft, column?: ColumnSummary) {
 }
 
 function isNumericType(dataType: string) {
-  return /\b(int|serial|decimal|numeric|float|double|real|bit)\b/.test(dataType);
+  return /\b(int|serial|decimal|numeric|float|double|real|bit)\b/.test(
+    dataType,
+  );
 }
 
 function isBooleanType(dataType: string) {
   return /\b(bool|boolean|tinyint\(1\))\b/.test(dataType);
 }
 
-function qualifiedName(driver: "postgres" | "mysql", schema: string, table: string) {
+function qualifiedName(
+  driver: "postgres" | "mysql",
+  schema: string,
+  table: string,
+) {
   return `${quoteIdentifier(driver, schema)}.${quoteIdentifier(driver, table)}`;
 }
 

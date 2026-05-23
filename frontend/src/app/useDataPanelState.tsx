@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Check, Info, Loader2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { connectionService, queryService, schemaService, settingsService } from "../lib/backend";
 import type {
   AppSettings,
+  ConnectionHealth,
   ConnectionProfile,
+  QueryHistoryEntry,
   QueryRequest,
   QueryResult,
   SaveConnectionRequest,
@@ -21,6 +24,8 @@ export interface StatusMessage {
 interface QueryToastOptions {
   successMessage?: string;
   successTitle?: string;
+  recordHistory?: boolean;
+  historyMode?: "query" | "explain";
 }
 
 export function useDataPanelState() {
@@ -34,6 +39,8 @@ export function useDataPanelState() {
   const [runningRequestId, setRunningRequestId] = useState<string>("");
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [status, setStatus] = useState<StatusMessage>({ tone: "neutral", text: "Ready" });
+  const [connectionHealth, setConnectionHealth] = useState<ConnectionHealth>({ connected: false });
+  const [queryHistory, setQueryHistory] = useState<QueryHistoryEntry[]>([]);
   const [busy, setBusy] = useState(false);
   const [initializing, setInitializing] = useState(true);
 
@@ -43,9 +50,17 @@ export function useDataPanelState() {
   );
 
   const connectAndLoadMetadata = useCallback(async (profileId: string, password = "") => {
+    const started = performance.now();
     const result = await connectionService.connect({ profileId, password });
+    const now = new Date().toISOString();
     setActiveConnectionId(profileId);
     setStatus({ tone: "success", text: result.message });
+    setConnectionHealth({
+      connected: true,
+      latencyMs: Math.max(0, Math.round(performance.now() - started)),
+      lastPingAt: now,
+      connectedAt: now,
+    });
     const nextSchemas = await schemaService.schemas(profileId);
     setSchemas(nextSchemas);
     const tableEntries = await Promise.all(
@@ -73,7 +88,8 @@ export function useDataPanelState() {
       .catch((error: unknown) => {
         const message = errorMessage(error, "Could not initialize app");
         setStatus({ tone: "danger", text: message });
-        toast.error("Could not initialize app", { description: message });
+        setConnectionHealth({ connected: false, error: message });
+        notify("danger", "Could not initialize app", message);
       })
       .finally(() => setInitializing(false));
   }, [connectAndLoadMetadata, loadProfiles]);
@@ -85,12 +101,12 @@ export function useDataPanelState() {
         const profile = await connectionService.save(input);
         await loadProfiles();
         setStatus({ tone: "success", text: `${profile.name} saved` });
-        toast.success("Connection saved", { description: profile.name });
+        notify("success", "Connection saved", profile.name);
         return profile;
       } catch (error) {
         const message = errorMessage(error, "Could not save connection");
         setStatus({ tone: "danger", text: message });
-        toast.error("Could not save connection", { description: message });
+        notify("danger", "Could not save connection", message);
         throw error;
       } finally {
         setBusy(false);
@@ -105,15 +121,17 @@ export function useDataPanelState() {
       const result = await connectionService.test(input);
       setStatus({ tone: result.connected ? "success" : "danger", text: result.message });
       if (result.connected) {
-        toast.success("Connection test passed", { description: input.name || input.host });
+        notify("success", "Connection test passed", input.name || input.host);
       } else {
-        toast.error("Connection test failed", { description: result.message });
+        setConnectionHealth({ connected: false, error: result.message });
+        notify("danger", "Connection test failed", result.message);
       }
       return result;
     } catch (error) {
       const message = errorMessage(error, "Connection failed");
       setStatus({ tone: "danger", text: message });
-      toast.error("Connection test failed", { description: message });
+      setConnectionHealth({ connected: false, error: message });
+      notify("danger", "Connection test failed", message);
       throw error;
     } finally {
       setBusy(false);
@@ -125,11 +143,12 @@ export function useDataPanelState() {
     try {
       const result = await connectAndLoadMetadata(profileId, password);
       const profile = profiles.find((item) => item.id === profileId);
-      toast.success("Connected", { description: profile?.name || result.message });
+      notify("success", "Connected", profile?.name || result.message);
     } catch (error) {
       const message = errorMessage(error, "Could not connect");
       setStatus({ tone: "danger", text: message });
-      toast.error("Could not connect", { description: message });
+      setConnectionHealth({ connected: false, error: message });
+      notify("danger", "Could not connect", message);
       throw error;
     } finally {
       setBusy(false);
@@ -144,26 +163,34 @@ export function useDataPanelState() {
     setTablesBySchema({});
     setSelectedTable(null);
     setTableDetails(null);
+    setConnectionHealth({ connected: false });
     setStatus({ tone: "neutral", text: "Disconnected" });
-    toast("Disconnected");
+    notify("neutral", "Disconnected");
   }, [activeConnectionId]);
 
   const refreshMetadata = useCallback(async () => {
     if (!activeConnectionId) return;
     setBusy(true);
     try {
+      const started = performance.now();
       const nextSchemas = await schemaService.schemas(activeConnectionId);
       setSchemas(nextSchemas);
       const tableEntries = await Promise.all(
         nextSchemas.map(async (schema) => [schema.name, await schemaService.tables(activeConnectionId, schema.name)] as const)
       );
       setTablesBySchema(Object.fromEntries(tableEntries));
+      setConnectionHealth((current) => ({
+        ...current,
+        connected: true,
+        latencyMs: Math.max(0, Math.round(performance.now() - started)),
+        lastPingAt: new Date().toISOString(),
+      }));
       setStatus({ tone: "success", text: "Metadata refreshed" });
-      toast.success("Metadata refreshed");
+      notify("success", "Metadata refreshed");
     } catch (error) {
       const message = errorMessage(error, "Could not refresh metadata");
       setStatus({ tone: "danger", text: message });
-      toast.error("Could not refresh metadata", { description: message });
+      notify("danger", "Could not refresh metadata", message);
       throw error;
     } finally {
       setBusy(false);
@@ -181,18 +208,22 @@ export function useDataPanelState() {
       } catch (error) {
         const message = errorMessage(error, "Could not load table metadata");
         setStatus({ tone: "danger", text: message });
-        toast.error("Could not load table metadata", { description: message });
+        notify("danger", "Could not load table metadata", message);
         throw error;
       }
     },
     [activeConnectionId]
   );
 
+  const recordQueryHistory = useCallback((item: QueryHistoryEntry) => {
+    setQueryHistory((current) => [item, ...current.filter((entry) => entry.sql !== item.sql)].slice(0, 50));
+  }, []);
+
   const runQuery = useCallback(
     async (sql: string, confirmDestructive = false, toastOptions: QueryToastOptions = {}) => {
       if (!activeConnectionId || !settings) {
         setStatus({ tone: "warning", text: "Connect to a database before running SQL" });
-        toast.warning("Connect to a database before running SQL");
+        notify("warning", "Connect to a database before running SQL");
         return null;
       }
 
@@ -208,51 +239,146 @@ export function useDataPanelState() {
 
       setRunningRequestId(requestId);
       setStatus({ tone: "neutral", text: "Running query..." });
-      toast.loading("Running query", { id: requestId });
+      notify("loading", "Running query", undefined, requestId);
+      const started = performance.now();
       try {
         const result = await queryService.execute(request);
         setQueryResult(result);
         if (result.error === "confirmation_required") {
           setStatus({ tone: "warning", text: "Confirmation required" });
-          toast.warning("Confirmation required", {
-            description: "Review the destructive SQL warning before running.",
-            id: requestId
-          });
+          notify(
+            "warning",
+            "Confirmation required",
+            "Review the destructive SQL warning before running.",
+            requestId,
+          );
         } else {
           const message =
             toastOptions.successMessage ||
             querySuccessMessage(result.rows.length, result.affectedRows, result.durationMs);
           setStatus({ tone: "success", text: message });
-          toast.success(toastOptions.successTitle || "Query finished", {
-            description: message,
-            id: requestId
-          });
+          notify(toastOptions.successTitle ? "success" : "neutral", toastOptions.successTitle || "Query finished", message, requestId);
+          if (toastOptions.recordHistory) {
+            recordQueryHistory({
+              id: requestId,
+              connectionId: activeConnectionId,
+              sql,
+              mode: toastOptions.historyMode || "query",
+              durationMs: result.durationMs,
+              executedAt: new Date().toISOString(),
+              success: true,
+              rowCount: result.rows.length,
+              affectedRows: result.affectedRows,
+            });
+          }
         }
         return result;
       } catch (error) {
         const message = errorMessage(error, "Query failed");
         setStatus({ tone: "danger", text: message });
-        toast.error("Query failed", { description: message, id: requestId });
+        notify("danger", "Query failed", message, requestId);
+        if (toastOptions.recordHistory) {
+          recordQueryHistory({
+            id: requestId,
+            connectionId: activeConnectionId,
+            sql,
+            mode: toastOptions.historyMode || "query",
+            durationMs: Math.max(0, Math.round(performance.now() - started)),
+            executedAt: new Date().toISOString(),
+            success: false,
+            rowCount: 0,
+            affectedRows: 0,
+            error: message,
+          });
+        }
         throw error;
       } finally {
         setRunningRequestId("");
       }
     },
-    [activeConnectionId, settings]
+    [activeConnectionId, recordQueryHistory, settings]
+  );
+
+  const explainQuery = useCallback(
+    async (sql: string, toastOptions: QueryToastOptions = {}) => {
+      if (!activeConnectionId || !settings) {
+        setStatus({ tone: "warning", text: "Connect to a database before running SQL" });
+        notify("warning", "Connect to a database before running SQL");
+        return null;
+      }
+
+      const requestId = crypto.randomUUID();
+      const request: QueryRequest = {
+        requestId,
+        connectionId: activeConnectionId,
+        sql,
+        maxRows: settings.queryLimit,
+        timeoutSeconds: settings.queryTimeoutSeconds,
+        confirmDestructive: true
+      };
+
+      setRunningRequestId(requestId);
+      setStatus({ tone: "neutral", text: "Explaining query..." });
+      notify("loading", "Explaining query", undefined, requestId);
+      const started = performance.now();
+      try {
+        const result = await queryService.explain(request);
+        setQueryResult(result);
+        const message = querySuccessMessage(result.rows.length, result.affectedRows, result.durationMs);
+        setStatus({ tone: "success", text: message });
+        notify("neutral", "Explain finished", message, requestId);
+        if (toastOptions.recordHistory) {
+          recordQueryHistory({
+            id: requestId,
+            connectionId: activeConnectionId,
+            sql,
+            mode: toastOptions.historyMode || "explain",
+            durationMs: result.durationMs,
+            executedAt: new Date().toISOString(),
+            success: true,
+            rowCount: result.rows.length,
+            affectedRows: result.affectedRows,
+          });
+        }
+        return result;
+      } catch (error) {
+        const message = errorMessage(error, "Explain failed");
+        setStatus({ tone: "danger", text: message });
+        notify("danger", "Explain failed", message, requestId);
+        if (toastOptions.recordHistory) {
+          recordQueryHistory({
+            id: requestId,
+            connectionId: activeConnectionId,
+            sql,
+            mode: toastOptions.historyMode || "explain",
+            durationMs: Math.max(0, Math.round(performance.now() - started)),
+            executedAt: new Date().toISOString(),
+            success: false,
+            rowCount: 0,
+            affectedRows: 0,
+            error: message,
+          });
+        }
+        throw error;
+      } finally {
+        setRunningRequestId("");
+      }
+    },
+    [activeConnectionId, recordQueryHistory, settings]
   );
 
   const cancelQuery = useCallback(async () => {
     if (!runningRequestId) return;
     await queryService.cancel(runningRequestId);
     setStatus({ tone: "warning", text: "Cancel requested" });
-    toast.warning("Cancel requested", { id: runningRequestId });
+    notify("warning", "Cancel requested", undefined, runningRequestId);
   }, [runningRequestId]);
 
   const updateSettings = useCallback(async (nextSettings: AppSettings) => {
     const saved = await settingsService.update(nextSettings);
     setSettings(saved);
     setStatus({ tone: "success", text: "Settings updated" });
-    toast.success("Settings updated");
+    notify("success", "Settings updated");
   }, []);
 
   return {
@@ -264,9 +390,11 @@ export function useDataPanelState() {
     selectedTable,
     tableDetails,
     queryResult,
+    queryHistory,
     runningRequestId,
     settings,
     status,
+    connectionHealth,
     busy,
     initializing,
     saveConnection,
@@ -276,6 +404,7 @@ export function useDataPanelState() {
     refreshMetadata,
     inspectTable,
     runQuery,
+    explainQuery,
     cancelQuery,
     updateSettings
   };
@@ -293,4 +422,26 @@ function querySuccessMessage(rows: number, affectedRows: number, durationMs: num
     return `${affectedRows} ${affectedRows === 1 ? "row" : "rows"} affected in ${durationMs}ms`;
   }
   return `Query completed in ${durationMs}ms`;
+}
+
+function notify(
+  tone: "success" | "danger" | "warning" | "loading" | "neutral",
+  title: string,
+  description?: string,
+  id?: string,
+) {
+  toast(title, {
+    description,
+    id,
+    icon: toastIcon(tone),
+  });
+}
+
+function toastIcon(tone: "success" | "danger" | "warning" | "loading" | "neutral") {
+  const className = "h-4 w-4";
+  if (tone === "success") return <Check className={`${className} text-green-300`} />;
+  if (tone === "danger") return <XCircle className={`${className} text-red-300`} />;
+  if (tone === "warning") return <AlertTriangle className={`${className} text-yellow-300`} />;
+  if (tone === "loading") return <Loader2 className={`${className} animate-spin text-zinc-300`} />;
+  return <Info className={`${className} text-zinc-300`} />;
 }

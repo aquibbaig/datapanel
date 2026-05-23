@@ -20,3 +20,24 @@ export type QueryHistoryItem = query.QueryHistoryItem;
 export type SQLAnalysis = query.SQLAnalysis;
 
 export type AppSettings = settings.AppSettings;
+
+export interface QueryHistoryEntry {
+  id: string;
+  connectionId: string;
+  sql: string;
+  mode: "query" | "explain";
+  durationMs: number;
+  executedAt: string;
+  success: boolean;
+  rowCount: number;
+  affectedRows: number;
+  error?: string;
+}
+
+export interface ConnectionHealth {
+  connected: boolean;
+  latencyMs?: number;
+  lastPingAt?: string;
+  connectedAt?: string;
+  error?: string;
+}

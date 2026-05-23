@@ -1,4 +1,17 @@
-import { ChevronDown, Columns3, Database, Pencil, Table2 } from "lucide-react";
+import {
+  Braces,
+  Calendar,
+  ChevronDown,
+  Columns3,
+  Database,
+  Hash,
+  KeyRound,
+  Link2,
+  Pencil,
+  Table2,
+  ToggleLeft,
+  Type,
+} from "lucide-react";
 import { Button } from "../../components/ui/Button";
 import { cn } from "../../lib/cn";
 import type {
@@ -109,7 +122,7 @@ export function SchemaBrowser({
             Tables
           </div>
           <Button
-            className="text-zinc-400"
+            className="text-zinc-400 text-[11px]"
             disabled={!activeConnectionId}
             onClick={() => void onRefresh()}
             title="Refresh metadata"
@@ -157,22 +170,7 @@ export function SchemaBrowser({
                         </span>
                       </Button>
                       {active && tableDetails ? (
-                        <div className="ml-6 flex flex-col gap-1 border-l border-line pl-2">
-                          {tableDetails.columns.map((column) => (
-                            <Button
-                              key={column.name}
-                              size="row"
-                              className="w-full justify-between text-left text-xs text-zinc-400 hover:bg-surface-800 hover:text-zinc-100"
-                            >
-                              <span className="min-w-0 truncate">
-                                {column.name}
-                              </span>
-                              <code className="text-[11px] text-muted">
-                                {column.dataType}
-                              </code>
-                            </Button>
-                          ))}
-                        </div>
+                        <ColumnList tableDetails={tableDetails} />
                       ) : null}
                     </div>
                   );
@@ -184,4 +182,75 @@ export function SchemaBrowser({
       </div>
     </aside>
   );
+}
+
+function ColumnList({ tableDetails }: { tableDetails: TableDetails }) {
+  const foreignKeys = foreignKeyColumns(tableDetails);
+
+  return (
+    <div className="ml-6 flex flex-col gap-1 border-l border-line pl-2">
+      {tableDetails.columns.map((column) => {
+        const isForeign = foreignKeys.has(column.name);
+        return (
+          <Button
+            key={column.name}
+            size="row"
+            className="w-full justify-between text-left text-xs text-zinc-400 hover:bg-surface-800 hover:text-zinc-100"
+          >
+            <span className="flex min-w-0 items-center gap-1.5">
+              <ColumnTypeIcon dataType={column.dataType} />
+              {column.isPrimary ? (
+                <KeyRound
+                  className="text-yellow-200"
+                  size={8}
+                  aria-label="Primary key"
+                />
+              ) : null}
+              {isForeign ? (
+                <Link2
+                  className="text-sky-200"
+                  size={8}
+                  aria-label="Foreign key"
+                />
+              ) : null}
+              <span className="min-w-0 truncate">{column.name}</span>
+            </span>
+            <code className="text-[11px] text-muted">{column.dataType}</code>
+          </Button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ColumnTypeIcon({ dataType }: { dataType: string }) {
+  const normalized = dataType.toLowerCase();
+  if (
+    /\b(int|serial|decimal|numeric|float|double|real|bit)\b/.test(normalized)
+  ) {
+    return <Hash className="text-zinc-500" size={12} />;
+  }
+  if (/\b(bool|boolean|tinyint\(1\))\b/.test(normalized)) {
+    return <ToggleLeft className="text-zinc-500" size={12} />;
+  }
+  if (/\b(date|time|timestamp|year)\b/.test(normalized)) {
+    return <Calendar className="text-zinc-500" size={12} />;
+  }
+  if (/\b(json|jsonb|array)\b/.test(normalized)) {
+    return <Braces className="text-zinc-500" size={12} />;
+  }
+  return <Type className="text-zinc-500" size={12} />;
+}
+
+function foreignKeyColumns(tableDetails: TableDetails) {
+  const columns = new Set<string>();
+  for (const constraint of tableDetails.constraints) {
+    if (constraint.type.toUpperCase() !== "FOREIGN KEY") continue;
+    const match = constraint.definition.match(/FOREIGN KEY\s*\(([^)]+)\)/i);
+    if (!match) continue;
+    for (const column of match[1].split(",")) {
+      columns.add(column.trim().replace(/^["`[]|["`\]]$/g, ""));
+    }
+  }
+  return columns;
 }
