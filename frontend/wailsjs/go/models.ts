@@ -24,6 +24,7 @@ export namespace ai {
 	}
 	export class GenerateRequest {
 	    provider: string;
+	    model: string;
 	    prompt: string;
 	    schemaContext: string;
 	    dialect: string;
@@ -35,6 +36,7 @@ export namespace ai {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.provider = source["provider"];
+	        this.model = source["model"];
 	        this.prompt = source["prompt"];
 	        this.schemaContext = source["schemaContext"];
 	        this.dialect = source["dialect"];
@@ -72,6 +74,213 @@ export namespace ai {
 	        this.provider = source["provider"];
 	        this.token = source["token"];
 	        this.label = source["label"];
+	    }
+	}
+
+}
+
+export namespace appdata {
+	
+	export class AIChatMessage {
+	    id: string;
+	    threadId: string;
+	    connectionId: string;
+	    provider: string;
+	    model: string;
+	    role: string;
+	    content: string;
+	    response?: ai.GenerateResponse;
+	    createdAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AIChatMessage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.threadId = source["threadId"];
+	        this.connectionId = source["connectionId"];
+	        this.provider = source["provider"];
+	        this.model = source["model"];
+	        this.role = source["role"];
+	        this.content = source["content"];
+	        this.response = this.convertValues(source["response"], ai.GenerateResponse);
+	        this.createdAt = source["createdAt"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class AIChatThread {
+	    id: string;
+	    connectionId: string;
+	    title: string;
+	    provider: string;
+	    model: string;
+	    createdAt: string;
+	    updatedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AIChatThread(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.connectionId = source["connectionId"];
+	        this.title = source["title"];
+	        this.provider = source["provider"];
+	        this.model = source["model"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
+	    }
+	}
+	export class ClearAIChatMessagesRequest {
+	    threadId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ClearAIChatMessagesRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.threadId = source["threadId"];
+	    }
+	}
+	export class CreateAIChatThreadRequest {
+	    connectionId: string;
+	    title: string;
+	    provider: string;
+	    model: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CreateAIChatThreadRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.connectionId = source["connectionId"];
+	        this.title = source["title"];
+	        this.provider = source["provider"];
+	        this.model = source["model"];
+	    }
+	}
+	export class DeleteAIChatThreadRequest {
+	    id: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DeleteAIChatThreadRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	    }
+	}
+	export class ListAIChatMessagesRequest {
+	    threadId: string;
+	    limit: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ListAIChatMessagesRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.threadId = source["threadId"];
+	        this.limit = source["limit"];
+	    }
+	}
+	export class ListAIChatThreadsRequest {
+	    connectionId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ListAIChatThreadsRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.connectionId = source["connectionId"];
+	    }
+	}
+	export class SaveAIChatMessageRequest {
+	    id: string;
+	    threadId: string;
+	    connectionId: string;
+	    provider: string;
+	    model: string;
+	    role: string;
+	    content: string;
+	    response?: ai.GenerateResponse;
+	    createdAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SaveAIChatMessageRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.threadId = source["threadId"];
+	        this.connectionId = source["connectionId"];
+	        this.provider = source["provider"];
+	        this.model = source["model"];
+	        this.role = source["role"];
+	        this.content = source["content"];
+	        this.response = this.convertValues(source["response"], ai.GenerateResponse);
+	        this.createdAt = source["createdAt"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class UpdateAIChatThreadRequest {
+	    id: string;
+	    title: string;
+	    provider: string;
+	    model: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new UpdateAIChatThreadRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.provider = source["provider"];
+	        this.model = source["model"];
 	    }
 	}
 

@@ -1,9 +1,24 @@
-import type { ai, connections, postgres, query, settings } from "../../wailsjs/go/models";
+import type { ai, appdata, connections, postgres, query, settings } from "../../wailsjs/go/models";
 
 export type AICredentialStatus = ai.CredentialStatus;
 export type AIGenerateRequest = ai.GenerateRequest;
 export type AIGenerateResponse = ai.GenerateResponse;
 export type SaveAICredentialRequest = ai.SaveCredentialRequest;
+export type AIChatThread = appdata.AIChatThread;
+export type AIChatMessage = appdata.AIChatMessage;
+export type CreateAIChatThreadRequest = appdata.CreateAIChatThreadRequest;
+export type UpdateAIChatThreadRequest = appdata.UpdateAIChatThreadRequest;
+export interface SaveAIChatMessageRequest {
+  id: string;
+  threadId: string;
+  connectionId: string;
+  provider: string;
+  model: string;
+  role: string;
+  content: string;
+  response?: AIGenerateResponse;
+  createdAt: string;
+}
 
 export type ConnectionProfile = connections.ConnectionProfile;
 export type SaveConnectionRequest = connections.SaveConnectionRequest;

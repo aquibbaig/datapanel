@@ -151,17 +151,17 @@ func (s *Service) GenerateSQL(input GenerateRequest) (GenerateResponse, error) {
 
 	switch provider {
 	case "openai":
-		return s.generateOpenAI(record.Token, system, user)
+		return s.generateOpenAI(record.Token, normalizeModel(provider, input.Model), system, user)
 	case "anthropic":
-		return s.generateAnthropic(record.Token, system, user)
+		return s.generateAnthropic(record.Token, normalizeModel(provider, input.Model), system, user)
 	default:
 		return GenerateResponse{}, apperrors.New(apperrors.CodeValidation, "unsupported AI provider")
 	}
 }
 
-func (s *Service) generateOpenAI(token string, system string, user string) (GenerateResponse, error) {
+func (s *Service) generateOpenAI(token string, model string, system string, user string) (GenerateResponse, error) {
 	payload := map[string]any{
-		"model": "gpt-4.1-mini",
+		"model": model,
 		"messages": []map[string]string{
 			{"role": "system", "content": system},
 			{"role": "user", "content": user},
@@ -194,9 +194,9 @@ func (s *Service) generateOpenAI(token string, system string, user string) (Gene
 	return parseGenerateResponse(parsed.Choices[0].Message.Content)
 }
 
-func (s *Service) generateAnthropic(token string, system string, user string) (GenerateResponse, error) {
+func (s *Service) generateAnthropic(token string, model string, system string, user string) (GenerateResponse, error) {
 	payload := map[string]any{
-		"model":       "claude-3-5-haiku-latest",
+		"model":       model,
 		"max_tokens":  1200,
 		"temperature": 0.2,
 		"system":      system,
@@ -288,6 +288,17 @@ func normalizeProvider(provider string) (string, error) {
 		}
 	}
 	return "", apperrors.New(apperrors.CodeValidation, "unsupported AI provider")
+}
+
+func normalizeModel(provider string, model string) string {
+	normalized := strings.TrimSpace(model)
+	if normalized != "" {
+		return normalized
+	}
+	if provider == "anthropic" {
+		return "claude-3-5-haiku-latest"
+	}
+	return "gpt-4.1-mini"
 }
 
 func credentialKey(provider string) string {

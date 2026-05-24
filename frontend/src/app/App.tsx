@@ -267,8 +267,8 @@ export function App() {
                   onExplain={explainTypedSQL}
                   onRun={runTypedSQL}
                 />
-                <section className="grid min-h-0 grid-rows-[34px_minmax(0,1fr)] bg-surface-900">
-                  <div className="flex items-center justify-between border-b border-line px-2">
+                <section className="grid min-h-0 grid-rows-[44px_minmax(0,1fr)] bg-surface-900">
+                  <div className="flex h-11 shrink-0 items-center justify-between border-b border-line px-2">
                     <div className="flex items-center gap-1">
                       <Button
                         className="h-7"
@@ -405,9 +405,11 @@ function statusDot(tone: string, connected: boolean) {
 }
 
 function primaryKeyColumns(tableDetails: TableDetails | null) {
-  return tableDetails?.columns
-    .filter((column) => column.isPrimary)
-    .map((column) => column.name) ?? [];
+  return (
+    tableDetails?.columns
+      .filter((column) => column.isPrimary)
+      .map((column) => column.name) ?? []
+  );
 }
 
 function rightPanelWidth(panel: RightPanel) {

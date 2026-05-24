@@ -249,7 +249,7 @@ export function TableDataEditor({
           : "grid-cols-[minmax(0,1fr)]",
       )}
     >
-      <div className="grid min-h-0 min-w-0 grid-rows-[38px_minmax(0,1fr)]">
+      <div className="relative z-0 grid min-h-0 min-w-0 overflow-hidden grid-rows-[38px_minmax(0,1fr)]">
         <div className="flex items-center justify-between border-b border-line px-3">
           <div className="flex min-w-0 items-center gap-2">
             <PencilLine size={14} className="text-zinc-400" />
@@ -311,7 +311,7 @@ export function TableDataEditor({
             {error}
           </div>
         ) : (
-          <div className="min-h-0 overflow-auto">
+          <div className="relative z-0 min-h-0 overflow-auto">
             <table className="min-w-full text-xs">
               <thead>
                 <tr>
@@ -398,7 +398,7 @@ export function TableDataEditor({
       </div>
 
       {showChangeReview ? (
-        <aside className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_minmax(120px,36%)] border-l border-line bg-surface-950">
+        <aside className="relative z-30 grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_minmax(120px,36%)] border-l border-line bg-surface-950">
           <div className="border-b border-line p-3">
             <div className="mb-2 text-sm font-medium text-zinc-200">
               Changed rows

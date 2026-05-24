@@ -1,5 +1,6 @@
 import {
   ArrowBigDownDash,
+  ArrowUp,
   ChevronDown,
   Clipboard,
   CogIcon,
@@ -11,9 +12,10 @@ import {
   Loader2,
   MessageSquare,
   PlayCircle,
-  Send,
+  Plus,
   ShieldCheck,
   Trash2,
+  X,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -31,9 +33,10 @@ import {
 } from "../../components/ai-elements/prompt-input";
 import { Button } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
-import { aiCredentialService } from "../../lib/backend";
+import { aiCredentialService, appDataService } from "../../lib/backend";
 import { cn } from "../../lib/cn";
 import type {
+  AIChatThread,
   AICredentialStatus,
   AIGenerateResponse,
   ConnectionProfile,
@@ -69,6 +72,7 @@ interface ChatMessage {
   role: "assistant" | "user";
   content: string;
   response?: AIGenerateResponse;
+  createdAt?: string;
 }
 
 type RuntimeBridge = {
@@ -107,6 +111,36 @@ const providers: ProviderLogin[] = [
   },
 ];
 
+const modelsByProvider: Record<ProviderId, string[]> = {
+  openai: ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini"],
+  anthropic: [
+    "claude-3-5-haiku-latest",
+    "claude-3-5-sonnet-latest",
+    "claude-3-opus-latest",
+  ],
+  custom: ["openai-compatible"],
+};
+
+const contextWindowByModel: Record<string, string> = {
+  "gpt-4.1-mini": "1M ctx",
+  "gpt-4.1": "1M ctx",
+  "gpt-4o-mini": "128k ctx",
+  "claude-3-5-haiku-latest": "200k ctx",
+  "claude-3-5-sonnet-latest": "200k ctx",
+  "claude-3-opus-latest": "200k ctx",
+  "openai-compatible": "ctx varies",
+};
+
+const contextUsageByModel: Record<string, number> = {
+  "gpt-4.1-mini": 0.18,
+  "gpt-4.1": 0.18,
+  "gpt-4o-mini": 0.34,
+  "claude-3-5-haiku-latest": 0.24,
+  "claude-3-5-sonnet-latest": 0.24,
+  "claude-3-opus-latest": 0.24,
+  "openai-compatible": 0.42,
+};
+
 export function AiAssistantPanel({
   activeProfile,
   schemas,
@@ -130,12 +164,23 @@ export function AiAssistantPanel({
   const [credentialLabel, setCredentialLabel] = useState("");
   const [credentialBusy, setCredentialBusy] = useState(false);
   const [chatPrompt, setChatPrompt] = useState("");
+  const [chatThreads, setChatThreads] = useState<AIChatThread[]>([]);
+  const [activeThreadId, setActiveThreadId] = useState("");
+  const [renamingThreadId, setRenamingThreadId] = useState<string | null>(null);
+  const [threadTitleDraft, setThreadTitleDraft] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatBusy, setChatBusy] = useState(false);
+  const [selectedModel, setSelectedModel] = useState(
+    modelsByProvider.openai[0],
+  );
 
   const selected =
     providers.find((provider) => provider.id === selectedProvider) ??
     providers[0];
+  const connectionScopeId = activeProfile?.id || "global";
+  const activeThread = chatThreads.find(
+    (thread) => thread.id === activeThreadId,
+  );
   const selectedCredential = credentialStatuses[selected.id];
   const connectedProviders = providers.filter(
     (provider) => credentialStatuses[provider.id]?.connected,
@@ -214,6 +259,31 @@ export function AiAssistantPanel({
     if (firstConnected) setSelectedProvider(firstConnected.id);
   }, [credentialStatuses, selectedProvider]);
 
+  useEffect(() => {
+    if (!chatReady) {
+      setChatThreads([]);
+      setActiveThreadId("");
+      setChatMessages([]);
+      return;
+    }
+    void loadChatThreads();
+  }, [chatReady, connectionScopeId]);
+
+  useEffect(() => {
+    if (!activeThreadId) {
+      setChatMessages([]);
+      return;
+    }
+    void loadChatMessages(activeThreadId);
+  }, [activeThreadId]);
+
+  useEffect(() => {
+    if (!activeThread) return;
+    const provider = normalizeProviderId(activeThread.provider);
+    setSelectedProvider(provider);
+    setSelectedModel(activeThread.model || modelsByProvider[provider][0]);
+  }, [activeThread?.id]);
+
   async function loadCredentialStatuses() {
     try {
       const statuses = await aiCredentialService.list();
@@ -224,6 +294,158 @@ export function AiAssistantPanel({
       );
     } catch (error) {
       toast("Could not load AI credentials", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
+  async function loadChatThreads() {
+    try {
+      let threads = await appDataService.listThreads(connectionScopeId);
+      if (threads.length === 0) {
+        const provider = connectedProviders[0]?.id ?? selected.id;
+        const thread = await appDataService.createThread({
+          connectionId: connectionScopeId,
+          title: "Chat",
+          provider,
+          model: modelsByProvider[provider][0],
+        });
+        threads = [thread];
+      }
+      setChatThreads(threads);
+      setActiveThreadId((current) =>
+        threads.some((thread) => thread.id === current)
+          ? current
+          : threads[0]?.id || "",
+      );
+    } catch (error) {
+      toast("Could not load AI chats", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
+  async function loadChatMessages(threadId: string) {
+    try {
+      const messages = await appDataService.listMessages(threadId);
+      setChatMessages(
+        messages.map((message) => ({
+          id: message.id,
+          role: message.role === "assistant" ? "assistant" : "user",
+          content: message.content,
+          response: message.response,
+          createdAt: message.createdAt,
+        })),
+      );
+    } catch (error) {
+      toast("Could not load AI messages", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
+  async function createChatThread() {
+    const provider = connectedProviders.some(
+      (providerOption) => providerOption.id === selected.id,
+    )
+      ? selected.id
+      : connectedProviders[0]?.id || "openai";
+    const model = modelsByProvider[provider].includes(selectedModel)
+      ? selectedModel
+      : modelsByProvider[provider][0];
+
+    try {
+      const thread = await appDataService.createThread({
+        connectionId: connectionScopeId,
+        title: "New chat",
+        provider,
+        model,
+      });
+      setChatThreads((current) => [thread, ...current]);
+      setActiveThreadId(thread.id);
+      setChatMessages([]);
+    } catch (error) {
+      toast("Could not create chat", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
+  async function updateActiveThreadSettings(
+    provider: ProviderId,
+    model: string,
+  ) {
+    setSelectedProvider(provider);
+    setSelectedModel(model);
+    if (!activeThread) return;
+    try {
+      const updated = await appDataService.updateThread({
+        id: activeThread.id,
+        title: activeThread.title,
+        provider,
+        model,
+      });
+      setChatThreads((current) =>
+        current.map((thread) => (thread.id === updated.id ? updated : thread)),
+      );
+    } catch (error) {
+      toast("Could not update chat settings", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
+  async function renameThread(thread: AIChatThread, title: string) {
+    const normalized = title.trim() || "New chat";
+    setRenamingThreadId(null);
+    setThreadTitleDraft("");
+    if (normalized === thread.title) return;
+    try {
+      const updated = await appDataService.updateThread({
+        id: thread.id,
+        title: normalized,
+        provider: thread.provider,
+        model: thread.model,
+      });
+      setChatThreads((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+    } catch (error) {
+      toast("Could not rename chat", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
+  async function deleteChatThread(thread: AIChatThread) {
+    const deletedIndex = chatThreads.findIndex((item) => item.id === thread.id);
+    try {
+      await appDataService.deleteThread(thread.id);
+      let remaining = chatThreads.filter((item) => item.id !== thread.id);
+      let nextActiveThreadId = activeThreadId;
+
+      if (remaining.length === 0) {
+        const provider = connectedProviders[0]?.id ?? selected.id;
+        const replacement = await appDataService.createThread({
+          connectionId: connectionScopeId,
+          title: "Side chat",
+          provider,
+          model: modelsByProvider[provider][0],
+        });
+        remaining = [replacement];
+        nextActiveThreadId = replacement.id;
+      } else if (thread.id === activeThreadId) {
+        nextActiveThreadId =
+          remaining[Math.min(Math.max(deletedIndex, 0), remaining.length - 1)]
+            ?.id || remaining[0].id;
+      }
+
+      setChatThreads(remaining);
+      setActiveThreadId(nextActiveThreadId);
+      if (thread.id === activeThreadId) setChatMessages([]);
+      toast("Chat deleted", { description: thread.title });
+    } catch (error) {
+      toast("Could not delete chat", {
         description: error instanceof Error ? error.message : "Unknown error",
       });
     }
@@ -314,16 +536,44 @@ export function AiAssistantPanel({
   async function askAI() {
     const prompt = chatPrompt.trim();
     if (!prompt || !chatReady) return;
+    let thread = activeThread;
+    if (!thread) {
+      thread = await appDataService.createThread({
+        connectionId: connectionScopeId,
+        title: "New chat",
+        provider: selected.id,
+        model: selectedModel,
+      });
+      setChatThreads((current) => [thread as AIChatThread, ...current]);
+      setActiveThreadId(thread.id);
+    }
 
-    setChatMessages((current) => [
-      ...current,
-      { id: crypto.randomUUID(), role: "user", content: prompt },
-    ]);
+    const userMessage = {
+      id: crypto.randomUUID(),
+      role: "user" as const,
+      content: prompt,
+      createdAt: new Date().toISOString(),
+    };
+    setChatMessages((current) => [...current, userMessage]);
     setChatPrompt("");
     setChatBusy(true);
     try {
+      await appDataService.saveMessage({
+        id: userMessage.id,
+        threadId: thread.id,
+        connectionId: connectionScopeId,
+        provider: selected.id,
+        model: selectedModel,
+        role: userMessage.role,
+        content: userMessage.content,
+        createdAt: userMessage.createdAt,
+      });
+      if (thread.title === "New chat") {
+        await renameThread(thread, prompt.slice(0, 48));
+      }
       const response = await aiCredentialService.generate({
         provider: selected.id,
+        model: selectedModel,
         prompt,
         dialect: activeProfile?.driver || "postgres",
         schemaContext: buildSchemaContext(
@@ -333,15 +583,25 @@ export function AiAssistantPanel({
           tableDetails,
         ),
       });
-      setChatMessages((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: response.answer,
-          response,
-        },
-      ]);
+      const assistantMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant" as const,
+        content: response.answer,
+        response,
+        createdAt: new Date().toISOString(),
+      };
+      setChatMessages((current) => [...current, assistantMessage]);
+      await appDataService.saveMessage({
+        id: assistantMessage.id,
+        threadId: thread.id,
+        connectionId: connectionScopeId,
+        provider: selected.id,
+        model: selectedModel,
+        role: assistantMessage.role,
+        content: assistantMessage.content,
+        response,
+        createdAt: assistantMessage.createdAt,
+      });
       if (response.sql) onLoadSQL(response.sql);
     } catch (error) {
       toast("AI request failed", {
@@ -378,6 +638,23 @@ export function AiAssistantPanel({
       >
         {chatReady ? (
           <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface-900">
+            <ChatThreadBar
+              activeThreadId={activeThreadId}
+              renamingThreadId={renamingThreadId}
+              threadTitleDraft={threadTitleDraft}
+              threads={chatThreads}
+              onCreateThread={() => void createChatThread()}
+              onDeleteThread={(thread) => void deleteChatThread(thread)}
+              onRenameCommit={(thread, title) =>
+                void renameThread(thread, title)
+              }
+              onRenameStart={(thread) => {
+                setRenamingThreadId(thread.id);
+                setThreadTitleDraft(thread.title);
+              }}
+              onSelectThread={setActiveThreadId}
+              onTitleDraftChange={setThreadTitleDraft}
+            />
             <Conversation>
               <ConversationContent className="px-4 pb-3 pt-4">
                 {chatMessages.length === 0 ? (
@@ -446,45 +723,84 @@ export function AiAssistantPanel({
                     }
                   }}
                 />
-                <PromptInputToolbar className="mt-3">
+                <PromptInputToolbar className="mt-3 gap-3">
                   <div className="flex min-w-0 items-center gap-2">
-                    <select
-                      className="h-8 max-w-[156px] min-w-0 rounded-full border border-line bg-surface-900 px-2 text-xs text-zinc-200"
-                      value={selected.id}
-                      onChange={(event) =>
-                        setSelectedProvider(event.target.value as ProviderId)
-                      }
-                      title="AI provider"
-                    >
-                      {connectedProviders.map((provider) => (
-                        <option key={provider.id} value={provider.id}>
-                          {provider.name}
-                        </option>
-                      ))}
-                    </select>
-                    <Button
-                      size="icon"
+                    <button
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-zinc-500 transition hover:bg-surface-700 hover:text-zinc-100"
                       title="Manage credentials"
                       onClick={() => setManageOpen(true)}
                       type="button"
-                      className="px-2"
                     >
                       <CogIcon size={14} />
+                    </button>
+                    <div className="relative min-w-0">
+                      <select
+                        className="h-8 max-w-[142px] min-w-0 appearance-none rounded-md border-transparent bg-transparent px-1 pr-5 text-xs font-medium text-zinc-300 shadow-none hover:bg-surface-700 focus:border-transparent focus:shadow-none"
+                        value={selected.id}
+                        onChange={(event) =>
+                          void updateActiveThreadSettings(
+                            event.target.value as ProviderId,
+                            modelsByProvider[
+                              event.target.value as ProviderId
+                            ][0],
+                          )
+                        }
+                        title="AI provider"
+                      >
+                        {connectedProviders.map((provider) => (
+                          <option key={provider.id} value={provider.id}>
+                            {provider.name}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown
+                        className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-zinc-500"
+                        size={13}
+                      />
+                    </div>
+                  </div>
+                  <div className="ml-auto flex min-w-0 items-center justify-end gap-2">
+                    <ContextWindowMeter
+                      label={contextWindowByModel[selectedModel] || "ctx varies"}
+                      usage={contextUsageByModel[selectedModel] ?? 0.42}
+                    />
+                    <div className="relative min-w-0">
+                      <select
+                        className="h-8 max-w-[156px] min-w-0 appearance-none rounded-md border-transparent bg-transparent px-1 pr-5 text-xs font-medium text-zinc-300 shadow-none hover:bg-surface-700 focus:border-transparent focus:shadow-none"
+                        value={selectedModel}
+                        onChange={(event) =>
+                          void updateActiveThreadSettings(
+                            selected.id,
+                            event.target.value,
+                          )
+                        }
+                        title="AI model"
+                      >
+                        {modelsByProvider[selected.id].map((model) => (
+                          <option key={model} value={model}>
+                            {model}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown
+                        className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-zinc-500"
+                        size={13}
+                      />
+                    </div>
+                    <Button
+                      className="h-9 w-9 rounded-full px-0"
+                      disabled={chatBusy || !chatPrompt.trim()}
+                      type="submit"
+                      variant="primary"
+                      title="Send"
+                    >
+                      {chatBusy ? (
+                        <Loader2 className="animate-spin" size={16} />
+                      ) : (
+                        <ArrowUp size={17} />
+                      )}
                     </Button>
                   </div>
-                  <Button
-                    className="h-10 w-7 rounded-full px-0"
-                    disabled={chatBusy || !chatPrompt.trim()}
-                    type="submit"
-                    variant="primary"
-                    title="Send"
-                  >
-                    {chatBusy ? (
-                      <Loader2 className="animate-spin" size={16} />
-                    ) : (
-                      <Send size={16} />
-                    )}
-                  </Button>
                 </PromptInputToolbar>
               </div>
             </PromptInput>
@@ -613,6 +929,122 @@ export function AiAssistantPanel({
         </div>
       </Modal>
     </>
+  );
+}
+
+function ContextWindowMeter({
+  label,
+  usage,
+}: {
+  label: string;
+  usage: number;
+}) {
+  const clamped = Math.max(0.04, Math.min(0.96, usage));
+  const degrees = Math.round(clamped * 360);
+  return (
+    <div
+      className="grid h-8 w-8 shrink-0 place-items-center rounded-md transition hover:bg-surface-700"
+      title={`${label} context window`}
+    >
+      <span
+        aria-hidden="true"
+        className="h-4 w-4 rounded-full"
+        style={{
+          background: `conic-gradient(#8f97ff 0deg ${degrees}deg, #3a3a40 ${degrees}deg 360deg)`,
+        }}
+      />
+    </div>
+  );
+}
+
+function ChatThreadBar({
+  activeThreadId,
+  onCreateThread,
+  onDeleteThread,
+  onRenameCommit,
+  onRenameStart,
+  onSelectThread,
+  onTitleDraftChange,
+  renamingThreadId,
+  threadTitleDraft,
+  threads,
+}: {
+  activeThreadId: string;
+  onCreateThread(): void;
+  onDeleteThread(thread: AIChatThread): void;
+  onRenameCommit(thread: AIChatThread, title: string): void;
+  onRenameStart(thread: AIChatThread): void;
+  onSelectThread(threadId: string): void;
+  onTitleDraftChange(title: string): void;
+  renamingThreadId: string | null;
+  threadTitleDraft: string;
+  threads: AIChatThread[];
+}) {
+  return (
+    <div className="flex h-12 shrink-0 items-center gap-1 overflow-x-auto border-b border-line px-3">
+      {threads.map((thread) => {
+        const active = thread.id === activeThreadId;
+        const renaming = thread.id === renamingThreadId;
+        return renaming ? (
+          <input
+            autoFocus
+            className="h-8 w-40 shrink-0 rounded-full border-transparent bg-surface-800 px-3 text-sm font-medium text-zinc-100"
+            key={thread.id}
+            value={threadTitleDraft}
+            onBlur={() => onRenameCommit(thread, threadTitleDraft)}
+            onChange={(event) => onTitleDraftChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.currentTarget.blur();
+              }
+              if (event.key === "Escape") {
+                onTitleDraftChange(thread.title);
+                event.currentTarget.blur();
+              }
+            }}
+          />
+        ) : (
+          <div
+            className={cn(
+              "group flex h-8 w-40 shrink-0 items-center rounded-full text-sm font-medium transition",
+              active
+                ? "bg-surface-700 text-zinc-100"
+                : "text-zinc-500 hover:bg-surface-800 hover:text-zinc-200",
+            )}
+            key={thread.id}
+          >
+            <button
+              className="min-w-0 flex-1 truncate py-1.5 pl-3 pr-1 text-left"
+              title="Double-click to rename"
+              type="button"
+              onClick={() => onSelectThread(thread.id)}
+              onDoubleClick={() => onRenameStart(thread)}
+            >
+              {thread.title}
+            </button>
+            <button
+              className="mr-1 grid h-6 w-6 shrink-0 place-items-center rounded-full text-zinc-500 opacity-0 transition hover:bg-surface-700 hover:text-zinc-100 group-hover:opacity-100 focus:opacity-100"
+              title="Delete chat"
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onDeleteThread(thread);
+              }}
+            >
+              <X size={12} />
+            </button>
+          </div>
+        );
+      })}
+      <button
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-zinc-500 transition hover:bg-surface-800 hover:text-zinc-100"
+        title="New chat"
+        type="button"
+        onClick={onCreateThread}
+      >
+        <Plus size={18} />
+      </button>
+    </div>
   );
 }
 
@@ -876,6 +1308,11 @@ function getProviderStatus(
   }
   if (pendingProvider === provider) return "pending";
   return "idle";
+}
+
+function normalizeProviderId(provider: string): ProviderId {
+  if (provider === "anthropic" || provider === "custom") return provider;
+  return "openai";
 }
 
 function formatCredentialDate(value: string) {

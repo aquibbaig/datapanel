@@ -17,6 +17,7 @@ type CredentialStatus struct {
 
 type GenerateRequest struct {
 	Provider      string `json:"provider"`
+	Model         string `json:"model"`
 	Prompt        string `json:"prompt"`
 	SchemaContext string `json:"schemaContext"`
 	Dialect       string `json:"dialect"`
