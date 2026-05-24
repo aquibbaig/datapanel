@@ -9,5 +9,11 @@
   "author": {
     "name": "datapanel",
     "email": ""
+  },
+  "info": {
+    "productName": "Datapanel",
+    "productVersion": "0.1.0",
+    "copyright": "Copyright 2026 Datapanel. All rights reserved.",
+    "comments": "Datapanel is a desktop database workspace for querying, inspecting, and editing data."
   }
 }

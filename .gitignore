@@ -42,13 +42,18 @@ frontend/dist/*
 
 # Wails
 build/bin/
-build/darwin/
+build/dist/
+build/darwin/*
+!build/darwin/
+!build/darwin/Info.plist
+!build/darwin/Info.dev.plist
 build/windows/
 build/linux/
-build/appicon.png
+!build/appicon.png
 frontend/wailsjs/runtime/package-lock.json
 
 # Local app data
 *.db
 *.sqlite
 *.sqlite3
+build/
