@@ -8,12 +8,14 @@ import type {
   ConnectRequest,
   ConnectionProfile,
   ConnectionStatus,
+  QueryHistoryEntry,
   QueryHistoryItem,
   QueryRequest,
   QueryResult,
   SaveAIChatMessageRequest,
   SaveConnectionRequest,
   SaveAICredentialRequest,
+  SaveQueryHistoryRequest,
   SchemaSummary,
   SQLAnalysis,
   TableDetails,
@@ -56,6 +58,7 @@ const defaultSettings: AppSettings = {
 const mockAICredentials: Record<string, AICredentialStatus> = {};
 const mockAIThreads: AIChatThread[] = [];
 const mockAIMessages: AIChatMessage[] = [];
+const mockQueryHistory: QueryHistoryEntry[] = [];
 
 function isWailsRuntime() {
   return Boolean(window.go);
@@ -226,8 +229,52 @@ export const appDataService = {
       return;
     }
     return AppDataBindings.ClearAIChatMessages({ threadId });
+  },
+  async listQueryHistory(connectionId: string): Promise<QueryHistoryEntry[]> {
+    if (!isWailsRuntime()) {
+      return mockQueryHistory
+        .filter((item) => item.connectionId === (connectionId || "global"))
+        .slice(0, 50);
+    }
+    return (await AppDataBindings.ListQueryHistory({ connectionId, limit: 50 })).map(normalizeQueryHistoryItem);
+  },
+  async saveQueryHistory(input: SaveQueryHistoryRequest): Promise<QueryHistoryEntry> {
+    if (!isWailsRuntime()) {
+      const item = {
+        ...input,
+        id: input.id || crypto.randomUUID(),
+        executedAt: input.executedAt || new Date().toISOString(),
+      };
+      const existingIndex = mockQueryHistory.findIndex(
+        (entry) => entry.connectionId === item.connectionId && entry.sql === item.sql,
+      );
+      if (existingIndex >= 0) mockQueryHistory.splice(existingIndex, 1);
+      mockQueryHistory.unshift(item);
+      return item;
+    }
+    return normalizeQueryHistoryItem(
+      await AppDataBindings.SaveQueryHistory(input as Parameters<typeof AppDataBindings.SaveQueryHistory>[0]),
+    );
   }
 };
+
+function normalizeQueryHistoryItem(item: {
+  id: string;
+  connectionId: string;
+  sql: string;
+  mode: string;
+  durationMs: number;
+  executedAt: string;
+  success: boolean;
+  rowCount: number;
+  affectedRows: number;
+  error?: string;
+}): QueryHistoryEntry {
+  return {
+    ...item,
+    mode: item.mode === "explain" ? "explain" : "query",
+  };
+}
 
 export const schemaService = {
   async schemas(connectionId: string): Promise<SchemaSummary[]> {

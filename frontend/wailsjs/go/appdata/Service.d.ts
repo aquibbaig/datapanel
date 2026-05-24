@@ -14,6 +14,10 @@ export function ListAIChatMessages(arg1:appdata.ListAIChatMessagesRequest):Promi
 
 export function ListAIChatThreads(arg1:appdata.ListAIChatThreadsRequest):Promise<Array<appdata.AIChatThread>>;
 
+export function ListQueryHistory(arg1:appdata.ListQueryHistoryRequest):Promise<Array<appdata.QueryHistoryEntry>>;
+
 export function SaveAIChatMessage(arg1:appdata.SaveAIChatMessageRequest):Promise<appdata.AIChatMessage>;
+
+export function SaveQueryHistory(arg1:appdata.SaveQueryHistoryRequest):Promise<appdata.QueryHistoryEntry>;
 
 export function UpdateAIChatThread(arg1:appdata.UpdateAIChatThreadRequest):Promise<appdata.AIChatThread>;

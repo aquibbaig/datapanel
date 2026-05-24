@@ -292,6 +292,122 @@ func (s *Service) ClearAIChatMessages(input ClearAIChatMessagesRequest) error {
 	return nil
 }
 
+func (s *Service) ListQueryHistory(input ListQueryHistoryRequest) ([]QueryHistoryEntry, error) {
+	if s == nil || s.db == nil {
+		return nil, apperrors.New(apperrors.CodeStorage, "app database is not ready")
+	}
+
+	limit := input.Limit
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+
+	rows, err := s.db.QueryContext(
+		context.Background(),
+		`SELECT id, connection_id, sql_text, mode, duration_ms, executed_at, success, row_count, affected_rows, error_text
+		 FROM query_history
+		 WHERE connection_id = ?
+		 ORDER BY executed_at DESC, rowid DESC
+		 LIMIT ?`,
+		normalizeConnectionID(input.ConnectionID),
+		limit,
+	)
+	if err != nil {
+		return nil, apperrors.New(apperrors.CodeStorage, "could not load query history")
+	}
+	defer rows.Close()
+
+	history := make([]QueryHistoryEntry, 0, limit)
+	for rows.Next() {
+		var item QueryHistoryEntry
+		if err := rows.Scan(
+			&item.ID,
+			&item.ConnectionID,
+			&item.SQL,
+			&item.Mode,
+			&item.DurationMS,
+			&item.ExecutedAt,
+			&item.Success,
+			&item.RowCount,
+			&item.AffectedRows,
+			&item.Error,
+		); err != nil {
+			return nil, apperrors.New(apperrors.CodeStorage, "could not read query history")
+		}
+		history = append(history, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, apperrors.New(apperrors.CodeStorage, "could not read query history")
+	}
+	return history, nil
+}
+
+func (s *Service) SaveQueryHistory(input SaveQueryHistoryRequest) (QueryHistoryEntry, error) {
+	if s == nil || s.db == nil {
+		return QueryHistoryEntry{}, apperrors.New(apperrors.CodeStorage, "app database is not ready")
+	}
+
+	item, err := normalizeQueryHistory(input)
+	if err != nil {
+		return QueryHistoryEntry{}, err
+	}
+
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return QueryHistoryEntry{}, apperrors.New(apperrors.CodeStorage, "could not save query history")
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(
+		context.Background(),
+		`DELETE FROM query_history WHERE connection_id = ? AND sql_text = ?`,
+		item.ConnectionID,
+		item.SQL,
+	); err != nil {
+		return QueryHistoryEntry{}, apperrors.New(apperrors.CodeStorage, "could not save query history")
+	}
+
+	if _, err := tx.ExecContext(
+		context.Background(),
+		`INSERT INTO query_history (
+			id, connection_id, sql_text, mode, duration_ms, executed_at, success, row_count, affected_rows, error_text
+		 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		item.ID,
+		item.ConnectionID,
+		item.SQL,
+		item.Mode,
+		item.DurationMS,
+		item.ExecutedAt,
+		item.Success,
+		item.RowCount,
+		item.AffectedRows,
+		item.Error,
+	); err != nil {
+		return QueryHistoryEntry{}, apperrors.New(apperrors.CodeStorage, "could not save query history")
+	}
+
+	if _, err := tx.ExecContext(
+		context.Background(),
+		`DELETE FROM query_history
+		 WHERE connection_id = ?
+		   AND id NOT IN (
+			 SELECT id FROM query_history
+			 WHERE connection_id = ?
+			 ORDER BY executed_at DESC, rowid DESC
+			 LIMIT 50
+		   )`,
+		item.ConnectionID,
+		item.ConnectionID,
+	); err != nil {
+		return QueryHistoryEntry{}, apperrors.New(apperrors.CodeStorage, "could not prune query history")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return QueryHistoryEntry{}, apperrors.New(apperrors.CodeStorage, "could not save query history")
+	}
+	return item, nil
+}
+
 func (s *Service) migrate(ctx context.Context) error {
 	statements := []string{
 		`PRAGMA journal_mode = WAL`,
@@ -325,6 +441,20 @@ func (s *Service) migrate(ctx context.Context) error {
 		 ON ai_chat_messages(connection_id, created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_ai_chat_messages_thread_created
 		 ON ai_chat_messages(thread_id, created_at)`,
+		`CREATE TABLE IF NOT EXISTS query_history (
+			id TEXT PRIMARY KEY,
+			connection_id TEXT NOT NULL,
+			sql_text TEXT NOT NULL,
+			mode TEXT NOT NULL CHECK (mode IN ('query', 'explain')),
+			duration_ms INTEGER NOT NULL DEFAULT 0,
+			executed_at TEXT NOT NULL,
+			success INTEGER NOT NULL DEFAULT 0,
+			row_count INTEGER NOT NULL DEFAULT 0,
+			affected_rows INTEGER NOT NULL DEFAULT 0,
+			error_text TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_query_history_connection_executed
+		 ON query_history(connection_id, executed_at)`,
 	}
 	for _, statement := range statements {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
@@ -335,6 +465,55 @@ func (s *Service) migrate(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func normalizeQueryHistory(input SaveQueryHistoryRequest) (QueryHistoryEntry, error) {
+	sqlText := strings.TrimSpace(input.SQL)
+	if sqlText == "" {
+		return QueryHistoryEntry{}, apperrors.New(apperrors.CodeValidation, "query history SQL is required")
+	}
+
+	mode := strings.ToLower(strings.TrimSpace(input.Mode))
+	if mode != "explain" {
+		mode = "query"
+	}
+
+	id := strings.TrimSpace(input.ID)
+	if id == "" {
+		id = uuid.NewString()
+	}
+
+	executedAt := strings.TrimSpace(input.ExecutedAt)
+	if executedAt == "" {
+		executedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	}
+
+	return QueryHistoryEntry{
+		ID:           id,
+		ConnectionID: normalizeConnectionID(input.ConnectionID),
+		SQL:          sqlText,
+		Mode:         mode,
+		DurationMS:   maxInt64(0, input.DurationMS),
+		ExecutedAt:   executedAt,
+		Success:      input.Success,
+		RowCount:     maxInt(0, input.RowCount),
+		AffectedRows: maxInt64(0, input.AffectedRows),
+		Error:        strings.TrimSpace(input.Error),
+	}, nil
+}
+
+func maxInt(minimum int, value int) int {
+	if value < minimum {
+		return minimum
+	}
+	return value
+}
+
+func maxInt64(minimum int64, value int64) int64 {
+	if value < minimum {
+		return minimum
+	}
+	return value
 }
 
 type chatMessageScanner interface {

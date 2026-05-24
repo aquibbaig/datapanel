@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, Info, Loader2, XCircle } from "lucide-react";
 import { toast } from "sonner";
-import { connectionService, queryService, schemaService, settingsService } from "../lib/backend";
+import { appDataService, connectionService, queryService, schemaService, settingsService } from "../lib/backend";
 import type {
   AppSettings,
   ConnectionHealth,
@@ -93,6 +93,19 @@ export function useDataPanelState() {
       })
       .finally(() => setInitializing(false));
   }, [connectAndLoadMetadata, loadProfiles]);
+
+  useEffect(() => {
+    if (!activeConnectionId) {
+      setQueryHistory([]);
+      return;
+    }
+    void appDataService
+      .listQueryHistory(activeConnectionId)
+      .then(setQueryHistory)
+      .catch((error: unknown) => {
+        notify("danger", "Could not load query history", errorMessage(error, "Unknown error"));
+      });
+  }, [activeConnectionId]);
 
   const saveConnection = useCallback(
     async (input: SaveConnectionRequest) => {
@@ -217,6 +230,9 @@ export function useDataPanelState() {
 
   const recordQueryHistory = useCallback((item: QueryHistoryEntry) => {
     setQueryHistory((current) => [item, ...current.filter((entry) => entry.sql !== item.sql)].slice(0, 50));
+    void appDataService.saveQueryHistory(item).catch((error: unknown) => {
+      notify("danger", "Could not save query history", errorMessage(error, "Unknown error"));
+    });
   }, []);
 
   const runQuery = useCallback(

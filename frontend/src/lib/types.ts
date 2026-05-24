@@ -19,6 +19,19 @@ export interface SaveAIChatMessageRequest {
   response?: AIGenerateResponse;
   createdAt: string;
 }
+export type AppQueryHistoryEntry = appdata.QueryHistoryEntry;
+export interface SaveQueryHistoryRequest {
+  id: string;
+  connectionId: string;
+  sql: string;
+  mode: "query" | "explain";
+  durationMs: number;
+  executedAt: string;
+  success: boolean;
+  rowCount: number;
+  affectedRows: number;
+  error?: string;
+}
 
 export type ConnectionProfile = connections.ConnectionProfile;
 export type SaveConnectionRequest = connections.SaveConnectionRequest;

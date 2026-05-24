@@ -28,8 +28,20 @@ import { RightActionPanel, type RightPanel } from "./RightActionPanel";
 import { useDataPanelState } from "./useDataPanelState";
 import { EmptyWorkspace, WorkspaceLoader } from "./WorkspaceStates";
 
-const starterSQL = "select *\nfrom users\nlimit 50;";
 const rightPanelStorageKey = "datapanel.rightPanel";
+const multiQueryWorkspacesEnabled = true;
+const maxQueryWorkspaces = 3;
+const initialQueryWorkspace = {
+  id: "query-1",
+  title: "Query 1",
+  sql: "",
+};
+
+interface QueryWorkspace {
+  id: string;
+  title: string;
+  sql: string;
+}
 
 export function App() {
   const model = useDataPanelState();
@@ -40,9 +52,22 @@ export function App() {
     loadLastRightPanel(),
   );
   const [bottomView, setBottomView] = useState<"results" | "table">("results");
-  const [sqlDraft, setSqlDraft] = useState(starterSQL);
+  const [queryWorkspaces, setQueryWorkspaces] = useState<QueryWorkspace[]>([
+    initialQueryWorkspace,
+  ]);
+  const [activeQueryWorkspaceId, setActiveQueryWorkspaceId] = useState(
+    initialQueryWorkspace.id,
+  );
+  const [renamingQueryWorkspaceId, setRenamingQueryWorkspaceId] = useState<
+    string | null
+  >(null);
+  const [queryWorkspaceTitleDraft, setQueryWorkspaceTitleDraft] = useState("");
   const [editingProfile, setEditingProfile] =
     useState<ConnectionProfile | null>(null);
+  const activeQueryWorkspace =
+    queryWorkspaces.find((workspace) => workspace.id === activeQueryWorkspaceId) ??
+    queryWorkspaces[0];
+  const sqlDraft = activeQueryWorkspace?.sql ?? "";
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -142,6 +167,63 @@ export function App() {
 
   function loadSQL(sql: string) {
     setSqlDraft(sql);
+  }
+
+  function setSqlDraft(sql: string) {
+    setQueryWorkspaces((current) =>
+      current.map((workspace) =>
+        workspace.id === activeQueryWorkspaceId ? { ...workspace, sql } : workspace,
+      ),
+    );
+  }
+
+  function createQueryWorkspace() {
+    if (queryWorkspaces.length >= maxQueryWorkspaces) return;
+    const nextNumber = queryWorkspaces.length + 1;
+    const workspace = {
+      id: crypto.randomUUID(),
+      title: `Query ${nextNumber}`,
+      sql: "",
+    };
+    setQueryWorkspaces((current) => [...current, workspace]);
+    setActiveQueryWorkspaceId(workspace.id);
+  }
+
+  function renameQueryWorkspace(workspace: QueryWorkspace, title: string) {
+    const normalized = title.trim() || "Untitled query";
+    setRenamingQueryWorkspaceId(null);
+    setQueryWorkspaceTitleDraft("");
+    if (normalized === workspace.title) return;
+    setQueryWorkspaces((current) =>
+      current.map((item) =>
+        item.id === workspace.id ? { ...item, title: normalized } : item,
+      ),
+    );
+  }
+
+  function deleteQueryWorkspace(workspace: QueryWorkspace) {
+    const deletedIndex = queryWorkspaces.findIndex(
+      (item) => item.id === workspace.id,
+    );
+    let remaining = queryWorkspaces.filter((item) => item.id !== workspace.id);
+    let nextActiveId = activeQueryWorkspaceId;
+
+    if (remaining.length === 0) {
+      const replacement = {
+        id: crypto.randomUUID(),
+        title: "Query 1",
+        sql: "",
+      };
+      remaining = [replacement];
+      nextActiveId = replacement.id;
+    } else if (workspace.id === activeQueryWorkspaceId) {
+      nextActiveId =
+        remaining[Math.min(Math.max(deletedIndex, 0), remaining.length - 1)]?.id ??
+        remaining[0].id;
+    }
+
+    setQueryWorkspaces(remaining);
+    setActiveQueryWorkspaceId(nextActiveId);
   }
 
   return (
@@ -257,12 +339,26 @@ export function App() {
                 <QueryEditor
                   activeConnectionId={model.activeConnectionId}
                   activeProfile={model.activeProfile}
+                  activeWorkspaceId={activeQueryWorkspaceId}
                   busy={Boolean(model.runningRequestId)}
+                  multiWorkspaceEnabled={multiQueryWorkspacesEnabled}
+                  renamingWorkspaceId={renamingQueryWorkspaceId}
                   schemas={model.schemas}
                   settings={model.settings}
                   tablesBySchema={model.tablesBySchema}
+                  titleDraft={queryWorkspaceTitleDraft}
                   onCancel={model.cancelQuery}
+                  onCreateWorkspace={createQueryWorkspace}
+                  onDeleteWorkspace={deleteQueryWorkspace}
+                  onRenameCommit={renameQueryWorkspace}
+                  onRenameStart={(workspace) => {
+                    setRenamingQueryWorkspaceId(workspace.id);
+                    setQueryWorkspaceTitleDraft(workspace.title);
+                  }}
+                  onSelectWorkspace={setActiveQueryWorkspaceId}
+                  onTitleDraftChange={setQueryWorkspaceTitleDraft}
                   value={sqlDraft}
+                  workspaces={queryWorkspaces}
                   onChange={setSqlDraft}
                   onExplain={explainTypedSQL}
                   onRun={runTypedSQL}

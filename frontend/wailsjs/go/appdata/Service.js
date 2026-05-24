@@ -26,8 +26,16 @@ export function ListAIChatThreads(arg1) {
   return window['go']['appdata']['Service']['ListAIChatThreads'](arg1);
 }
 
+export function ListQueryHistory(arg1) {
+  return window['go']['appdata']['Service']['ListQueryHistory'](arg1);
+}
+
 export function SaveAIChatMessage(arg1) {
   return window['go']['appdata']['Service']['SaveAIChatMessage'](arg1);
+}
+
+export function SaveQueryHistory(arg1) {
+  return window['go']['appdata']['Service']['SaveQueryHistory'](arg1);
 }
 
 export function UpdateAIChatThread(arg1) {

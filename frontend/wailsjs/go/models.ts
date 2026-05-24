@@ -219,6 +219,50 @@ export namespace appdata {
 	        this.connectionId = source["connectionId"];
 	    }
 	}
+	export class ListQueryHistoryRequest {
+	    connectionId: string;
+	    limit: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ListQueryHistoryRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.connectionId = source["connectionId"];
+	        this.limit = source["limit"];
+	    }
+	}
+	export class QueryHistoryEntry {
+	    id: string;
+	    connectionId: string;
+	    sql: string;
+	    mode: string;
+	    durationMs: number;
+	    executedAt: string;
+	    success: boolean;
+	    rowCount: number;
+	    affectedRows: number;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new QueryHistoryEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.connectionId = source["connectionId"];
+	        this.sql = source["sql"];
+	        this.mode = source["mode"];
+	        this.durationMs = source["durationMs"];
+	        this.executedAt = source["executedAt"];
+	        this.success = source["success"];
+	        this.rowCount = source["rowCount"];
+	        this.affectedRows = source["affectedRows"];
+	        this.error = source["error"];
+	    }
+	}
 	export class SaveAIChatMessageRequest {
 	    id: string;
 	    threadId: string;
@@ -264,6 +308,36 @@ export namespace appdata {
 		    }
 		    return a;
 		}
+	}
+	export class SaveQueryHistoryRequest {
+	    id: string;
+	    connectionId: string;
+	    sql: string;
+	    mode: string;
+	    durationMs: number;
+	    executedAt: string;
+	    success: boolean;
+	    rowCount: number;
+	    affectedRows: number;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SaveQueryHistoryRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.connectionId = source["connectionId"];
+	        this.sql = source["sql"];
+	        this.mode = source["mode"];
+	        this.durationMs = source["durationMs"];
+	        this.executedAt = source["executedAt"];
+	        this.success = source["success"];
+	        this.rowCount = source["rowCount"];
+	        this.affectedRows = source["affectedRows"];
+	        this.error = source["error"];
+	    }
 	}
 	export class UpdateAIChatThreadRequest {
 	    id: string;

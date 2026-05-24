@@ -66,3 +66,34 @@ type SaveAIChatMessageRequest struct {
 type ClearAIChatMessagesRequest struct {
 	ThreadID string `json:"threadId"`
 }
+
+type QueryHistoryEntry struct {
+	ID           string `json:"id"`
+	ConnectionID string `json:"connectionId"`
+	SQL          string `json:"sql"`
+	Mode         string `json:"mode"`
+	DurationMS   int64  `json:"durationMs"`
+	ExecutedAt   string `json:"executedAt"`
+	Success      bool   `json:"success"`
+	RowCount     int    `json:"rowCount"`
+	AffectedRows int64  `json:"affectedRows"`
+	Error        string `json:"error,omitempty"`
+}
+
+type ListQueryHistoryRequest struct {
+	ConnectionID string `json:"connectionId"`
+	Limit        int    `json:"limit"`
+}
+
+type SaveQueryHistoryRequest struct {
+	ID           string `json:"id"`
+	ConnectionID string `json:"connectionId"`
+	SQL          string `json:"sql"`
+	Mode         string `json:"mode"`
+	DurationMS   int64  `json:"durationMs"`
+	ExecutedAt   string `json:"executedAt"`
+	Success      bool   `json:"success"`
+	RowCount     int    `json:"rowCount"`
+	AffectedRows int64  `json:"affectedRows"`
+	Error        string `json:"error,omitempty"`
+}

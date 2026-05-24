@@ -121,3 +121,54 @@ func TestClearAIChatMessagesUsesThreadScope(t *testing.T) {
 		t.Fatalf("expected second thread message to remain, got %d", len(messages))
 	}
 }
+
+func TestQueryHistoryRoundTripAndDedupe(t *testing.T) {
+	service, err := NewService(filepath.Join(t.TempDir(), "datapanel.sqlite3"))
+	if err != nil {
+		t.Fatalf("NewService returned error: %v", err)
+	}
+	defer service.CloseAll()
+
+	first, err := service.SaveQueryHistory(SaveQueryHistoryRequest{
+		ConnectionID: "profile-1",
+		SQL:          "select 1;",
+		Mode:         "query",
+		DurationMS:   12,
+		ExecutedAt:   "2026-01-01T00:00:00Z",
+		Success:      true,
+		RowCount:     1,
+	})
+	if err != nil {
+		t.Fatalf("SaveQueryHistory first returned error: %v", err)
+	}
+	if first.ID == "" {
+		t.Fatalf("expected generated id")
+	}
+
+	_, err = service.SaveQueryHistory(SaveQueryHistoryRequest{
+		ConnectionID: "profile-1",
+		SQL:          "select 1;",
+		Mode:         "explain",
+		DurationMS:   18,
+		ExecutedAt:   "2026-01-01T00:01:00Z",
+		Success:      false,
+		Error:        "failed",
+	})
+	if err != nil {
+		t.Fatalf("SaveQueryHistory duplicate returned error: %v", err)
+	}
+
+	items, err := service.ListQueryHistory(ListQueryHistoryRequest{
+		ConnectionID: "profile-1",
+		Limit:        10,
+	})
+	if err != nil {
+		t.Fatalf("ListQueryHistory returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected deduped history, got %d items", len(items))
+	}
+	if items[0].Mode != "explain" || items[0].Success || items[0].Error != "failed" {
+		t.Fatalf("unexpected history item: %#v", items[0])
+	}
+}
