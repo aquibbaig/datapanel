@@ -6,6 +6,7 @@ import (
 
 	"datapanel/internal/ai"
 	appcore "datapanel/internal/app"
+	"datapanel/internal/appdata"
 	"datapanel/internal/connections"
 	"datapanel/internal/database"
 	"datapanel/internal/mysql"
@@ -29,6 +30,10 @@ func main() {
 
 	settingsStore := settings.NewFileStore(paths.SettingsPath)
 	settingsService := settings.NewService(settingsStore)
+	appDataService, err := appdata.NewService(paths.AppDatabasePath)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	profileStore := connections.NewFileProfileStore(paths.ConnectionsPath)
 	var secretStore connections.SecretStore
@@ -50,7 +55,7 @@ func main() {
 	aiService := ai.NewService(secretStore, secretStorage)
 	schemaService := postgres.NewSchemaService(databaseRouter)
 	queryService := query.NewService(databaseRouter, settingsService)
-	application := appcore.NewApplication(paths, databaseRouter)
+	application := appcore.NewApplication(paths, appcore.MultiCloser{databaseRouter, appDataService})
 
 	err = wails.Run(&options.App{
 		Title:     "datapanel",
@@ -72,6 +77,7 @@ func main() {
 		},
 		Bind: []interface{}{
 			connectionService,
+			appDataService,
 			aiService,
 			schemaService,
 			queryService,

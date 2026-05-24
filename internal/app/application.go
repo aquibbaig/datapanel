@@ -17,8 +17,19 @@ type PoolCloser interface {
 
 type Paths struct {
 	ConfigDir       string `json:"configDir"`
+	AppDatabasePath string `json:"appDatabasePath"`
 	ConnectionsPath string `json:"connectionsPath"`
 	SettingsPath    string `json:"settingsPath"`
+}
+
+type MultiCloser []PoolCloser
+
+func (closers MultiCloser) CloseAll() {
+	for _, closer := range closers {
+		if closer != nil {
+			closer.CloseAll()
+		}
+	}
 }
 
 type Application struct {
@@ -41,6 +52,7 @@ func NewPaths(appName string) (Paths, error) {
 	configDir := filepath.Join(configRoot, appName)
 	return Paths{
 		ConfigDir:       configDir,
+		AppDatabasePath: filepath.Join(configDir, "datapanel.sqlite3"),
 		ConnectionsPath: filepath.Join(configDir, "connections.json"),
 		SettingsPath:    filepath.Join(configDir, "settings.json"),
 	}, nil

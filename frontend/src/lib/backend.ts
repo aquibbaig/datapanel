@@ -1,6 +1,8 @@
 import type {
   AppSettings,
   AICredentialStatus,
+  AIChatMessage,
+  AIChatThread,
   AIGenerateRequest,
   AIGenerateResponse,
   ConnectRequest,
@@ -9,6 +11,7 @@ import type {
   QueryHistoryItem,
   QueryRequest,
   QueryResult,
+  SaveAIChatMessageRequest,
   SaveConnectionRequest,
   SaveAICredentialRequest,
   SchemaSummary,
@@ -18,6 +21,7 @@ import type {
   TestConnectionRequest
 } from "./types";
 import * as AIBindings from "../../wailsjs/go/ai/Service";
+import * as AppDataBindings from "../../wailsjs/go/appdata/Service";
 import * as ConnectionBindings from "../../wailsjs/go/connections/Service";
 import * as SchemaBindings from "../../wailsjs/go/postgres/SchemaService";
 import * as QueryBindings from "../../wailsjs/go/query/Service";
@@ -50,6 +54,8 @@ const defaultSettings: AppSettings = {
 };
 
 const mockAICredentials: Record<string, AICredentialStatus> = {};
+const mockAIThreads: AIChatThread[] = [];
+const mockAIMessages: AIChatMessage[] = [];
 
 function isWailsRuntime() {
   return Boolean(window.go);
@@ -133,6 +139,93 @@ export const aiCredentialService = {
       };
     }
     return AIBindings.GenerateSQL(input);
+  }
+};
+
+export const appDataService = {
+  async listThreads(connectionId: string): Promise<AIChatThread[]> {
+    if (!isWailsRuntime()) {
+      return mockAIThreads
+        .filter((thread) => thread.connectionId === (connectionId || "global"))
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    }
+    return AppDataBindings.ListAIChatThreads({ connectionId });
+  },
+  async createThread(input: {
+    connectionId: string;
+    title: string;
+    provider: string;
+    model: string;
+  }): Promise<AIChatThread> {
+    if (!isWailsRuntime()) {
+      const now = new Date().toISOString();
+      const thread = {
+        id: crypto.randomUUID(),
+        connectionId: input.connectionId || "global",
+        title: input.title || "New chat",
+        provider: input.provider || "openai",
+        model: input.model || "gpt-4.1-mini",
+        createdAt: now,
+        updatedAt: now
+      };
+      mockAIThreads.unshift(thread);
+      return thread;
+    }
+    return AppDataBindings.CreateAIChatThread(input);
+  },
+  async updateThread(input: {
+    id: string;
+    title: string;
+    provider: string;
+    model: string;
+  }): Promise<AIChatThread> {
+    if (!isWailsRuntime()) {
+      const thread = mockAIThreads.find((item) => item.id === input.id);
+      if (!thread) throw new Error("Thread not found");
+      Object.assign(thread, { ...input, updatedAt: new Date().toISOString() });
+      return thread;
+    }
+    return AppDataBindings.UpdateAIChatThread(input);
+  },
+  async deleteThread(id: string): Promise<void> {
+    if (!isWailsRuntime()) {
+      const index = mockAIThreads.findIndex((thread) => thread.id === id);
+      if (index >= 0) mockAIThreads.splice(index, 1);
+      for (let i = mockAIMessages.length - 1; i >= 0; i -= 1) {
+        if (mockAIMessages[i].threadId === id) mockAIMessages.splice(i, 1);
+      }
+      return;
+    }
+    return AppDataBindings.DeleteAIChatThread({ id });
+  },
+  async listMessages(threadId: string): Promise<AIChatMessage[]> {
+    if (!isWailsRuntime()) {
+      return mockAIMessages.filter((message) => message.threadId === threadId);
+    }
+    return AppDataBindings.ListAIChatMessages({ threadId, limit: 120 });
+  },
+  async saveMessage(input: SaveAIChatMessageRequest): Promise<AIChatMessage> {
+    if (!isWailsRuntime()) {
+      const message = {
+        ...input,
+        id: input.id || crypto.randomUUID(),
+        createdAt: input.createdAt || new Date().toISOString()
+      } as AIChatMessage;
+      mockAIMessages.push(message);
+      const thread = mockAIThreads.find((item) => item.id === input.threadId);
+      if (thread) thread.updatedAt = message.createdAt;
+      return message;
+    }
+    return AppDataBindings.SaveAIChatMessage(input as Parameters<typeof AppDataBindings.SaveAIChatMessage>[0]);
+  },
+  async clearMessages(threadId: string): Promise<void> {
+    if (!isWailsRuntime()) {
+      for (let i = mockAIMessages.length - 1; i >= 0; i -= 1) {
+        if (mockAIMessages[i].threadId === threadId) mockAIMessages.splice(i, 1);
+      }
+      return;
+    }
+    return AppDataBindings.ClearAIChatMessages({ threadId });
   }
 };
 
