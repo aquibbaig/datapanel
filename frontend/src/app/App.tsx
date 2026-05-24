@@ -22,20 +22,23 @@ import { ResultsGrid } from "../features/results-grid/ResultsGrid";
 import { SettingsPanel } from "../features/settings/SettingsPanel";
 import { TableDataEditor } from "../features/table-editor/TableDataEditor";
 import { cn } from "../lib/cn";
-import type { ConnectionProfile } from "../lib/types";
+import type { ConnectionProfile, TableDetails } from "../lib/types";
 import { CommandPalette } from "./CommandPalette";
 import { RightActionPanel, type RightPanel } from "./RightActionPanel";
 import { useDataPanelState } from "./useDataPanelState";
 import { EmptyWorkspace, WorkspaceLoader } from "./WorkspaceStates";
 
 const starterSQL = "select *\nfrom users\nlimit 50;";
+const rightPanelStorageKey = "datapanel.rightPanel";
 
 export function App() {
   const model = useDataPanelState();
   const [connectionModalOpen, setConnectionModalOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [rightPanel, setRightPanel] = useState<RightPanel | null>(null);
+  const [rightPanel, setRightPanel] = useState<RightPanel | null>(() =>
+    loadLastRightPanel(),
+  );
   const [bottomView, setBottomView] = useState<"results" | "table">("results");
   const [sqlDraft, setSqlDraft] = useState(starterSQL);
   const [editingProfile, setEditingProfile] =
@@ -71,8 +74,26 @@ export function App() {
     }
   }
 
+  function openRightPanel(panel: RightPanel) {
+    saveLastRightPanel(panel);
+    setRightPanel(panel);
+  }
+
   function toggleRightPanel(panel: RightPanel) {
-    setRightPanel((current) => (current === panel ? null : panel));
+    setRightPanel((current) => {
+      if (current === panel) return null;
+      saveLastRightPanel(panel);
+      return panel;
+    });
+  }
+
+  function toggleLastRightPanel() {
+    setRightPanel((current) => {
+      if (current) return null;
+      const panel = loadLastRightPanel() ?? "history";
+      saveLastRightPanel(panel);
+      return panel;
+    });
   }
 
   async function selectTableForEditing(
@@ -106,14 +127,21 @@ export function App() {
     });
   }
 
-  async function runSQL(sql: string, confirmDestructive = false) {
+  async function executeAISQL(sql: string) {
     setBottomView("results");
-    return model.runQuery(sql, confirmDestructive);
+    return model.runQuery(sql, true, {
+      historyMode: "query",
+      recordHistory: true,
+    });
   }
 
   function loadHistoryQuery(sql: string) {
     setSqlDraft(sql);
     setRightPanel(null);
+  }
+
+  function loadSQL(sql: string) {
+    setSqlDraft(sql);
   }
 
   return (
@@ -126,7 +154,7 @@ export function App() {
         onAddConnection={openNewConnection}
         onClose={() => setCommandOpen(false)}
         onEditConnection={() => openEditConnection(model.activeProfile)}
-        onOpenHistory={() => setRightPanel("history")}
+        onOpenHistory={() => openRightPanel("history")}
         onOpenSettings={() => setSettingsOpen(true)}
         onRefreshMetadata={() => void model.refreshMetadata()}
         onSelectTable={(table) => void selectTableForEditing(table)}
@@ -213,9 +241,7 @@ export function App() {
               <Button
                 className={cn(rightPanel && "bg-surface-700 text-zinc-200")}
                 size="icon"
-                onClick={() =>
-                  setRightPanel((current) => (current ? null : "history"))
-                }
+                onClick={toggleLastRightPanel}
                 title="Panels"
               >
                 <PanelRight size={14} />
@@ -245,22 +271,16 @@ export function App() {
                   <div className="flex items-center justify-between border-b border-line px-2">
                     <div className="flex items-center gap-1">
                       <Button
-                        className={cn(
-                          "h-7",
-                          bottomView === "results" &&
-                            "bg-surface-700 text-zinc-100",
-                        )}
+                        className="h-7"
+                        variant={bottomView === "results" ? "primary" : "ghost"}
                         onClick={() => setBottomView("results")}
                       >
                         Results
                       </Button>
                       <Button
-                        className={cn(
-                          "h-7",
-                          bottomView === "table" &&
-                            "bg-surface-700 text-zinc-100",
-                        )}
+                        className="h-7"
                         disabled={!model.selectedTable}
+                        variant={bottomView === "table" ? "primary" : "ghost"}
                         onClick={() => setBottomView("table")}
                       >
                         Table data
@@ -287,7 +307,10 @@ export function App() {
                       }
                     />
                   ) : (
-                    <ResultsGrid result={model.queryResult} />
+                    <ResultsGrid
+                      primaryKeyColumns={primaryKeyColumns(model.tableDetails)}
+                      result={model.queryResult}
+                    />
                   )}
                 </section>
               </div>
@@ -298,15 +321,20 @@ export function App() {
             <aside
               className={cn(
                 "min-h-0 shrink-0 overflow-hidden border-l border-line bg-surface-900 transition-[width] duration-200 ease-out",
-                rightPanel ? "w-[320px]" : "w-0 border-l-0",
+                rightPanel ? rightPanelWidth(rightPanel) : "w-0 border-l-0",
               )}
             >
               {rightPanel ? (
-                <div className="h-full w-[320px]">
+                <div className={cn("h-full", rightPanelInnerWidth(rightPanel))}>
                   <RightActionPanel
                     panel={rightPanel}
-                    activeProfileName={model.activeProfile?.name}
+                    activeProfile={model.activeProfile}
                     queryHistory={model.queryHistory}
+                    schemas={model.schemas}
+                    tableDetails={model.tableDetails}
+                    tablesBySchema={model.tablesBySchema}
+                    onExecuteSQL={executeAISQL}
+                    onLoadSQL={loadSQL}
                     onUseQuery={loadHistoryQuery}
                   />
                 </div>
@@ -374,6 +402,38 @@ function statusDot(tone: string, connected: boolean) {
   if (tone === "warning") return "bg-yellow-300";
   if (connected) return "bg-green-400";
   return "bg-zinc-600";
+}
+
+function primaryKeyColumns(tableDetails: TableDetails | null) {
+  return tableDetails?.columns
+    .filter((column) => column.isPrimary)
+    .map((column) => column.name) ?? [];
+}
+
+function rightPanelWidth(panel: RightPanel) {
+  return panel === "ai" ? "w-[460px]" : "w-[320px]";
+}
+
+function rightPanelInnerWidth(panel: RightPanel) {
+  return panel === "ai" ? "w-[460px]" : "w-[320px]";
+}
+
+function loadLastRightPanel(): RightPanel | null {
+  try {
+    const stored = localStorage.getItem(rightPanelStorageKey);
+    return stored === "ai" || stored === "history" ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveLastRightPanel(panel: RightPanel) {
+  if (panel !== "ai" && panel !== "history") return;
+  try {
+    localStorage.setItem(rightPanelStorageKey, panel);
+  } catch {
+    // Ignore storage failures; the panel still opens for this session.
+  }
 }
 
 function connectionTooltip(model: ReturnType<typeof useDataPanelState>) {

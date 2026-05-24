@@ -3,6 +3,7 @@ import {
   Download,
   FileJson,
   FileSpreadsheet,
+  KeyRound,
   TableProperties,
 } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
@@ -11,9 +12,14 @@ import type { QueryResult } from "../../lib/types";
 
 interface Props {
   result: QueryResult | null;
+  primaryKeyColumns?: string[];
 }
 
-export function ResultsGrid({ result }: Props) {
+export function ResultsGrid({ primaryKeyColumns = [], result }: Props) {
+  const primaryKeyColumnSet = new Set(
+    primaryKeyColumns.map((column) => column.toLowerCase()),
+  );
+
   if (!result) {
     return (
       <section className="grid min-h-0 place-items-center gap-2 bg-surface-900 text-muted">
@@ -89,7 +95,16 @@ export function ResultsGrid({ result }: Props) {
                   className="sticky top-0 bg-surface-800 px-3 py-2 text-left font-medium text-zinc-300"
                   key={column.name}
                 >
-                  {column.name}
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    {primaryKeyColumnSet.has(column.name.toLowerCase()) ? (
+                      <KeyRound
+                        aria-label="Primary key"
+                        className="text-yellow-200"
+                        size={10}
+                      />
+                    ) : null}
+                    <span className="truncate">{column.name}</span>
+                  </span>
                 </th>
               ))}
             </tr>

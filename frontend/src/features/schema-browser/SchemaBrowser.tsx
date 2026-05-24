@@ -8,10 +8,12 @@ import {
   KeyRound,
   Link2,
   Pencil,
+  Search,
   Table2,
   ToggleLeft,
   Type,
 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { Button } from "../../components/ui/Button";
 import { cn } from "../../lib/cn";
 import type {
@@ -44,6 +46,12 @@ export function SchemaBrowser({
   onRefresh,
   onSelectTable,
 }: Props) {
+  const [filter, setFilter] = useState("");
+  const filteredSchemas = useMemo(
+    () => filterSchemas(schemas, tablesBySchema, filter),
+    [filter, schemas, tablesBySchema],
+  );
+
   return (
     <aside className="flex min-w-0 flex-col bg-surface-800 w-full pt-[11px] ml-2">
       <div className="flex h-[54px] items-center justify-between border-b border-line px-4">
@@ -119,7 +127,7 @@ export function SchemaBrowser({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm font-semibold text-zinc-300">
             <Columns3 size={14} />
-            Tables
+            Explorer
           </div>
           <Button
             className="text-zinc-400 text-[11px]"
@@ -131,18 +139,32 @@ export function SchemaBrowser({
           </Button>
         </div>
 
+        <label className="relative block">
+          <Search
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500"
+            size={14}
+          />
+          <input
+            className="h-8 rounded-ui border-line bg-surface-850 pl-8 pr-2 text-sm text-zinc-200 placeholder:text-zinc-600"
+            disabled={!activeConnectionId}
+            placeholder="Filter explorer"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+          />
+        </label>
+
         {!activeConnectionId ? (
           <p className="text-sm text-muted">Connect to browse tables.</p>
         ) : null}
 
         <div className="flex flex-col gap-4">
-          {schemas.map((schema) => (
+          {filteredSchemas.map(({ schema, tables }) => (
             <div className="flex flex-col gap-2" key={schema.name}>
               <div className="text-xs font-semibold uppercase text-muted">
                 {schema.name}
               </div>
               <div className="flex flex-col gap-1">
-                {(tablesBySchema[schema.name] || []).map((table) => {
+                {tables.map((table) => {
                   const active =
                     selectedTable?.schema === table.schema &&
                     selectedTable.name === table.name;
@@ -178,10 +200,37 @@ export function SchemaBrowser({
               </div>
             </div>
           ))}
+          {activeConnectionId && filteredSchemas.length === 0 ? (
+            <p className="text-sm text-muted">No matching tables.</p>
+          ) : null}
         </div>
       </div>
     </aside>
   );
+}
+
+function filterSchemas(
+  schemas: SchemaSummary[],
+  tablesBySchema: Record<string, TableSummary[]>,
+  filter: string,
+) {
+  const query = filter.trim().toLowerCase();
+  return schemas
+    .map((schema) => {
+      const tables = tablesBySchema[schema.name] || [];
+      if (!query) return { schema, tables };
+
+      return {
+        schema,
+        tables: tables.filter((table) =>
+          [schema.name, table.schema, table.name, table.type]
+            .join(" ")
+            .toLowerCase()
+            .includes(query),
+        ),
+      };
+    })
+    .filter((entry) => entry.tables.length > 0);
 }
 
 function ColumnList({ tableDetails }: { tableDetails: TableDetails }) {

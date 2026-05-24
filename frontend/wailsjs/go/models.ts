@@ -1,3 +1,82 @@
+export namespace ai {
+	
+	export class CredentialStatus {
+	    provider: string;
+	    connected: boolean;
+	    keyHint: string;
+	    label: string;
+	    updatedAt: string;
+	    storage: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CredentialStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.provider = source["provider"];
+	        this.connected = source["connected"];
+	        this.keyHint = source["keyHint"];
+	        this.label = source["label"];
+	        this.updatedAt = source["updatedAt"];
+	        this.storage = source["storage"];
+	    }
+	}
+	export class GenerateRequest {
+	    provider: string;
+	    prompt: string;
+	    schemaContext: string;
+	    dialect: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GenerateRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.provider = source["provider"];
+	        this.prompt = source["prompt"];
+	        this.schemaContext = source["schemaContext"];
+	        this.dialect = source["dialect"];
+	    }
+	}
+	export class GenerateResponse {
+	    answer: string;
+	    sql: string;
+	    destructiveRisk: boolean;
+	    assumptions: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new GenerateResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.answer = source["answer"];
+	        this.sql = source["sql"];
+	        this.destructiveRisk = source["destructiveRisk"];
+	        this.assumptions = source["assumptions"];
+	    }
+	}
+	export class SaveCredentialRequest {
+	    provider: string;
+	    token: string;
+	    label: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SaveCredentialRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.provider = source["provider"];
+	        this.token = source["token"];
+	        this.label = source["label"];
+	    }
+	}
+
+}
+
 export namespace connections {
 	
 	export class ConnectRequest {

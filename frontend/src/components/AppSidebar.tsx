@@ -1,4 +1,5 @@
-import { ContainerIcon, Database, Plus, Settings } from "lucide-react";
+import { Plug, Plus, Settings } from "lucide-react";
+import logoMarkUrl from "../../assets/logo-mark.png";
 import { SchemaBrowser } from "../features/schema-browser/SchemaBrowser";
 import { cn } from "../lib/cn";
 import type {
@@ -52,8 +53,12 @@ export function AppSidebar({
       )}
     >
       <div className="flex w-12 flex-col items-center gap-2 border-r border-line px-2 py-3">
-        <div className="grid h-7 w-7 place-items-center rounded-full bg-blue-500 text-[11px] font-semibold text-white">
-          <ContainerIcon className="size-4" />
+        <div className="grid h-7 w-7 place-items-center overflow-hidden rounded-full bg-surface-900 ring-1 ring-white/10">
+          <img
+            alt="Datapanel"
+            className="h-full w-full object-cover"
+            src={logoMarkUrl}
+          />
         </div>
 
         <div className="flex flex-1 flex-col gap-2">
@@ -69,7 +74,7 @@ export function AppSidebar({
               onClick={() => void onConnect(profile)}
               title={profile.name}
             >
-              <Database size={14} style={{ color: profile.color }} />
+              <Plug size={14} style={{ color: profile.color }} />
             </Button>
           ))}
 
