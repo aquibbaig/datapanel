@@ -22,7 +22,7 @@ import { ResultsGrid } from "../features/results-grid/ResultsGrid";
 import { SettingsPanel } from "../features/settings/SettingsPanel";
 import { TableDataEditor } from "../features/table-editor/TableDataEditor";
 import { cn } from "../lib/cn";
-import type { ConnectionProfile } from "../lib/types";
+import type { ConnectionProfile, TableDetails } from "../lib/types";
 import { CommandPalette } from "./CommandPalette";
 import { RightActionPanel, type RightPanel } from "./RightActionPanel";
 import { useDataPanelState } from "./useDataPanelState";
@@ -287,7 +287,10 @@ export function App() {
                       }
                     />
                   ) : (
-                    <ResultsGrid result={model.queryResult} />
+                    <ResultsGrid
+                      primaryKeyColumns={primaryKeyColumns(model.tableDetails)}
+                      result={model.queryResult}
+                    />
                   )}
                 </section>
               </div>
@@ -374,6 +377,12 @@ function statusDot(tone: string, connected: boolean) {
   if (tone === "warning") return "bg-yellow-300";
   if (connected) return "bg-green-400";
   return "bg-zinc-600";
+}
+
+function primaryKeyColumns(tableDetails: TableDetails | null) {
+  return tableDetails?.columns
+    .filter((column) => column.isPrimary)
+    .map((column) => column.name) ?? [];
 }
 
 function connectionTooltip(model: ReturnType<typeof useDataPanelState>) {
