@@ -1,4 +1,9 @@
-import type { connections, postgres, query, settings } from "../../wailsjs/go/models";
+import type { ai, connections, postgres, query, settings } from "../../wailsjs/go/models";
+
+export type AICredentialStatus = ai.CredentialStatus;
+export type AIGenerateRequest = ai.GenerateRequest;
+export type AIGenerateResponse = ai.GenerateResponse;
+export type SaveAICredentialRequest = ai.SaveCredentialRequest;
 
 export type ConnectionProfile = connections.ConnectionProfile;
 export type SaveConnectionRequest = connections.SaveConnectionRequest;

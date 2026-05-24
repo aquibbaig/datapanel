@@ -134,6 +134,7 @@ export function TableDataEditor({
     () => summarizeChanges(changes, deletedRows),
     [changes, deletedRows],
   );
+  const showChangeReview = pendingChanges.total > 0;
   const generatedSQL = useMemo(() => {
     if (!result || !selectedTable || primaryColumns.length === 0) return "";
     return buildMutationSQL({
@@ -240,8 +241,15 @@ export function TableDataEditor({
   }
 
   return (
-    <section className="grid min-h-0 grid-cols-[minmax(0,1fr)_320px] bg-surface-900">
-      <div className="grid min-h-0 grid-rows-[38px_minmax(0,1fr)]">
+    <section
+      className={cn(
+        "grid min-h-0 min-w-0 bg-surface-900",
+        showChangeReview
+          ? "grid-cols-[minmax(0,1fr)_minmax(260px,300px)]"
+          : "grid-cols-[minmax(0,1fr)]",
+      )}
+    >
+      <div className="grid min-h-0 min-w-0 grid-rows-[38px_minmax(0,1fr)]">
         <div className="flex items-center justify-between border-b border-line px-3">
           <div className="flex min-w-0 items-center gap-2">
             <PencilLine size={14} className="text-zinc-400" />
@@ -389,37 +397,35 @@ export function TableDataEditor({
         )}
       </div>
 
-      <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_minmax(120px,36%)] border-l border-line bg-surface-950">
-        <div className="border-b border-line p-3">
-          <div className="mb-2 text-sm font-medium text-zinc-200">
-            Changed rows
+      {showChangeReview ? (
+        <aside className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_minmax(120px,36%)] border-l border-line bg-surface-950">
+          <div className="border-b border-line p-3">
+            <div className="mb-2 text-sm font-medium text-zinc-200">
+              Changed rows
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <div>
+                <div className="text-lg font-semibold text-zinc-100">
+                  {pendingChanges.updates}
+                </div>
+                <div className="text-muted">updates</div>
+              </div>
+              <div>
+                <div className="text-lg font-semibold text-red-100">
+                  {pendingChanges.deletes}
+                </div>
+                <div className="text-muted">deletes</div>
+              </div>
+              <div>
+                <div className="text-lg font-semibold text-zinc-100">
+                  {pendingChanges.cells}
+                </div>
+                <div className="text-muted">cells</div>
+              </div>
+            </div>
           </div>
-          <div className="grid grid-cols-3 gap-2 text-xs">
-            <div>
-              <div className="text-lg font-semibold text-zinc-100">
-                {pendingChanges.updates}
-              </div>
-              <div className="text-muted">updates</div>
-            </div>
-            <div>
-              <div className="text-lg font-semibold text-red-100">
-                {pendingChanges.deletes}
-              </div>
-              <div className="text-muted">deletes</div>
-            </div>
-            <div>
-              <div className="text-lg font-semibold text-zinc-100">
-                {pendingChanges.cells}
-              </div>
-              <div className="text-muted">cells</div>
-            </div>
-          </div>
-        </div>
 
-        <div className="min-h-0 overflow-auto border-b border-line p-3">
-          {pendingChanges.items.length === 0 ? (
-            <p className="text-sm text-muted">No staged table changes.</p>
-          ) : (
+          <div className="min-h-0 overflow-auto border-b border-line p-3">
             <div className="flex flex-col gap-2">
               {pendingChanges.items.map((item) => (
                 <div
@@ -447,25 +453,25 @@ export function TableDataEditor({
                 </div>
               ))}
             </div>
-          )}
-        </div>
-
-        <div className="grid min-h-0 grid-rows-[28px_minmax(0,1fr)] p-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-zinc-200">
-              SQL preview
-            </span>
-            <span className="text-xs text-muted">
-              {generatedSQL ? "ready" : "empty"}
-            </span>
           </div>
-          <textarea
-            className="min-h-0 resize-none rounded-ui border-line bg-[#080808] p-2 text-xs text-zinc-300"
-            readOnly
-            value={generatedSQL}
-          />
-        </div>
-      </aside>
+
+          <div className="grid min-h-0 grid-rows-[28px_minmax(0,1fr)] p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-zinc-200">
+                SQL preview
+              </span>
+              <span className="text-xs text-muted">
+                {generatedSQL ? "ready" : "empty"}
+              </span>
+            </div>
+            <textarea
+              className="min-h-0 resize-none rounded-ui border-line bg-[#080808] p-2 text-xs text-zinc-300"
+              readOnly
+              value={generatedSQL}
+            />
+          </div>
+        </aside>
+      ) : null}
     </section>
   );
 }

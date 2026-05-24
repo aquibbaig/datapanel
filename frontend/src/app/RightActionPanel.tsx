@@ -1,44 +1,76 @@
-import { CheckCircle2, Clock3, Database, FileQuestion, Play, XCircle } from "lucide-react";
+import {
+  CheckCircle2,
+  Clock3,
+  Database,
+  FileQuestion,
+  Play,
+  XCircle,
+} from "lucide-react";
 import { Button } from "../components/ui/Button";
+import { AiAssistantPanel } from "../features/ai-assistant/AiAssistantPanel";
 import { cn } from "../lib/cn";
-import type { QueryHistoryEntry } from "../lib/types";
+import type {
+  ConnectionProfile,
+  QueryHistoryEntry,
+  SchemaSummary,
+  TableDetails,
+  TableSummary,
+} from "../lib/types";
 
 export type RightPanel = "ai" | "history" | "panels";
 
 export function RightActionPanel({
   panel,
-  activeProfileName,
+  activeProfile,
   queryHistory,
+  schemas,
+  tableDetails,
+  tablesBySchema,
+  onExecuteSQL,
+  onLoadSQL,
   onUseQuery,
 }: {
   panel: RightPanel;
-  activeProfileName?: string;
+  activeProfile: ConnectionProfile | null;
   queryHistory: QueryHistoryEntry[];
+  schemas: SchemaSummary[];
+  tableDetails: TableDetails | null;
+  tablesBySchema: Record<string, TableSummary[]>;
+  onExecuteSQL(sql: string): Promise<unknown>;
+  onLoadSQL(sql: string): void;
   onUseQuery(sql: string): void;
 }) {
   const titles = {
-    ai: "AI assistant",
     history: "Query history",
     panels: "Panels",
   };
 
   return (
-    <div className="flex h-full flex-col gap-4 p-4">
-      <div className="flex items-center gap-2">
-        <Database size={14} className="text-muted" />
-        <div>
-          <h2 className="text-sm font-semibold text-zinc-100">
-            {titles[panel]}
-          </h2>
-          <p className="text-xs text-muted">
-            {activeProfileName || "No active connection"}
-          </p>
+    <div className={cn("flex h-full flex-col", panel === "ai" ? "p-0" : "gap-4 p-4")}>
+      {panel !== "ai" ? (
+        <div className="flex items-center gap-2">
+          <Database size={14} className="text-muted" />
+          <div>
+            <h2 className="text-sm font-semibold text-zinc-100">
+              {titles[panel]}
+            </h2>
+            <p className="text-xs text-muted">
+              {activeProfile?.name || "No active connection"}
+            </p>
+          </div>
         </div>
-      </div>
-      <div className="min-h-0 flex-1 overflow-hidden rounded-ui border border-line bg-surface-850 p-3 text-sm text-muted">
-        {panel === "ai"
-          ? "AI schema assistance will appear here once providers are configured."
-          : null}
+      ) : null}
+      <div className="min-h-0 flex-1 overflow-hidden rounded-ui text-sm text-muted">
+        {panel === "ai" ? (
+          <AiAssistantPanel
+            activeProfile={activeProfile}
+            schemas={schemas}
+            tableDetails={tableDetails}
+            tablesBySchema={tablesBySchema}
+            onExecuteSQL={onExecuteSQL}
+            onLoadSQL={onLoadSQL}
+          />
+        ) : null}
         {panel === "history" ? (
           <QueryHistoryList items={queryHistory} onUseQuery={onUseQuery} />
         ) : null}
@@ -76,7 +108,11 @@ function QueryHistoryList({
         >
           <div className="mb-2 flex items-center justify-between gap-2">
             <span className="flex min-w-0 items-center gap-1.5 text-[11px] font-medium uppercase text-zinc-400">
-              {item.mode === "explain" ? <FileQuestion size={12} /> : <Play size={12} />}
+              {item.mode === "explain" ? (
+                <FileQuestion size={12} />
+              ) : (
+                <Play size={12} />
+              )}
               {item.mode === "explain" ? "Explain" : "Query"}
             </span>
             {item.success ? (

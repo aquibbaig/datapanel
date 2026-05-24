@@ -1,5 +1,8 @@
 import type {
   AppSettings,
+  AICredentialStatus,
+  AIGenerateRequest,
+  AIGenerateResponse,
   ConnectRequest,
   ConnectionProfile,
   ConnectionStatus,
@@ -7,12 +10,14 @@ import type {
   QueryRequest,
   QueryResult,
   SaveConnectionRequest,
+  SaveAICredentialRequest,
   SchemaSummary,
   SQLAnalysis,
   TableDetails,
   TableSummary,
   TestConnectionRequest
 } from "./types";
+import * as AIBindings from "../../wailsjs/go/ai/Service";
 import * as ConnectionBindings from "../../wailsjs/go/connections/Service";
 import * as SchemaBindings from "../../wailsjs/go/postgres/SchemaService";
 import * as QueryBindings from "../../wailsjs/go/query/Service";
@@ -43,6 +48,8 @@ const defaultSettings: AppSettings = {
   inspectorWidth: 360,
   autoRefreshMetadata: true
 };
+
+const mockAICredentials: Record<string, AICredentialStatus> = {};
 
 function isWailsRuntime() {
   return Boolean(window.go);
@@ -76,6 +83,56 @@ export const connectionService = {
   async disconnect(profileId: string): Promise<void> {
     if (!isWailsRuntime()) return;
     return ConnectionBindings.Disconnect(profileId);
+  }
+};
+
+export const aiCredentialService = {
+  async list(): Promise<AICredentialStatus[]> {
+    if (!isWailsRuntime()) {
+      return ["openai", "anthropic", "custom"].map((provider) => ({
+        provider,
+        connected: Boolean(mockAICredentials[provider]?.connected),
+        keyHint: mockAICredentials[provider]?.keyHint || "",
+        label: mockAICredentials[provider]?.label || "",
+        updatedAt: mockAICredentials[provider]?.updatedAt || "",
+        storage: "session"
+      }));
+    }
+    return AIBindings.ListCredentials();
+  },
+  async save(input: SaveAICredentialRequest): Promise<AICredentialStatus> {
+    if (!isWailsRuntime()) {
+      const token = input.token.trim();
+      const status = {
+        provider: input.provider,
+        connected: true,
+        keyHint: token.length >= 4 ? `....${token.slice(-4)}` : "stored",
+        label: input.label,
+        updatedAt: new Date().toISOString(),
+        storage: "session"
+      };
+      mockAICredentials[input.provider] = status;
+      return status;
+    }
+    return AIBindings.SaveCredential(input);
+  },
+  async remove(provider: string): Promise<void> {
+    if (!isWailsRuntime()) {
+      delete mockAICredentials[provider];
+      return;
+    }
+    return AIBindings.DeleteCredential(provider);
+  },
+  async generate(input: AIGenerateRequest): Promise<AIGenerateResponse> {
+    if (!isWailsRuntime()) {
+      return {
+        answer: "Preview generated SQL. Connect a packaged app build to run this through your provider.",
+        sql: `select *\nfrom ${input.dialect === "mysql" ? "`your_table`" : "\"your_table\""}\nlimit 50;`,
+        destructiveRisk: false,
+        assumptions: ["Preview mode does not call an AI provider."]
+      };
+    }
+    return AIBindings.GenerateSQL(input);
   }
 };
 

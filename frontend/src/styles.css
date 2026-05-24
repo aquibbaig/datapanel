@@ -82,6 +82,22 @@ td {
   border-bottom: 1px solid #202022;
 }
 
+@keyframes datapanel-chat-cursor-blink {
+  0%,
+  45% {
+    opacity: 1;
+  }
+
+  46%,
+  100% {
+    opacity: 0.16;
+  }
+}
+
+.datapanel-chat-cursor {
+  animation: datapanel-chat-cursor-blink 0.9s steps(1, end) infinite;
+}
+
 .cm-tooltip.cm-tooltip-autocomplete {
   z-index: 1000;
   max-height: 320px;
