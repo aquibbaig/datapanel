@@ -17,7 +17,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { BrowserOpenURL, EventsOn } from "../../../wailsjs/runtime/runtime";
 import {
@@ -33,7 +33,7 @@ import {
 } from "../../components/ai-elements/prompt-input";
 import { Button } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
-import { aiCredentialService, appDataService } from "../../lib/backend";
+import { aiCredentialService, appDataService, schemaService } from "../../lib/backend";
 import { cn } from "../../lib/cn";
 import type {
   AIChatThread,
@@ -173,6 +173,7 @@ export function AiAssistantPanel({
   const [selectedModel, setSelectedModel] = useState(
     modelsByProvider.openai[0],
   );
+  const schemaDetailsCacheRef = useRef(new Map<string, Promise<TableDetails>>());
 
   const selected =
     providers.find((provider) => provider.id === selectedProvider) ??
@@ -283,6 +284,10 @@ export function AiAssistantPanel({
     setSelectedProvider(provider);
     setSelectedModel(activeThread.model || modelsByProvider[provider][0]);
   }, [activeThread?.id]);
+
+  useEffect(() => {
+    schemaDetailsCacheRef.current.clear();
+  }, [activeProfile?.id, schemas, tablesBySchema]);
 
   async function loadCredentialStatuses() {
     try {
@@ -571,17 +576,20 @@ export function AiAssistantPanel({
       if (thread.title === "New chat") {
         await renameThread(thread, prompt.slice(0, 48));
       }
+      const schemaContext = await buildSchemaContext({
+        activeProfile,
+        prompt,
+        schemas,
+        tableDetails,
+        tablesBySchema,
+        detailsCache: schemaDetailsCacheRef.current,
+      });
       const response = await aiCredentialService.generate({
         provider: selected.id,
         model: selectedModel,
         prompt,
         dialect: activeProfile?.driver || "postgres",
-        schemaContext: buildSchemaContext(
-          activeProfile,
-          schemas,
-          tablesBySchema,
-          tableDetails,
-        ),
+        schemaContext,
       });
       const assistantMessage = {
         id: crypto.randomUUID(),
@@ -1369,18 +1377,47 @@ function summarizeSchema(
   };
 }
 
-function buildSchemaContext(
-  activeProfile: ConnectionProfile | null,
-  schemas: SchemaSummary[],
-  tablesBySchema: Record<string, TableSummary[]>,
-  tableDetails: TableDetails | null,
-) {
+async function buildSchemaContext({
+  activeProfile,
+  detailsCache,
+  prompt,
+  schemas,
+  tableDetails,
+  tablesBySchema,
+}: {
+  activeProfile: ConnectionProfile | null;
+  detailsCache: Map<string, Promise<TableDetails>>;
+  prompt: string;
+  schemas: SchemaSummary[];
+  tableDetails: TableDetails | null;
+  tablesBySchema: Record<string, TableSummary[]>;
+}) {
   if (!activeProfile) return "No active connection.";
+
+  const allTables = flattenTables(schemas, tablesBySchema);
+  const detailedTables = await loadDetailedTables({
+    activeProfile,
+    allTables,
+    detailsCache,
+    prompt,
+    tableDetails,
+  });
+  const detailsByKey = new Map(
+    detailedTables.map((details) => [
+      schemaTableKey(activeProfile.id, details.schema, details.name),
+      details,
+    ]),
+  );
 
   const lines = [
     `Connection: ${activeProfile.name}`,
     `Dialect: ${activeProfile.driver}`,
     `Database: ${activeProfile.database}`,
+    "",
+    "Schema context rules:",
+    "- Column lists below are authoritative. Do not invent columns.",
+    "- If a requested join key is not listed, choose a listed foreign key or state the missing relationship.",
+    "- Prefer listed FOREIGN KEY constraints for joins.",
     "",
     "Schemas and tables:",
   ];
@@ -1388,29 +1425,167 @@ function buildSchemaContext(
   for (const schema of schemas) {
     lines.push(`- ${schema.name}`);
     for (const table of tablesBySchema[schema.name] || []) {
+      const details = detailsByKey.get(
+        schemaTableKey(activeProfile.id, table.schema, table.name),
+      );
       lines.push(
         `  - ${table.schema}.${table.name} (${table.type}, estimated rows: ${table.rowEstimate})`,
       );
+      if (details) appendTableDetails(lines, details, "    ");
     }
   }
 
-  if (tableDetails) {
+  lines.push("");
+  if (detailedTables.length > 0) {
     lines.push(
-      "",
-      `Selected table: ${tableDetails.schema}.${tableDetails.name}`,
+      `Detailed column metadata included for ${detailedTables.length} table(s).`,
     );
-    for (const column of tableDetails.columns) {
-      lines.push(
-        `- ${column.name}: ${column.dataType}${column.nullable ? ", nullable" : ", not null"}${column.isPrimary ? ", primary key" : ""}${column.default ? `, default ${column.default}` : ""}`,
-      );
-    }
-    if (tableDetails.constraints.length > 0) {
-      lines.push("Constraints:");
-      for (const constraint of tableDetails.constraints) {
-        lines.push(`- ${constraint.type}: ${constraint.definition}`);
-      }
-    }
+  } else {
+    lines.push("No detailed column metadata was available.");
   }
 
   return lines.join("\n");
+}
+
+const maxDetailedTablesInSchemaContext = 40;
+
+function flattenTables(
+  schemas: SchemaSummary[],
+  tablesBySchema: Record<string, TableSummary[]>,
+) {
+  return schemas.flatMap((schema) => tablesBySchema[schema.name] || []);
+}
+
+async function loadDetailedTables({
+  activeProfile,
+  allTables,
+  detailsCache,
+  prompt,
+  tableDetails,
+}: {
+  activeProfile: ConnectionProfile;
+  allTables: TableSummary[];
+  detailsCache: Map<string, Promise<TableDetails>>;
+  prompt: string;
+  tableDetails: TableDetails | null;
+}) {
+  const selected = selectTablesForSchemaContext(prompt, allTables, tableDetails);
+  const loadable = selected.slice(0, maxDetailedTablesInSchemaContext);
+  const settled = await Promise.allSettled(
+    loadable.map((table) =>
+      loadTableDetails(activeProfile.id, table, detailsCache),
+    ),
+  );
+
+  return settled.flatMap((result) =>
+    result.status === "fulfilled" ? [result.value] : [],
+  );
+}
+
+function selectTablesForSchemaContext(
+  prompt: string,
+  allTables: TableSummary[],
+  tableDetails: TableDetails | null,
+) {
+  const selectedKeys = new Set<string>();
+  const selected: TableSummary[] = [];
+
+  function addTable(table: Pick<TableSummary, "schema" | "name">) {
+    const key = `${table.schema}.${table.name}`.toLowerCase();
+    if (selectedKeys.has(key)) return;
+    const summary =
+      allTables.find(
+        (candidate) =>
+          candidate.schema.toLowerCase() === table.schema.toLowerCase() &&
+          candidate.name.toLowerCase() === table.name.toLowerCase(),
+      ) ??
+      ({
+        schema: table.schema,
+        name: table.name,
+        type: "TABLE",
+        rowEstimate: 0,
+      } as TableSummary);
+    selectedKeys.add(key);
+    selected.push(summary);
+  }
+
+  if (tableDetails) {
+    addTable({ schema: tableDetails.schema, name: tableDetails.name });
+  }
+
+  for (const table of allTables) {
+    if (promptReferencesTable(prompt, table)) addTable(table);
+  }
+
+  if (allTables.length <= maxDetailedTablesInSchemaContext) {
+    for (const table of allTables) addTable(table);
+  }
+
+  return selected;
+}
+
+function promptReferencesTable(prompt: string, table: TableSummary) {
+  const normalizedPrompt = normalizeIdentifierText(prompt);
+  const promptTokens = new Set(normalizedPrompt.split(/\s+/).filter(Boolean));
+  const schema = table.schema.toLowerCase();
+  const name = table.name.toLowerCase();
+  const nameParts = name.split("_").filter(Boolean);
+
+  if (normalizedPrompt.includes(`${schema} ${name}`)) return true;
+  if (promptTokens.has(name)) return true;
+  if (name.endsWith("s") && promptTokens.has(name.slice(0, -1))) return true;
+  if (nameParts.length > 1 && nameParts.every((part) => promptTokens.has(part))) {
+    return true;
+  }
+  return false;
+}
+
+function normalizeIdentifierText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/["'`[\]().,;:]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function loadTableDetails(
+  connectionId: string,
+  table: Pick<TableSummary, "schema" | "name">,
+  detailsCache: Map<string, Promise<TableDetails>>,
+) {
+  const key = schemaTableKey(connectionId, table.schema, table.name);
+  let existing = detailsCache.get(key);
+  if (!existing) {
+    existing = schemaService
+      .describe(connectionId, table.schema, table.name)
+      .catch((error) => {
+        detailsCache.delete(key);
+        throw error;
+      });
+    detailsCache.set(key, existing);
+  }
+  return existing;
+}
+
+function schemaTableKey(connectionId: string, schema: string, table: string) {
+  return `${connectionId}:${schema}.${table}`.toLowerCase();
+}
+
+function appendTableDetails(
+  lines: string[],
+  tableDetails: TableDetails,
+  indent = "",
+) {
+  lines.push(`${indent}Columns:`);
+  for (const column of tableDetails.columns) {
+    lines.push(
+      `${indent}- ${column.name}: ${column.dataType}${column.nullable ? ", nullable" : ", not null"}${column.isPrimary ? ", primary key" : ""}${column.default ? `, default ${column.default}` : ""}`,
+    );
+  }
+  if (tableDetails.constraints.length > 0) {
+    lines.push(`${indent}Constraints:`);
+    for (const constraint of tableDetails.constraints) {
+      lines.push(`${indent}- ${constraint.type}: ${constraint.definition}`);
+    }
+  }
 }
