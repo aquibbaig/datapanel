@@ -15,6 +15,8 @@ import (
 	"datapanel/internal/settings"
 
 	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/menu"
+	"github.com/wailsapp/wails/v2/pkg/menu/keys"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 )
@@ -63,6 +65,7 @@ func main() {
 		Height:    920,
 		MinWidth:  1040,
 		MinHeight: 720,
+		Menu:      applicationMenu(application),
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
@@ -87,4 +90,25 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func applicationMenu(application *appcore.Application) *menu.Menu {
+	appMenu := menu.NewMenu()
+	appMenu.AddText("Settings...", keys.CmdOrCtrl(","), func(_ *menu.CallbackData) {
+		application.OpenSettings()
+	})
+	appMenu.AddSeparator()
+	appMenu.AddText("Hide datapanel", keys.CmdOrCtrl("h"), func(_ *menu.CallbackData) {
+		application.Hide()
+	})
+	appMenu.AddSeparator()
+	appMenu.AddText("Quit datapanel", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
+		application.Quit()
+	})
+
+	return menu.NewMenuFromItems(
+		menu.SubMenu("datapanel", appMenu),
+		menu.EditMenu(),
+		menu.WindowMenu(),
+	)
 }

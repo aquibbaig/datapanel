@@ -11,6 +11,7 @@ import { AiAssistantPanel } from "../features/ai-assistant/AiAssistantPanel";
 import { cn } from "../lib/cn";
 import type {
   ConnectionProfile,
+  AppSettings,
   QueryHistoryEntry,
   SchemaSummary,
   TableDetails,
@@ -24,6 +25,7 @@ export function RightActionPanel({
   activeProfile,
   queryHistory,
   schemas,
+  settings,
   tableDetails,
   tablesBySchema,
   onExecuteSQL,
@@ -32,6 +34,7 @@ export function RightActionPanel({
 }: {
   panel: RightPanel;
   activeProfile: ConnectionProfile | null;
+  settings: AppSettings | null;
   queryHistory: QueryHistoryEntry[];
   schemas: SchemaSummary[];
   tableDetails: TableDetails | null;
@@ -65,6 +68,7 @@ export function RightActionPanel({
           <AiAssistantPanel
             activeProfile={activeProfile}
             schemas={schemas}
+            settings={settings}
             tableDetails={tableDetails}
             tablesBySchema={tablesBySchema}
             onExecuteSQL={onExecuteSQL}

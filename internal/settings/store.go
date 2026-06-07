@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"datapanel/internal/apperrors"
@@ -81,5 +82,6 @@ func normalize(settings AppSettings) AppSettings {
 	if settings.InspectorWidth <= 0 {
 		settings.InspectorWidth = defaults.InspectorWidth
 	}
+	settings.ChatResponsePrompt = strings.TrimSpace(settings.ChatResponsePrompt)
 	return settings
 }

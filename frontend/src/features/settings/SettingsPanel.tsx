@@ -52,6 +52,20 @@ export function SettingsPanel({ settings, onUpdate }: Props) {
           />
           <span>Refresh metadata after connect</span>
         </label>
+        <label className="grid gap-2">
+          <span className="text-xs text-muted">Chat response prompt</span>
+          <textarea
+            className="min-h-20 rounded-ui p-2 text-sm"
+            placeholder="Talk to me like Keanu Reeves"
+            value={settings.chatResponsePrompt}
+            onChange={(event) =>
+              void onUpdate({
+                ...settings,
+                chatResponsePrompt: event.target.value,
+              })
+            }
+          />
+        </label>
       </div>
     </section>
   );

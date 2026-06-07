@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -126,12 +128,13 @@ func profileFromSaveInput(input SaveConnectionRequest) (ConnectionProfile, error
 		id = newID()
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
+	host, port := splitHostPort(strings.TrimSpace(input.Host), input.Port)
 	profile := ConnectionProfile{
 		ID:        id,
 		Driver:    normalizeDriver(input.Driver),
 		Name:      strings.TrimSpace(input.Name),
-		Host:      strings.TrimSpace(input.Host),
-		Port:      input.Port,
+		Host:      normalizeHost(host),
+		Port:      port,
 		Database:  strings.TrimSpace(input.Database),
 		Username:  strings.TrimSpace(input.Username),
 		SSLMode:   normalizeSSLMode(input.SSLMode),
@@ -186,6 +189,32 @@ func normalizeDriver(value string) string {
 	default:
 		return "postgres"
 	}
+}
+
+func normalizeHost(value string) string {
+	host := strings.TrimSpace(value)
+	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		return strings.TrimSuffix(strings.TrimPrefix(host, "["), "]")
+	}
+	return host
+}
+
+func splitHostPort(host string, fallbackPort int) (string, int) {
+	if host == "" {
+		return host, fallbackPort
+	}
+
+	parsedHost, parsedPort, err := net.SplitHostPort(host)
+	if err != nil {
+		return host, fallbackPort
+	}
+
+	port, err := strconv.Atoi(parsedPort)
+	if err != nil {
+		return normalizeHost(parsedHost), fallbackPort
+	}
+
+	return normalizeHost(parsedHost), port
 }
 
 func normalizeSSLMode(value string) string {

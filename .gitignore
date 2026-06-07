@@ -30,6 +30,7 @@ bin/
 coverage.out
 *.test
 *.prof
+.gocache/
 
 # Node / frontend
 node_modules/

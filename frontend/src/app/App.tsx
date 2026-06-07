@@ -1,6 +1,14 @@
-import { Bot, Clock3, PanelRight, Search } from "lucide-react";
+import {
+  Bot,
+  ChevronDown,
+  ChevronUp,
+  Clock3,
+  PanelRight,
+  Search,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { Toaster } from "sonner";
+import { EventsOn } from "../../wailsjs/runtime/runtime";
 import { AppSidebar } from "../components/AppSidebar";
 import {
   Breadcrumb,
@@ -18,11 +26,11 @@ import {
 } from "../components/ui/sidebar";
 import { ConnectionPanel } from "../features/connections/ConnectionPanel";
 import { QueryEditor } from "../features/query-editor/QueryEditor";
+import { QueryPlanView } from "../features/query-plan/QueryPlanView";
 import { ResultsGrid } from "../features/results-grid/ResultsGrid";
 import { SettingsPanel } from "../features/settings/SettingsPanel";
-import { TableDataEditor } from "../features/table-editor/TableDataEditor";
 import { cn } from "../lib/cn";
-import type { ConnectionProfile, TableDetails } from "../lib/types";
+import type { ConnectionProfile, TableDetails, TableSummary } from "../lib/types";
 import { CommandPalette } from "./CommandPalette";
 import { RightActionPanel, type RightPanel } from "./RightActionPanel";
 import { useDataPanelState } from "./useDataPanelState";
@@ -31,6 +39,7 @@ import { EmptyWorkspace, WorkspaceLoader } from "./WorkspaceStates";
 const rightPanelStorageKey = "datapanel.rightPanel";
 const multiQueryWorkspacesEnabled = true;
 const maxQueryWorkspaces = 3;
+const postgresRowLocatorColumn = "__datapanel_internal_ctid__";
 const initialQueryWorkspace = {
   id: "query-1",
   title: "Query 1",
@@ -43,6 +52,12 @@ interface QueryWorkspace {
   sql: string;
 }
 
+interface WailsRuntimeWindow extends Window {
+  runtime?: {
+    EventsOn?: unknown;
+  };
+}
+
 export function App() {
   const model = useDataPanelState();
   const [connectionModalOpen, setConnectionModalOpen] = useState(false);
@@ -51,7 +66,10 @@ export function App() {
   const [rightPanel, setRightPanel] = useState<RightPanel | null>(() =>
     loadLastRightPanel(),
   );
-  const [bottomView, setBottomView] = useState<"results" | "table">("results");
+  const [bottomView, setBottomView] = useState<"results" | "plan">(
+    "results",
+  );
+  const [bottomPanelExpanded, setBottomPanelExpanded] = useState(true);
   const [queryWorkspaces, setQueryWorkspaces] = useState<QueryWorkspace[]>([
     initialQueryWorkspace,
   ]);
@@ -64,6 +82,10 @@ export function App() {
   const [queryWorkspaceTitleDraft, setQueryWorkspaceTitleDraft] = useState("");
   const [editingProfile, setEditingProfile] =
     useState<ConnectionProfile | null>(null);
+  const [editableResultTable, setEditableResultTable] =
+    useState<TableSummary | null>(null);
+  const [editableResultTableDetails, setEditableResultTableDetails] =
+    useState<TableDetails | null>(null);
   const activeQueryWorkspace =
     queryWorkspaces.find((workspace) => workspace.id === activeQueryWorkspaceId) ??
     queryWorkspaces[0];
@@ -79,6 +101,11 @@ export function App() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (!(window as WailsRuntimeWindow).runtime?.EventsOn) return undefined;
+    return EventsOn("datapanel:open-settings", () => setSettingsOpen(true));
   }, []);
 
   function openNewConnection() {
@@ -124,40 +151,103 @@ export function App() {
   async function selectTableForEditing(
     table: Parameters<typeof model.inspectTable>[0],
   ) {
-    if (
-      model.selectedTable?.schema === table.schema &&
-      model.selectedTable.name === table.name &&
-      model.tableDetails
-    ) {
-      setBottomView("table");
-      return;
+    const driver = model.activeProfile?.driver === "mysql" ? "mysql" : "postgres";
+    const detailsPromise = model.inspectTable(table).catch(() => null);
+    const selectList =
+      driver === "postgres" && isPostgresBaseTable(table.type)
+        ? `ctid::text as "${postgresRowLocatorColumn}", *`
+        : "*";
+    const sql = `select ${selectList} from ${qualifiedName(driver, table.schema, table.name)} limit ${
+      model.settings?.queryLimit ?? 500
+    };`;
+    const result = await model.runQuery(sql, true, {
+      historyMode: "query",
+      recordHistory: true,
+    });
+    if (result) {
+      const details = await detailsPromise;
+      if (details && !result.error) {
+        setEditableResultTable(table);
+        setEditableResultTableDetails(details);
+      } else {
+        setEditableResultTable(null);
+        setEditableResultTableDetails(null);
+      }
+      setBottomView("results");
+      setBottomPanelExpanded(true);
     }
-    await model.inspectTable(table);
-    setBottomView("table");
   }
 
   async function runTypedSQL(sql: string, confirmDestructive = false) {
-    setBottomView("results");
-    return model.runQuery(sql, confirmDestructive, {
+    const editableTarget = resolveEditableSelectTable(
+      sql,
+      model.tablesBySchema,
+    );
+    const driver = model.activeProfile?.driver === "mysql" ? "mysql" : "postgres";
+    let editableTable: TableSummary | null = null;
+    let editableDetailsPromise: Promise<TableDetails | null> | null = null;
+    let sqlToRun = sql;
+
+    setEditableResultTable(null);
+    setEditableResultTableDetails(null);
+
+    if (editableTarget && !isExplainSQL(sql)) {
+      editableTable = editableTarget;
+      editableDetailsPromise = model.inspectTable(editableTarget).catch(
+        () => null,
+      );
+      if (driver === "postgres" && isPostgresBaseTable(editableTarget.type)) {
+        sqlToRun = addPostgresRowLocator(sql);
+      }
+    }
+
+    const result = await model.runQuery(sqlToRun, confirmDestructive, {
       historyMode: "query",
       recordHistory: true,
     });
+    if (result) {
+      const editableDetails = editableDetailsPromise
+        ? await editableDetailsPromise
+        : null;
+      if (editableTable && editableDetails && !result.error) {
+        setEditableResultTable(editableTable);
+        setEditableResultTableDetails(editableDetails);
+      } else {
+        setEditableResultTable(null);
+        setEditableResultTableDetails(null);
+      }
+      setBottomView(isExplainSQL(sql) ? "plan" : "results");
+      setBottomPanelExpanded(true);
+    }
+    return result;
   }
 
   async function explainTypedSQL(sql: string) {
-    setBottomView("results");
-    return model.explainQuery(sql, {
+    const result = await model.explainQuery(sql, {
       historyMode: "explain",
       recordHistory: true,
     });
+    if (result) {
+      setEditableResultTable(null);
+      setEditableResultTableDetails(null);
+      setBottomView("plan");
+      setBottomPanelExpanded(true);
+    }
+    return result;
   }
 
   async function executeAISQL(sql: string) {
-    setBottomView("results");
-    return model.runQuery(sql, true, {
+    const result = await model.runQuery(sql, true, {
       historyMode: "query",
       recordHistory: true,
     });
+    if (result) {
+      setEditableResultTable(null);
+      setEditableResultTableDetails(null);
+      setBottomView(isExplainSQL(sql) ? "plan" : "results");
+      setBottomPanelExpanded(true);
+    }
+    return result;
   }
 
   function loadHistoryQuery(sql: string) {
@@ -168,6 +258,12 @@ export function App() {
   function loadSQL(sql: string) {
     setSqlDraft(sql);
   }
+
+  const hasPlanResult =
+    model.queryResultMode === "explain" && Boolean(model.queryResult);
+  const hasRowResult =
+    model.queryResultMode === "query" && Boolean(model.queryResult);
+  const rowResult = hasRowResult ? model.queryResult : null;
 
   function setSqlDraft(sql: string) {
     setQueryWorkspaces((current) =>
@@ -228,7 +324,17 @@ export function App() {
 
   return (
     <>
-      <Toaster closeButton position="top-right" theme="dark" />
+      <Toaster
+        closeButton
+        position="top-right"
+        theme="dark"
+        toastOptions={{
+          classNames: {
+            toast: "items-start",
+            icon: "mt-0.5",
+          },
+        }}
+      />
       <CommandPalette
         activeProfile={model.activeProfile}
         open={commandOpen}
@@ -335,7 +441,14 @@ export function App() {
             {model.initializing ? (
               <WorkspaceLoader />
             ) : model.activeProfile ? (
-              <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[48%_minmax(0,1fr)]">
+              <div
+                className={cn(
+                  "grid min-h-0 min-w-0 flex-1",
+                  bottomPanelExpanded
+                    ? "grid-rows-[48%_minmax(0,1fr)]"
+                    : "grid-rows-[minmax(0,1fr)_44px]",
+                )}
+              >
                 <QueryEditor
                   activeConnectionId={model.activeConnectionId}
                   activeProfile={model.activeProfile}
@@ -363,49 +476,78 @@ export function App() {
                   onExplain={explainTypedSQL}
                   onRun={runTypedSQL}
                 />
-                <section className="grid min-h-0 grid-rows-[44px_minmax(0,1fr)] bg-surface-900">
+                <section
+                  className={cn(
+                    "grid min-h-0 overflow-hidden bg-surface-900",
+                    bottomPanelExpanded
+                      ? "grid-rows-[44px_minmax(0,1fr)]"
+                      : "grid-rows-[44px_0px]",
+                  )}
+                >
                   <div className="flex h-11 shrink-0 items-center justify-between border-b border-line px-2">
                     <div className="flex items-center gap-1">
                       <Button
                         className="h-7"
+                        disabled={!hasRowResult}
                         variant={bottomView === "results" ? "primary" : "ghost"}
-                        onClick={() => setBottomView("results")}
+                        onClick={() => {
+                          setBottomView("results");
+                          setBottomPanelExpanded(true);
+                        }}
                       >
                         Results
                       </Button>
                       <Button
                         className="h-7"
-                        disabled={!model.selectedTable}
-                        variant={bottomView === "table" ? "primary" : "ghost"}
-                        onClick={() => setBottomView("table")}
+                        disabled={!hasPlanResult}
+                        variant={bottomView === "plan" ? "primary" : "ghost"}
+                        onClick={() => {
+                          setBottomView("plan");
+                          setBottomPanelExpanded(true);
+                        }}
                       >
-                        Table data
+                        Plan
                       </Button>
                     </div>
-                    {model.selectedTable ? (
-                      <span className="truncate px-2 text-xs text-muted">
-                        {model.selectedTable.schema}.{model.selectedTable.name}
-                      </span>
-                    ) : null}
+                    <div className="flex min-w-0 items-center gap-2">
+                      {model.selectedTable ? (
+                        <span className="truncate px-2 text-xs text-muted">
+                          {model.selectedTable.schema}.{model.selectedTable.name}
+                        </span>
+                      ) : null}
+                      <Button
+                        size="icon"
+                        title={
+                          bottomPanelExpanded
+                            ? "Collapse bottom panel"
+                            : "Expand bottom panel"
+                        }
+                        onClick={() =>
+                          setBottomPanelExpanded((expanded) => !expanded)
+                        }
+                      >
+                        {bottomPanelExpanded ? (
+                          <ChevronDown size={14} />
+                        ) : (
+                          <ChevronUp size={14} />
+                        )}
+                      </Button>
+                    </div>
                   </div>
-                  {bottomView === "table" ? (
-                    <TableDataEditor
-                      activeConnectionId={model.activeConnectionId}
-                      activeProfile={model.activeProfile}
-                      selectedTable={model.selectedTable}
-                      settings={model.settings}
-                      tableDetails={model.tableDetails}
-                      onCommitSQL={(sql, summary) =>
-                        model.runQuery(sql, true, {
-                          successMessage: `${summary.total} row(s) changed`,
-                          successTitle: "Query successful",
-                        })
-                      }
+                  {bottomView === "plan" ? (
+                    <QueryPlanView
+                      driver={model.activeProfile?.driver}
+                      result={model.queryResult}
                     />
                   ) : (
                     <ResultsGrid
-                      primaryKeyColumns={primaryKeyColumns(model.tableDetails)}
-                      result={model.queryResult}
+                      activeProfile={model.activeProfile}
+                      selectedTable={editableResultTable}
+                      tableDetails={editableResultTableDetails}
+                      result={rowResult}
+                      onCommitSQL={(sql, summary) =>
+                        model.commitSQL(sql, `${summary.total} row(s) changed`)
+                      }
                     />
                   )}
                 </section>
@@ -427,6 +569,7 @@ export function App() {
                     activeProfile={model.activeProfile}
                     queryHistory={model.queryHistory}
                     schemas={model.schemas}
+                    settings={model.settings}
                     tableDetails={model.tableDetails}
                     tablesBySchema={model.tablesBySchema}
                     onExecuteSQL={executeAISQL}
@@ -500,14 +643,6 @@ function statusDot(tone: string, connected: boolean) {
   return "bg-zinc-600";
 }
 
-function primaryKeyColumns(tableDetails: TableDetails | null) {
-  return (
-    tableDetails?.columns
-      .filter((column) => column.isPrimary)
-      .map((column) => column.name) ?? []
-  );
-}
-
 function rightPanelWidth(panel: RightPanel) {
   return panel === "ai" ? "w-[460px]" : "w-[320px]";
 }
@@ -532,6 +667,105 @@ function saveLastRightPanel(panel: RightPanel) {
   } catch {
     // Ignore storage failures; the panel still opens for this session.
   }
+}
+
+function isExplainSQL(sql: string) {
+  return sql.trim().toLowerCase().startsWith("explain");
+}
+
+function resolveEditableSelectTable(
+  sql: string,
+  tablesBySchema: Record<string, TableSummary[]>,
+) {
+  const target = parseSimpleSelectStarTarget(sql);
+  if (!target) return null;
+
+  if (target.schema) {
+    return findTableInSchema(tablesBySchema, target.schema, target.table);
+  }
+
+  const matches = Object.entries(tablesBySchema).flatMap(([schema, tables]) =>
+    tables
+      .filter((table) => namesEqual(table.name, target.table))
+      .map((table) => ({ schema, table })),
+  );
+  const publicMatch = matches.find((match) => match.schema === "public");
+  if (publicMatch) return publicMatch.table;
+  return matches.length === 1 ? matches[0].table : null;
+}
+
+function parseSimpleSelectStarTarget(sql: string) {
+  const identifier = String.raw`(?:"(?:[^"]|"")+"|[A-Za-z_][\w$]*)`;
+  const pattern = new RegExp(
+    String.raw`^\s*select\s+\*\s+from\s+(${identifier})(?:\s*\.\s*(${identifier}))?([\s\S]*)$`,
+    "i",
+  );
+  const match = sql.match(pattern);
+  if (!match) return null;
+
+  const rest = match[3].trimStart().toLowerCase();
+  if (/^(,|join\b|inner\b|left\b|right\b|full\b|cross\b)/.test(rest)) {
+    return null;
+  }
+
+  if (match[2]) {
+    return {
+      schema: unquoteIdentifier(match[1]),
+      table: unquoteIdentifier(match[2]),
+    };
+  }
+
+  return { schema: "", table: unquoteIdentifier(match[1]) };
+}
+
+function findTableInSchema(
+  tablesBySchema: Record<string, TableSummary[]>,
+  schemaName: string,
+  tableName: string,
+) {
+  const schemaEntry = Object.entries(tablesBySchema).find(([schema]) =>
+    namesEqual(schema, schemaName),
+  );
+  return (
+    schemaEntry?.[1].find((table) => namesEqual(table.name, tableName)) || null
+  );
+}
+
+function addPostgresRowLocator(sql: string) {
+  return sql.replace(
+    /^(\s*select\s+)\*(\s+from\s+)/i,
+    `$1ctid::text as "${postgresRowLocatorColumn}", *$2`,
+  );
+}
+
+function unquoteIdentifier(identifier: string) {
+  if (identifier.startsWith('"') && identifier.endsWith('"')) {
+    return identifier.slice(1, -1).replace(/""/g, '"');
+  }
+  return identifier;
+}
+
+function namesEqual(left: string, right: string) {
+  return left.toLowerCase() === right.toLowerCase();
+}
+
+function isPostgresBaseTable(tableType: string) {
+  return tableType.trim().toUpperCase() === "BASE TABLE";
+}
+
+function qualifiedName(
+  driver: "postgres" | "mysql",
+  schema: string,
+  table: string,
+) {
+  return `${quoteIdentifier(driver, schema)}.${quoteIdentifier(driver, table)}`;
+}
+
+function quoteIdentifier(driver: "postgres" | "mysql", identifier: string) {
+  if (driver === "mysql") {
+    return `\`${identifier.split("`").join("``")}\``;
+  }
+  return `"${identifier.split('"').join('""')}"`;
 }
 
 function connectionTooltip(model: ReturnType<typeof useDataPanelState>) {

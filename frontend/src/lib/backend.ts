@@ -52,7 +52,8 @@ const defaultSettings: AppSettings = {
   confirmDestructiveSql: true,
   sidebarWidth: 304,
   inspectorWidth: 360,
-  autoRefreshMetadata: true
+  autoRefreshMetadata: true,
+  chatResponsePrompt: ""
 };
 
 const mockAICredentials: Record<string, AICredentialStatus> = {};
@@ -343,12 +344,16 @@ export const queryService = {
     if (!isWailsRuntime()) {
       return {
         columns: [
-          { name: "QUERY PLAN", dataType: "text" },
-          { name: "cost", dataType: "text" }
+          { name: "QUERY PLAN", dataType: "text" }
         ],
         rows: [
-          ["Seq Scan on users", "0.00..18.20"],
-          ["Filter: active = true", ""]
+          ["Hash Join  (cost=128.43..163.94 rows=554 width=283)"],
+          ["  Hash Cond: (s.owner_id = o.id)"],
+          ["  ->  Seq Scan on subscriptions s  (cost=0.00..33.99 rows=581 width=283)"],
+          ["        Filter: is_active"],
+          ["  ->  Hash  (cost=97.75..97.75 rows=2454 width=16)"],
+          ["        ->  Seq Scan on organizations o  (cost=0.00..97.75 rows=2454 width=16)"],
+          ["              Filter: is_active"]
         ],
         affectedRows: 0,
         durationMs: 9,

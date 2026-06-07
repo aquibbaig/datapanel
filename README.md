@@ -52,6 +52,14 @@ Build a production app:
 wails build
 ```
 
+Build a macOS `.app` bundle:
+
+```bash
+./scripts/build-mac-app.sh
+```
+
+The app bundle is written to `build/bin/datapanel.app`.
+
 ## Project Layout
 
 - `internal/app`: Wails lifecycle and app paths.

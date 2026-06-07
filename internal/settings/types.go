@@ -8,6 +8,7 @@ type AppSettings struct {
 	SidebarWidth          int    `json:"sidebarWidth"`
 	InspectorWidth        int    `json:"inspectorWidth"`
 	AutoRefreshMetadata   bool   `json:"autoRefreshMetadata"`
+	ChatResponsePrompt    string `json:"chatResponsePrompt"`
 }
 
 func DefaultSettings() AppSettings {
@@ -19,5 +20,6 @@ func DefaultSettings() AppSettings {
 		SidebarWidth:          304,
 		InspectorWidth:        360,
 		AutoRefreshMetadata:   true,
+		ChatResponsePrompt:    "",
 	}
 }

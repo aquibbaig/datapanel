@@ -21,6 +21,7 @@ type GenerateRequest struct {
 	Prompt        string `json:"prompt"`
 	SchemaContext string `json:"schemaContext"`
 	Dialect       string `json:"dialect"`
+	ResponseStyle string `json:"responseStyle"`
 }
 
 type GenerateResponse struct {

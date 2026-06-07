@@ -140,7 +140,7 @@ func (s *Service) GenerateSQL(input GenerateRequest) (GenerateResponse, error) {
 		return GenerateResponse{}, apperrors.New(apperrors.CodeSecurity, "AI provider is not connected")
 	}
 
-	system := systemPrompt(input.Dialect)
+	system := systemPrompt(input.Dialect, input.ResponseStyle)
 	user := strings.Join([]string{
 		"Database schema context:",
 		strings.TrimSpace(input.SchemaContext),
@@ -313,12 +313,12 @@ func keyHint(token string) string {
 	return "...." + trimmed[len(trimmed)-4:]
 }
 
-func systemPrompt(dialect string) string {
+func systemPrompt(dialect string, responseStyle string) string {
 	normalizedDialect := "Postgres"
 	if strings.EqualFold(strings.TrimSpace(dialect), "mysql") {
 		normalizedDialect = "MySQL"
 	}
-	return strings.Join([]string{
+	lines := []string{
 		"You are Datapanel's database assistant.",
 		"Return a JSON object with fields: answer, sql, destructiveRisk, assumptions.",
 		`Use an empty string for "sql" when no SQL is needed.`,
@@ -328,7 +328,12 @@ func systemPrompt(dialect string) string {
 		"Prefer read-only SELECT queries unless the user explicitly asks to modify data.",
 		"Mark destructiveRisk true for INSERT, UPDATE, DELETE, ALTER, DROP, TRUNCATE, or other data-changing SQL.",
 		"The SQL dialect is " + normalizedDialect + ".",
-	}, "\n")
+	}
+	if style := strings.TrimSpace(responseStyle); style != "" {
+		lines = append(lines, "Response style for the answer field: "+style)
+		lines = append(lines, "Apply the response style only to the explanatory answer, not to SQL syntax.")
+	}
+	return strings.Join(lines, "\n")
 }
 
 func parseGenerateResponse(content string) (GenerateResponse, error) {

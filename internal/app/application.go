@@ -39,6 +39,8 @@ type Application struct {
 	ctx    context.Context
 }
 
+const OpenSettingsEvent = "datapanel:open-settings"
+
 func NewApplication(paths Paths, closer PoolCloser) *Application {
 	return &Application{paths: paths, closer: closer}
 }
@@ -68,6 +70,36 @@ func (a *Application) Startup(ctx context.Context) {
 func (a *Application) Shutdown(ctx context.Context) {
 	_ = ctx
 	a.closer.CloseAll()
+}
+
+func (a *Application) OpenSettings() {
+	a.mu.RLock()
+	ctx := a.ctx
+	a.mu.RUnlock()
+	if ctx == nil {
+		return
+	}
+	wailsruntime.EventsEmit(ctx, OpenSettingsEvent)
+}
+
+func (a *Application) Hide() {
+	a.mu.RLock()
+	ctx := a.ctx
+	a.mu.RUnlock()
+	if ctx == nil {
+		return
+	}
+	wailsruntime.Hide(ctx)
+}
+
+func (a *Application) Quit() {
+	a.mu.RLock()
+	ctx := a.ctx
+	a.mu.RUnlock()
+	if ctx == nil {
+		return
+	}
+	wailsruntime.Quit(ctx)
 }
 
 type AICallbackEvent struct {

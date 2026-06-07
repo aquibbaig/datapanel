@@ -53,7 +53,7 @@ export function SchemaBrowser({
   );
 
   return (
-    <aside className="flex min-w-0 flex-col bg-surface-800 w-full pt-[11px] ml-2">
+    <aside className="ml-2 flex w-full min-w-0 flex-col bg-surface-800 pt-[11px]">
       <div className="flex h-[54px] items-center justify-between border-b border-line px-4">
         <div className="min-w-0">
           <p className="mb-0.5 text-[11px] font-semibold uppercase text-muted">
@@ -80,13 +80,13 @@ export function SchemaBrowser({
             <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium text-zinc-200">
               <ChevronDown
                 size={14}
-                className="transition group-open:rotate-0 -rotate-90"
+                className="-rotate-90 transition group-open:rotate-0"
               />
               <span
                 className="h-2 w-2 rounded-full"
                 style={{ background: activeProfile.color }}
               />
-              Connection
+              Connection details
             </summary>
             <div className="mt-2 grid gap-2 rounded-ui border border-line bg-surface-850 p-2 text-xs text-zinc-400">
               <div className="flex items-center justify-between gap-2">

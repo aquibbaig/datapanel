@@ -39,6 +39,7 @@ import type {
   AIChatThread,
   AICredentialStatus,
   AIGenerateResponse,
+  AppSettings,
   ConnectionProfile,
   SchemaSummary,
   TableDetails,
@@ -56,6 +57,7 @@ interface Props {
   schemas: SchemaSummary[];
   tablesBySchema: Record<string, TableSummary[]>;
   tableDetails: TableDetails | null;
+  settings: AppSettings | null;
   onExecuteSQL(sql: string): Promise<unknown>;
   onLoadSQL(sql: string): void;
 }
@@ -144,6 +146,7 @@ const contextUsageByModel: Record<string, number> = {
 export function AiAssistantPanel({
   activeProfile,
   schemas,
+  settings,
   tablesBySchema,
   tableDetails,
   onExecuteSQL,
@@ -589,6 +592,7 @@ export function AiAssistantPanel({
         model: selectedModel,
         prompt,
         dialect: activeProfile?.driver || "postgres",
+        responseStyle: settings?.chatResponsePrompt || "",
         schemaContext,
       });
       const assistantMessage = {

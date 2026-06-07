@@ -181,6 +181,22 @@ func (a *Adapter) Execute(ctx context.Context, request query.QueryRequest) (quer
 	}
 
 	started := time.Now()
+	if !returnsRows(request.SQL) {
+		tag, err := pool.Exec(ctx, request.SQL)
+		if err != nil {
+			if ctx.Err() != nil {
+				return query.QueryResult{}, apperrors.New(apperrors.CodeCanceled, "query was canceled")
+			}
+			return query.QueryResult{}, apperrors.New(apperrors.CodeDatabase, sanitizeDatabaseError(err))
+		}
+		return query.QueryResult{
+			Columns:      []query.QueryColumn{},
+			Rows:         [][]any{},
+			AffectedRows: tag.RowsAffected(),
+			DurationMS:   time.Since(started).Milliseconds(),
+		}, nil
+	}
+
 	rows, err := pool.Query(ctx, request.SQL)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -242,21 +258,37 @@ func (a *Adapter) pool(connectionID string) (*pgxpool.Pool, error) {
 }
 
 func connectionString(profile connections.ConnectionProfile, password string) string {
-	host := profile.Host
-	if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
-		host = "[" + host + "]"
-	}
+	host, port := connectionEndpoint(profile.Host, profile.Port)
 
 	u := url.URL{
 		Scheme: "postgres",
 		User:   url.UserPassword(profile.Username, password),
-		Host:   net.JoinHostPort(host, strconv.Itoa(profile.Port)),
+		Host:   net.JoinHostPort(host, strconv.Itoa(port)),
 		Path:   profile.Database,
 	}
 	q := u.Query()
 	q.Set("sslmode", profile.SSLMode)
 	u.RawQuery = q.Encode()
 	return u.String()
+}
+
+func connectionEndpoint(host string, fallbackPort int) (string, int) {
+	trimmedHost := strings.TrimSpace(host)
+	parsedHost, parsedPort, err := net.SplitHostPort(trimmedHost)
+	if err == nil {
+		port, portErr := strconv.Atoi(parsedPort)
+		if portErr == nil {
+			return normalizeConnectionHost(parsedHost), port
+		}
+	}
+	return normalizeConnectionHost(trimmedHost), fallbackPort
+}
+
+func normalizeConnectionHost(host string) string {
+	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		return strings.TrimSuffix(strings.TrimPrefix(host, "["), "]")
+	}
+	return host
 }
 
 func loadColumns(ctx context.Context, pool *pgxpool.Pool, schema string, table string) ([]ColumnSummary, error) {
@@ -382,6 +414,8 @@ func normalizeRow(values []any) []any {
 		switch typed := value.(type) {
 		case nil:
 			row[index] = nil
+		case [16]byte:
+			row[index] = formatUUIDBytes(typed)
 		case []byte:
 			row[index] = string(typed)
 		case time.Time:
@@ -391,6 +425,55 @@ func normalizeRow(values []any) []any {
 		}
 	}
 	return row
+}
+
+func formatUUIDBytes(value [16]byte) string {
+	return fmt.Sprintf("%x-%x-%x-%x-%x", value[0:4], value[4:6], value[6:8], value[8:10], value[10:16])
+}
+
+func returnsRows(sql string) bool {
+	keyword := firstKeyword(sql)
+	switch keyword {
+	case "select", "show", "explain", "with", "values":
+		return true
+	case "insert", "update", "delete":
+		return containsKeyword(sql, "returning")
+	default:
+		return false
+	}
+}
+
+func containsKeyword(sql string, keyword string) bool {
+	for _, field := range strings.Fields(strings.ToLower(sql)) {
+		if strings.Trim(field, ";") == keyword {
+			return true
+		}
+	}
+	return false
+}
+
+func firstKeyword(sql string) string {
+	trimmed := strings.TrimSpace(sql)
+	for strings.HasPrefix(trimmed, "--") || strings.HasPrefix(trimmed, "/*") {
+		if strings.HasPrefix(trimmed, "--") {
+			lineEnd := strings.IndexByte(trimmed, '\n')
+			if lineEnd == -1 {
+				return ""
+			}
+			trimmed = strings.TrimSpace(trimmed[lineEnd+1:])
+			continue
+		}
+		blockEnd := strings.Index(trimmed, "*/")
+		if blockEnd == -1 {
+			return ""
+		}
+		trimmed = strings.TrimSpace(trimmed[blockEnd+2:])
+	}
+	fields := strings.Fields(trimmed)
+	if len(fields) == 0 {
+		return ""
+	}
+	return strings.ToLower(fields[0])
 }
 
 func sanitizeDatabaseError(err error) string {

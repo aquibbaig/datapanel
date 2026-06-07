@@ -28,6 +28,7 @@ export namespace ai {
 	    prompt: string;
 	    schemaContext: string;
 	    dialect: string;
+	    responseStyle: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new GenerateRequest(source);
@@ -40,6 +41,7 @@ export namespace ai {
 	        this.prompt = source["prompt"];
 	        this.schemaContext = source["schemaContext"];
 	        this.dialect = source["dialect"];
+	        this.responseStyle = source["responseStyle"];
 	    }
 	}
 	export class GenerateResponse {
@@ -743,6 +745,7 @@ export namespace settings {
 	    sidebarWidth: number;
 	    inspectorWidth: number;
 	    autoRefreshMetadata: boolean;
+	    chatResponsePrompt: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppSettings(source);
@@ -757,6 +760,7 @@ export namespace settings {
 	        this.sidebarWidth = source["sidebarWidth"];
 	        this.inspectorWidth = source["inspectorWidth"];
 	        this.autoRefreshMetadata = source["autoRefreshMetadata"];
+	        this.chatResponsePrompt = source["chatResponsePrompt"];
 	    }
 	}
 

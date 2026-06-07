@@ -36,6 +36,8 @@ export function useDataPanelState() {
   const [selectedTable, setSelectedTable] = useState<TableSummary | null>(null);
   const [tableDetails, setTableDetails] = useState<TableDetails | null>(null);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
+  const [queryResultMode, setQueryResultMode] =
+    useState<"query" | "explain">("query");
   const [runningRequestId, setRunningRequestId] = useState<string>("");
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [status, setStatus] = useState<StatusMessage>({ tone: "neutral", text: "Ready" });
@@ -212,12 +214,13 @@ export function useDataPanelState() {
 
   const inspectTable = useCallback(
     async (table: TableSummary) => {
-      if (!activeConnectionId) return;
+      if (!activeConnectionId) return null;
       setSelectedTable(table);
       setTableDetails(null);
       try {
         const details = await schemaService.describe(activeConnectionId, table.schema, table.name);
         setTableDetails(details);
+        return details;
       } catch (error) {
         const message = errorMessage(error, "Could not load table metadata");
         setStatus({ tone: "danger", text: message });
@@ -257,9 +260,11 @@ export function useDataPanelState() {
       setStatus({ tone: "neutral", text: "Running query..." });
       notify("loading", "Running query", undefined, requestId);
       const started = performance.now();
+      const resultMode = isExplainSQL(sql) ? "explain" : "query";
       try {
         const result = await queryService.execute(request);
         setQueryResult(result);
+        setQueryResultMode(resultMode);
         if (result.error === "confirmation_required") {
           setStatus({ tone: "warning", text: "Confirmation required" });
           notify(
@@ -268,6 +273,8 @@ export function useDataPanelState() {
             "Review the destructive SQL warning before running.",
             requestId,
           );
+        } else if (result.error) {
+          throw new Error(result.error);
         } else {
           const message =
             toastOptions.successMessage ||
@@ -340,6 +347,10 @@ export function useDataPanelState() {
       try {
         const result = await queryService.explain(request);
         setQueryResult(result);
+        setQueryResultMode("explain");
+        if (result.error) {
+          throw new Error(result.error);
+        }
         const message = querySuccessMessage(result.rows.length, result.affectedRows, result.durationMs);
         setStatus({ tone: "success", text: message });
         notify("neutral", "Explain finished", message, requestId);
@@ -383,6 +394,47 @@ export function useDataPanelState() {
     [activeConnectionId, recordQueryHistory, settings]
   );
 
+  const commitSQL = useCallback(
+    async (sql: string, successMessage: string) => {
+      if (!activeConnectionId || !settings) {
+        setStatus({ tone: "warning", text: "Connect to a database before editing rows" });
+        notify("warning", "Connect to a database before editing rows");
+        return null;
+      }
+
+      const requestId = crypto.randomUUID();
+      const request: QueryRequest = {
+        requestId,
+        connectionId: activeConnectionId,
+        sql,
+        maxRows: settings.queryLimit,
+        timeoutSeconds: settings.queryTimeoutSeconds,
+        confirmDestructive: true,
+      };
+
+      setRunningRequestId(requestId);
+      setStatus({ tone: "neutral", text: "Saving changes..." });
+      notify("loading", "Saving changes", undefined, requestId);
+      try {
+        const result = await queryService.execute(request);
+        if (result.error) {
+          throw new Error(result.error);
+        }
+        setStatus({ tone: "success", text: successMessage });
+        notify("success", "Changes saved", successMessage, requestId);
+        return result;
+      } catch (error) {
+        const message = errorMessage(error, "Could not save changes");
+        setStatus({ tone: "danger", text: message });
+        notify("danger", "Could not save changes", message, requestId);
+        throw error;
+      } finally {
+        setRunningRequestId("");
+      }
+    },
+    [activeConnectionId, settings],
+  );
+
   const cancelQuery = useCallback(async () => {
     if (!runningRequestId) return;
     await queryService.cancel(runningRequestId);
@@ -406,6 +458,7 @@ export function useDataPanelState() {
     selectedTable,
     tableDetails,
     queryResult,
+    queryResultMode,
     queryHistory,
     runningRequestId,
     settings,
@@ -421,13 +474,30 @@ export function useDataPanelState() {
     inspectTable,
     runQuery,
     explainQuery,
+    commitSQL,
     cancelQuery,
     updateSettings
   };
 }
 
+function isExplainSQL(sql: string) {
+  return sql.trim().toLowerCase().startsWith("explain");
+}
+
 function errorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback;
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object") {
+    const shaped = error as { message?: unknown; error?: unknown };
+    if (typeof shaped.message === "string") return shaped.message;
+    if (typeof shaped.error === "string") return shaped.error;
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
 }
 
 function querySuccessMessage(rows: number, affectedRows: number, durationMs: number) {
