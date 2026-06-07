@@ -1,12 +1,10 @@
 import {
   Braces,
   Calendar,
-  Columns3,
   Database,
   Hash,
   KeyRound,
   Link2,
-  RefreshCw,
   Search,
   Table2,
   ToggleLeft,
@@ -50,11 +48,7 @@ export function SchemaBrowser({
 
   return (
     <aside className="flex min-h-0 w-full min-w-0 flex-1 flex-col bg-transparent">
-      <div className="flex h-12 items-center justify-between border-b border-line px-3">
-        <div className="flex items-center gap-2 text-sm font-semibold text-zinc-300">
-          <Columns3 size={14} />
-          Explorer
-        </div>
+      {/* <div className="flex h-12 items-center justify-between px-3">
         <Button
           className="text-zinc-500"
           size="icon"
@@ -64,7 +58,7 @@ export function SchemaBrowser({
         >
           <RefreshCw size={14} />
         </Button>
-      </div>
+      </div> */}
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto px-3 py-3">
         <label className="relative block">
@@ -75,7 +69,7 @@ export function SchemaBrowser({
           <input
             className="h-8 rounded-md border-white/[0.08] bg-white/[0.03] pl-8 pr-2 text-sm text-zinc-200 placeholder:text-zinc-600"
             disabled={!activeConnectionId}
-            placeholder="Filter explorer"
+            placeholder="Explorer..."
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
           />

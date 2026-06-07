@@ -1,3 +1,4 @@
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
   Check,
   ChevronDown,
@@ -8,7 +9,6 @@ import {
   RotateCcw,
   TableProperties,
 } from "lucide-react";
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/Button";
@@ -101,11 +101,11 @@ export function ResultsGrid({
     driver === "postgres" && rowLocatorIndex !== undefined;
   const editable = Boolean(
     result &&
-      selectedTable &&
-      tableDetails &&
-      tableDetails.type.toUpperCase().includes("TABLE") &&
-      (hasPrimaryKeyLocator || hasPostgresRowLocator) &&
-      onCommitSQL,
+    selectedTable &&
+    tableDetails &&
+    tableDetails.type.toUpperCase().includes("TABLE") &&
+    (hasPrimaryKeyLocator || hasPostgresRowLocator) &&
+    onCommitSQL,
   );
   const pendingChanges = useMemo(() => summarizeChanges(changes), [changes]);
   const showChangeReview = editable && pendingChanges.total > 0;
@@ -254,30 +254,30 @@ export function ResultsGrid({
             <span>{rows.length} rows</span>
             <span>{result.affectedRows} affected</span>
             <span>{result.durationMs}ms</span>
-            {editable ? (
-              <span>{pendingChanges.total} pending</span>
-            ) : null}
+            {editable ? <span>{pendingChanges.total} pending</span> : null}
             {result.truncated ? (
               <span className="text-yellow-200">truncated</span>
             ) : null}
           </div>
           <div className="flex items-center gap-1">
-            {editable ? (
+            {pendingChanges.total > 0 ? (
               <>
                 <Button
-                  disabled={pendingChanges.total === 0 || saving}
+                  aria-label="Discard changes"
+                  disabled={saving}
                   onClick={discardChanges}
                   size="icon"
-                  title="Discard changes"
+                  className="!h-5"
                 >
                   <RotateCcw size={13} />
                 </Button>
                 <Button
-                  disabled={pendingChanges.total === 0 || saving}
+                  aria-label="Save changes"
+                  disabled={saving}
                   onClick={() => void commitChanges()}
                   size="icon"
-                  title="Save changes"
                   variant="primary"
+                  className="!h-5"
                 >
                   <Check size={13} />
                 </Button>
@@ -616,7 +616,9 @@ function sqlValue(draft: CellDraft, column?: ColumnSummary) {
 }
 
 function sqlRowLocatorValue(value: unknown) {
-  return `'${String(value ?? "").split("'").join("''")}'::tid`;
+  return `'${String(value ?? "")
+    .split("'")
+    .join("''")}'::tid`;
 }
 
 function isNumericType(dataType: string) {

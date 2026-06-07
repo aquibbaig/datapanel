@@ -265,26 +265,26 @@ export function TableDataEditor({
               {pendingChanges.total} pending
             </span>
             <Button
+              aria-label="Reload rows"
               disabled={loading || committing}
               onClick={() => void loadRows()}
               size="icon"
-              title="Reload rows"
             >
               <RefreshCw size={14} />
             </Button>
             <Button
+              aria-label="Discard changes"
               disabled={pendingChanges.total === 0 || committing}
               onClick={discardChanges}
               size="icon"
-              title="Discard changes"
             >
               <RotateCcw size={14} />
             </Button>
             <Button
+              aria-label="Commit changes"
               disabled={!editable || pendingChanges.total === 0 || committing}
               onClick={() => void commitChanges()}
               size="icon"
-              title="Commit changes"
               variant="primary"
             >
               <Check size={14} />

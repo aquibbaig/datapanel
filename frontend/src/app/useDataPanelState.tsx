@@ -213,14 +213,20 @@ export function useDataPanelState() {
   }, [activeConnectionId]);
 
   const inspectTable = useCallback(
-    async (table: TableSummary) => {
+    async (table: TableSummary, options: { force?: boolean } = {}) => {
       if (!activeConnectionId) return null;
       if (
         selectedTable?.schema === table.schema &&
-        selectedTable.name === table.name &&
-        tableDetails
+        selectedTable.name === table.name
       ) {
-        return tableDetails;
+        if (options.force && tableDetails) return tableDetails;
+        if (options.force) {
+          setTableDetails(null);
+        } else {
+          setSelectedTable(null);
+          setTableDetails(null);
+          return null;
+        }
       }
       setSelectedTable(table);
       setTableDetails(null);

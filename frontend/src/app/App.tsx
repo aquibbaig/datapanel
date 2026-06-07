@@ -153,7 +153,7 @@ export function App() {
     table: Parameters<typeof model.inspectTable>[0],
   ) {
     const driver = model.activeProfile?.driver === "mysql" ? "mysql" : "postgres";
-    const detailsPromise = model.inspectTable(table).catch(() => null);
+    const detailsPromise = model.inspectTable(table, { force: true }).catch(() => null);
     const selectList =
       driver === "postgres" && isPostgresBaseTable(table.type)
         ? `ctid::text as "${postgresRowLocatorColumn}", *`
@@ -194,7 +194,7 @@ export function App() {
 
     if (editableTarget && !isExplainSQL(sql)) {
       editableTable = editableTarget;
-      editableDetailsPromise = model.inspectTable(editableTarget).catch(
+        editableDetailsPromise = model.inspectTable(editableTarget, { force: true }).catch(
         () => null,
       );
       if (driver === "postgres" && isPostgresBaseTable(editableTarget.type)) {

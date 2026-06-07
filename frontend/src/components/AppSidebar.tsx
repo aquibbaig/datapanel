@@ -55,8 +55,8 @@ export function AppSidebar({
   return (
     <aside
       className={cn(
-        "h-full shrink-0 overflow-hidden border-r border-line bg-surface-800 transition-[width] duration-150",
-        sidebar.open ? "w-[320px]" : "w-0 border-r-0",
+        "h-full shrink-0 overflow-hidden bg-surface-800 transition-[width] duration-150",
+        sidebar.open ? "w-[320px]" : "w-0",
       )}
     >
       {sidebar.open ? (
@@ -116,7 +116,7 @@ function WorkspaceSelector({
   );
 
   return (
-    <div className="flex shrink-0 items-center border-b border-line px-1 py-2">
+    <div className="flex shrink-0 items-center px-1 py-2">
       <DropdownMenu.Root onOpenChange={(open) => !open && setQuery("")}>
         <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-2 text-left transition">
           <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.04]">
