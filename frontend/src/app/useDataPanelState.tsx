@@ -215,6 +215,13 @@ export function useDataPanelState() {
   const inspectTable = useCallback(
     async (table: TableSummary) => {
       if (!activeConnectionId) return null;
+      if (
+        selectedTable?.schema === table.schema &&
+        selectedTable.name === table.name &&
+        tableDetails
+      ) {
+        return tableDetails;
+      }
       setSelectedTable(table);
       setTableDetails(null);
       try {
@@ -228,7 +235,7 @@ export function useDataPanelState() {
         throw error;
       }
     },
-    [activeConnectionId]
+    [activeConnectionId, selectedTable, tableDetails]
   );
 
   const recordQueryHistory = useCallback((item: QueryHistoryEntry) => {

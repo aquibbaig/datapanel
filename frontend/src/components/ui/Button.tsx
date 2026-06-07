@@ -13,15 +13,16 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
 const variants: Record<Variant, string> = {
   primary:
     "border-[#6f77df] bg-accent text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14)] hover:bg-[#7079df]",
-  secondary: "border-line bg-surface-700 text-zinc-200 hover:bg-[#28282c]",
+  secondary:
+    "border-white/[0.08] bg-white/[0.04] text-zinc-200 hover:bg-white/[0.07]",
   ghost:
-    "border-transparent bg-transparent text-zinc-500 hover:bg-surface-700 hover:text-zinc-200",
+    "border-transparent bg-transparent text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200",
   danger: "border-red-400/40 bg-red-500/15 text-red-100 hover:bg-red-500/25",
 };
 
 const sizes: Record<Size, string> = {
   default: "h-7 px-3",
-  icon: "h-7 w-7 px-0 !bg-surface-700 !rounded-full",
+  icon: "h-7 w-7 rounded-md px-0",
   tab: "h-[38px] px-4",
   row: "h-7 px-2",
 };

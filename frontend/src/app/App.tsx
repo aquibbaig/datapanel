@@ -5,6 +5,7 @@ import {
   Clock3,
   PanelRight,
   Search,
+  Settings,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Toaster } from "sonner";
@@ -360,18 +361,18 @@ export function App() {
           onAddConnection={openNewConnection}
           onConnect={connectProfile}
           onEditConnection={() => openEditConnection(model.activeProfile)}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onInspectTable={model.inspectTable}
           onRefresh={model.refreshMetadata}
-          onSelectTable={selectTableForEditing}
+          onRunTable={selectTableForEditing}
         />
 
         <SidebarInset
-          className={cn("grid grid-rows-[56px_minmax(0,1fr)_28px]")}
+          className={cn("grid grid-rows-[48px_minmax(0,1fr)_28px]")}
         >
-          <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-line px-4">
+          <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-white/[0.06] bg-[#101012] px-3">
             <div className="flex min-w-0 items-center gap-2">
               <SidebarTrigger className="-ml-1" />
-              <Separator orientation="vertical" className="mr-1" />
+              <Separator orientation="vertical" className="mr-1 bg-white/[0.06]" />
               <Breadcrumb>
                 <BreadcrumbList>
                   <BreadcrumbItem>
@@ -387,7 +388,7 @@ export function App() {
 
             <div className="flex min-w-0 items-center gap-2">
               <div
-                className="hidden h-7 w-[320px] cursor-pointer items-center gap-2 rounded-full border border-line bg-surface-850 px-2 text-sm text-muted transition hover:border-zinc-600 hover:text-zinc-300 lg:flex"
+                className="hidden h-7 w-[320px] cursor-pointer items-center gap-2 rounded-md border border-white/[0.08] bg-white/[0.03] px-2 text-sm text-muted transition hover:border-white/[0.14] hover:bg-white/[0.05] hover:text-zinc-300 lg:flex"
                 role="button"
                 tabIndex={0}
                 onClick={() => setCommandOpen(true)}
@@ -402,13 +403,21 @@ export function App() {
                 <span className="truncate">
                   Search tables, columns, queries
                 </span>
-                <kbd className="ml-auto h-5 flex flex-col justify-center items-center rounded-md border border-line bg-surface-700 px-1.5 py-0.5 text-[11px] text-zinc-300">
+                <kbd className="ml-auto flex h-5 flex-col items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5 text-[11px] text-zinc-300">
                   Cmd K
                 </kbd>
               </div>
               <Button
+                className="text-zinc-500"
+                size="icon"
+                onClick={() => setSettingsOpen(true)}
+                title="Settings"
+              >
+                <Settings size={14} />
+              </Button>
+              <Button
                 className={cn(
-                  rightPanel === "ai" && "bg-surface-700 text-zinc-200",
+                  rightPanel === "ai" && "bg-white/[0.07] text-zinc-200",
                 )}
                 size="icon"
                 onClick={() => toggleRightPanel("ai")}
@@ -418,7 +427,7 @@ export function App() {
               </Button>
               <Button
                 className={cn(
-                  rightPanel === "history" && "bg-surface-700 text-zinc-200",
+                  rightPanel === "history" && "bg-white/[0.07] text-zinc-200",
                 )}
                 size="icon"
                 onClick={() => toggleRightPanel("history")}
@@ -427,7 +436,7 @@ export function App() {
                 <Clock3 size={14} />
               </Button>
               <Button
-                className={cn(rightPanel && "bg-surface-700 text-zinc-200")}
+                className={cn(rightPanel && "bg-white/[0.07] text-zinc-200")}
                 size="icon"
                 onClick={toggleLastRightPanel}
                 title="Panels"
@@ -478,13 +487,13 @@ export function App() {
                 />
                 <section
                   className={cn(
-                    "grid min-h-0 overflow-hidden bg-surface-900",
+                    "grid min-h-0 overflow-hidden border-t border-white/[0.06] bg-[#0d0d0f]",
                     bottomPanelExpanded
                       ? "grid-rows-[44px_minmax(0,1fr)]"
                       : "grid-rows-[44px_0px]",
                   )}
                 >
-                  <div className="flex h-11 shrink-0 items-center justify-between border-b border-line px-2">
+                  <div className="flex h-11 shrink-0 items-center justify-between border-b border-white/[0.06] px-2">
                     <div className="flex items-center gap-1">
                       <Button
                         className="h-7"
@@ -558,7 +567,7 @@ export function App() {
 
             <aside
               className={cn(
-                "min-h-0 shrink-0 overflow-hidden border-l border-line bg-surface-900 transition-[width] duration-200 ease-out",
+                "min-h-0 shrink-0 overflow-hidden border-l border-white/[0.06] bg-[#101012] transition-[width] duration-200 ease-out",
                 rightPanel ? rightPanelWidth(rightPanel) : "w-0 border-l-0",
               )}
             >
@@ -581,7 +590,7 @@ export function App() {
             </aside>
           </section>
 
-          <footer className="flex items-center justify-between border-t border-line px-3 text-xs text-zinc-400">
+          <footer className="flex items-center justify-between border-t border-white/[0.06] bg-[#101012] px-3 text-xs text-zinc-400">
             <span className="group relative flex min-w-0 items-center gap-2">
               <span
                 className={cn(
@@ -594,7 +603,7 @@ export function App() {
                   ? model.activeProfile.name
                   : "No connection"}
               </span>
-              <span className="pointer-events-none absolute bottom-6 left-0 z-40 hidden min-w-[260px] rounded-ui border border-line bg-surface-800 p-3 text-left text-xs text-zinc-300 shadow-xl group-hover:block">
+              <span className="pointer-events-none absolute bottom-6 left-0 z-40 hidden min-w-[260px] rounded-ui border border-white/[0.08] bg-[#17171a] p-3 text-left text-xs text-zinc-300 shadow-xl group-hover:block">
                 {connectionTooltip(model)}
               </span>
             </span>
