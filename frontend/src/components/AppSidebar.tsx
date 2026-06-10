@@ -24,6 +24,7 @@ interface Props {
   activeProfile: ConnectionProfile | null;
   profiles: ConnectionProfile[];
   schemas: SchemaSummary[];
+  inspectingTable: TableSummary | null;
   selectedTable: TableSummary | null;
   tableDetails: TableDetails | null;
   tablesBySchema: Record<string, TableSummary[]>;
@@ -40,6 +41,7 @@ export function AppSidebar({
   activeProfile,
   profiles,
   schemas,
+  inspectingTable,
   selectedTable,
   tableDetails,
   tablesBySchema,
@@ -71,6 +73,7 @@ export function AppSidebar({
           />
           <SchemaBrowser
             activeConnectionId={activeConnectionId}
+            inspectingTable={inspectingTable}
             schemas={schemas}
             selectedTable={selectedTable}
             tableDetails={tableDetails}

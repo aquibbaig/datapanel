@@ -5,6 +5,7 @@ import {
   Hash,
   KeyRound,
   Link2,
+  Loader2,
   Search,
   Table2,
   ToggleLeft,
@@ -21,6 +22,7 @@ import type {
 
 interface Props {
   activeConnectionId: string;
+  inspectingTable: TableSummary | null;
   schemas: SchemaSummary[];
   tablesBySchema: Record<string, TableSummary[]>;
   selectedTable: TableSummary | null;
@@ -32,6 +34,7 @@ interface Props {
 
 export function SchemaBrowser({
   activeConnectionId,
+  inspectingTable,
   schemas,
   tablesBySchema,
   selectedTable,
@@ -93,6 +96,9 @@ export function SchemaBrowser({
                   const active =
                     selectedTable?.schema === table.schema &&
                     selectedTable.name === table.name;
+                  const loading =
+                    inspectingTable?.schema === table.schema &&
+                    inspectingTable.name === table.name;
                   return (
                     <div
                       className="flex flex-col gap-2"
@@ -116,6 +122,13 @@ export function SchemaBrowser({
                         <span className="text-[11px] text-muted">
                           {table.type.replace("BASE ", "")}
                         </span>
+                        {loading ? (
+                          <Loader2
+                            aria-label="Loading table metadata"
+                            className="animate-spin text-zinc-300"
+                            size={14}
+                          />
+                        ) : null}
                       </Button>
                       {active && tableDetails ? (
                         <ColumnList tableDetails={tableDetails} />

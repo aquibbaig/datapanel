@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, Info, Loader2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { appDataService, connectionService, queryService, schemaService, settingsService } from "../lib/backend";
@@ -21,6 +21,11 @@ export interface StatusMessage {
   text: string;
 }
 
+export interface WorkspaceSwitchState {
+  profileId: string;
+  name: string;
+}
+
 interface QueryToastOptions {
   successMessage?: string;
   successTitle?: string;
@@ -35,6 +40,7 @@ export function useDataPanelState() {
   const [tablesBySchema, setTablesBySchema] = useState<Record<string, TableSummary[]>>({});
   const [selectedTable, setSelectedTable] = useState<TableSummary | null>(null);
   const [tableDetails, setTableDetails] = useState<TableDetails | null>(null);
+  const [inspectingTable, setInspectingTable] = useState<TableSummary | null>(null);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [queryResultMode, setQueryResultMode] =
     useState<"query" | "explain">("query");
@@ -45,6 +51,9 @@ export function useDataPanelState() {
   const [queryHistory, setQueryHistory] = useState<QueryHistoryEntry[]>([]);
   const [busy, setBusy] = useState(false);
   const [initializing, setInitializing] = useState(true);
+  const [workspaceSwitching, setWorkspaceSwitching] =
+    useState<WorkspaceSwitchState | null>(null);
+  const inspectRequestRef = useRef(0);
 
   const activeProfile = useMemo(
     () => profiles.find((profile) => profile.id === activeConnectionId) || null,
@@ -154,6 +163,14 @@ export function useDataPanelState() {
   }, []);
 
   const connect = useCallback(async (profileId: string, password = "") => {
+    const switchingWorkspace = profileId !== activeConnectionId;
+    if (switchingWorkspace) {
+      const profile = profiles.find((item) => item.id === profileId);
+      setWorkspaceSwitching({
+        profileId,
+        name: profile?.name || "Workspace",
+      });
+    }
     setBusy(true);
     try {
       const result = await connectAndLoadMetadata(profileId, password);
@@ -167,8 +184,11 @@ export function useDataPanelState() {
       throw error;
     } finally {
       setBusy(false);
+      if (switchingWorkspace) {
+        setWorkspaceSwitching(null);
+      }
     }
-  }, [connectAndLoadMetadata, profiles]);
+  }, [activeConnectionId, connectAndLoadMetadata, profiles]);
 
   const disconnect = useCallback(async () => {
     if (!activeConnectionId) return;
@@ -223,22 +243,35 @@ export function useDataPanelState() {
         if (options.force) {
           setTableDetails(null);
         } else {
+          inspectRequestRef.current += 1;
           setSelectedTable(null);
           setTableDetails(null);
+          setInspectingTable(null);
           return null;
         }
       }
+      const requestId = inspectRequestRef.current + 1;
+      inspectRequestRef.current = requestId;
       setSelectedTable(table);
       setTableDetails(null);
+      setInspectingTable(table);
       try {
         const details = await schemaService.describe(activeConnectionId, table.schema, table.name);
-        setTableDetails(details);
+        if (inspectRequestRef.current === requestId) {
+          setTableDetails(details);
+        }
         return details;
       } catch (error) {
         const message = errorMessage(error, "Could not load table metadata");
-        setStatus({ tone: "danger", text: message });
-        notify("danger", "Could not load table metadata", message);
+        if (inspectRequestRef.current === requestId) {
+          setStatus({ tone: "danger", text: message });
+          notify("danger", "Could not load table metadata", message);
+        }
         throw error;
+      } finally {
+        if (inspectRequestRef.current === requestId) {
+          setInspectingTable(null);
+        }
       }
     },
     [activeConnectionId, selectedTable, tableDetails]
@@ -470,6 +503,7 @@ export function useDataPanelState() {
     tablesBySchema,
     selectedTable,
     tableDetails,
+    inspectingTable,
     queryResult,
     queryResultMode,
     queryHistory,
@@ -479,6 +513,7 @@ export function useDataPanelState() {
     connectionHealth,
     busy,
     initializing,
+    workspaceSwitching,
     saveConnection,
     testConnection,
     connect,

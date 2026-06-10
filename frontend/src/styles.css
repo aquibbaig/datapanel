@@ -98,6 +98,70 @@ td {
   animation: datapanel-chat-cursor-blink 0.9s steps(1, end) infinite;
 }
 
+@keyframes datapanel-workspace-sweep {
+  0% {
+    transform: translateX(-120%);
+    opacity: 0;
+  }
+
+  18%,
+  72% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateX(330%);
+    opacity: 0;
+  }
+}
+
+@keyframes datapanel-workspace-progress {
+  0% {
+    transform: translateX(-120%) scaleX(0.35);
+  }
+
+  48% {
+    transform: translateX(125%) scaleX(1);
+  }
+
+  100% {
+    transform: translateX(360%) scaleX(0.45);
+  }
+}
+
+@keyframes datapanel-workspace-panel {
+  0% {
+    transform: translateY(6px);
+    opacity: 0;
+  }
+
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.datapanel-workspace-sweep {
+  animation: datapanel-workspace-sweep 1.15s ease-in-out infinite;
+}
+
+.datapanel-workspace-progress {
+  animation: datapanel-workspace-progress 1s ease-in-out infinite;
+  transform-origin: left center;
+}
+
+.datapanel-workspace-panel {
+  animation: datapanel-workspace-panel 0.18s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .datapanel-workspace-sweep,
+  .datapanel-workspace-progress,
+  .datapanel-workspace-panel {
+    animation: none;
+  }
+}
+
 .cm-tooltip.cm-tooltip-autocomplete {
   z-index: 1000;
   max-height: 320px;

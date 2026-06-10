@@ -35,7 +35,11 @@ import type { ConnectionProfile, TableDetails, TableSummary } from "../lib/types
 import { CommandPalette } from "./CommandPalette";
 import { RightActionPanel, type RightPanel } from "./RightActionPanel";
 import { useDataPanelState } from "./useDataPanelState";
-import { EmptyWorkspace, WorkspaceLoader } from "./WorkspaceStates";
+import {
+  EmptyWorkspace,
+  WorkspaceLoader,
+  WorkspaceSwitchOverlay,
+} from "./WorkspaceStates";
 
 const rightPanelStorageKey = "datapanel.rightPanel";
 const multiQueryWorkspacesEnabled = true;
@@ -354,6 +358,7 @@ export function App() {
           activeConnectionId={model.activeConnectionId}
           activeProfile={model.activeProfile}
           profiles={model.profiles}
+          inspectingTable={model.inspectingTable}
           schemas={model.schemas}
           selectedTable={model.selectedTable}
           tableDetails={model.tableDetails}
@@ -641,6 +646,11 @@ export function App() {
           />
         </Modal>
       </SidebarProvider>
+      {model.workspaceSwitching ? (
+        <WorkspaceSwitchOverlay
+          workspaceName={model.workspaceSwitching.name}
+        />
+      ) : null}
     </>
   );
 }
