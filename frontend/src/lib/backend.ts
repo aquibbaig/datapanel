@@ -282,6 +282,10 @@ export const schemaService = {
     if (!isWailsRuntime()) return [{ name: "public" }, { name: "analytics" }];
     return SchemaBindings.ListSchemas(connectionId);
   },
+  async refresh(connectionId: string): Promise<SchemaSummary[]> {
+    if (!isWailsRuntime()) return [{ name: "public" }, { name: "analytics" }];
+    return SchemaBindings.RefreshMetadata(connectionId);
+  },
   async tables(connectionId: string, schema: string): Promise<TableSummary[]> {
     if (!isWailsRuntime()) {
       return [

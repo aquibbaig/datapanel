@@ -1,4 +1,6 @@
-import { SlidersHorizontal } from "lucide-react";
+import { RotateCcw, Save, SlidersHorizontal } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Button } from "../../components/ui/Button";
 import type { AppSettings } from "../../lib/types";
 
 interface Props {
@@ -7,22 +9,77 @@ interface Props {
 }
 
 export function SettingsPanel({ settings, onUpdate }: Props) {
-  if (!settings) {
+  const [draft, setDraft] = useState<AppSettings | null>(settings);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  useEffect(() => {
+    setDraft(settings);
+    setSaveError("");
+  }, [settings]);
+
+  const dirty = useMemo(() => {
+    if (!settings || !draft) return false;
+    return JSON.stringify(settings) !== JSON.stringify(draft);
+  }, [draft, settings]);
+
+  if (!settings || !draft) {
     return <p className="text-sm text-muted">Loading settings...</p>;
+  }
+
+  async function saveSettings() {
+    if (!draft || !dirty) return;
+    setSaving(true);
+    setSaveError("");
+    try {
+      await onUpdate(draft);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Could not save settings");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <section className="flex flex-col gap-4">
-      <div className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
-        <SlidersHorizontal size={14} />
-        Preferences
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-zinc-200">
+          <SlidersHorizontal size={14} />
+          Preferences
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            disabled={!dirty || saving}
+            size="icon"
+            title="Reset unsaved changes"
+            onClick={() => {
+              setDraft(settings);
+              setSaveError("");
+            }}
+          >
+            <RotateCcw size={14} />
+          </Button>
+          <Button
+            disabled={!dirty || saving}
+            variant="primary"
+            onClick={() => void saveSettings()}
+          >
+            <Save size={14} />
+            {saving ? "Saving..." : "Save"}
+          </Button>
+        </div>
       </div>
       <div className="flex flex-col gap-2">
         <label className="grid grid-cols-[18px_minmax(0,1fr)] items-center gap-2 text-sm text-zinc-300">
           <input
             type="checkbox"
-            checked={settings.confirmDestructiveSql}
-            onChange={(event) => void onUpdate({ ...settings, confirmDestructiveSql: event.target.checked })}
+            checked={draft.confirmDestructiveSql}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                confirmDestructiveSql: event.target.checked,
+              })
+            }
           />
           <span>Warn before destructive SQL</span>
         </label>
@@ -31,8 +88,10 @@ export function SettingsPanel({ settings, onUpdate }: Props) {
           <input
             type="number"
             min={1}
-            value={settings.queryLimit}
-            onChange={(event) => void onUpdate({ ...settings, queryLimit: Number(event.target.value) })}
+            value={draft.queryLimit}
+            onChange={(event) =>
+              setDraft({ ...draft, queryLimit: Number(event.target.value) })
+            }
           />
         </label>
         <label className="grid gap-2">
@@ -40,15 +99,22 @@ export function SettingsPanel({ settings, onUpdate }: Props) {
           <input
             type="number"
             min={1}
-            value={settings.queryTimeoutSeconds}
-            onChange={(event) => void onUpdate({ ...settings, queryTimeoutSeconds: Number(event.target.value) })}
+            value={draft.queryTimeoutSeconds}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                queryTimeoutSeconds: Number(event.target.value),
+              })
+            }
           />
         </label>
         <label className="grid grid-cols-[18px_minmax(0,1fr)] items-center gap-2 text-sm text-zinc-300">
           <input
             type="checkbox"
-            checked={settings.autoRefreshMetadata}
-            onChange={(event) => void onUpdate({ ...settings, autoRefreshMetadata: event.target.checked })}
+            checked={draft.autoRefreshMetadata}
+            onChange={(event) =>
+              setDraft({ ...draft, autoRefreshMetadata: event.target.checked })
+            }
           />
           <span>Refresh metadata after connect</span>
         </label>
@@ -57,15 +123,22 @@ export function SettingsPanel({ settings, onUpdate }: Props) {
           <textarea
             className="min-h-20 rounded-ui p-2 text-sm"
             placeholder="Talk to me like Keanu Reeves"
-            value={settings.chatResponsePrompt}
+            value={draft.chatResponsePrompt}
             onChange={(event) =>
-              void onUpdate({
-                ...settings,
+              setDraft({
+                ...draft,
                 chatResponsePrompt: event.target.value,
               })
             }
           />
         </label>
+        {saveError ? (
+          <p className="text-xs leading-5 text-red-300">{saveError}</p>
+        ) : dirty ? (
+          <p className="text-xs leading-5 text-muted">
+            Settings have unsaved changes.
+          </p>
+        ) : null}
       </div>
     </section>
   );

@@ -1419,8 +1419,10 @@ async function buildSchemaContext({
     `Database: ${activeProfile.database}`,
     "",
     "Schema context rules:",
-    "- Column lists below are authoritative. Do not invent columns.",
-    "- If a requested join key is not listed, choose a listed foreign key or state the missing relationship.",
+    "- Only generate SQL against tables that include a Columns block below.",
+    "- Column lists below are authoritative. Every SELECT, WHERE, GROUP BY, ORDER BY, and JOIN column must appear in that table's Columns block.",
+    "- If a needed table lacks a Columns block, return an empty sql string and explain that column metadata is not loaded for that table.",
+    "- If a requested column, metric, or join key is not listed, return an empty sql string and state the missing schema item instead of guessing.",
     "- Prefer listed FOREIGN KEY constraints for joins.",
     "",
     "Schemas and tables:",
@@ -1435,7 +1437,11 @@ async function buildSchemaContext({
       lines.push(
         `  - ${table.schema}.${table.name} (${table.type}, estimated rows: ${table.rowEstimate})`,
       );
-      if (details) appendTableDetails(lines, details, "    ");
+      if (details) {
+        appendTableDetails(lines, details, "    ");
+      } else {
+        lines.push("    Columns: not loaded. Do not generate SQL against this table.");
+      }
     }
   }
 
@@ -1451,7 +1457,7 @@ async function buildSchemaContext({
   return lines.join("\n");
 }
 
-const maxDetailedTablesInSchemaContext = 40;
+const maxDetailedTablesInSchemaContext = 120;
 
 function flattenTables(
   schemas: SchemaSummary[],

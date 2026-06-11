@@ -33,6 +33,10 @@ interface QueryToastOptions {
   historyMode?: "query" | "explain";
 }
 
+interface MetadataLoadOptions {
+  refresh?: boolean;
+}
+
 export function useDataPanelState() {
   const [profiles, setProfiles] = useState<ConnectionProfile[]>([]);
   const [activeConnectionId, setActiveConnectionId] = useState<string>("");
@@ -60,11 +64,36 @@ export function useDataPanelState() {
     [activeConnectionId, profiles]
   );
 
-  const connectAndLoadMetadata = useCallback(async (profileId: string, password = "") => {
+  const loadMetadata = useCallback(async (profileId: string, options: MetadataLoadOptions = {}) => {
+    const nextSchemas = options.refresh
+      ? await schemaService.refresh(profileId)
+      : await schemaService.schemas(profileId);
+    setSchemas(nextSchemas);
+    const tableEntries = await Promise.all(
+      nextSchemas.map(async (schema) => [schema.name, await schemaService.tables(profileId, schema.name)] as const)
+    );
+    const nextTablesBySchema = Object.fromEntries(tableEntries);
+    setTablesBySchema(nextTablesBySchema);
+    return { schemas: nextSchemas, tablesBySchema: nextTablesBySchema };
+  }, []);
+
+  const clearSelectedTable = useCallback(() => {
+    inspectRequestRef.current += 1;
+    setSelectedTable(null);
+    setTableDetails(null);
+    setInspectingTable(null);
+  }, []);
+
+  const connectAndLoadMetadata = useCallback(async (
+    profileId: string,
+    password = "",
+    options: MetadataLoadOptions = { refresh: true },
+  ) => {
     const started = performance.now();
     const result = await connectionService.connect({ profileId, password });
     const now = new Date().toISOString();
     setActiveConnectionId(profileId);
+    clearSelectedTable();
     setStatus({ tone: "success", text: result.message });
     setConnectionHealth({
       connected: true,
@@ -72,14 +101,9 @@ export function useDataPanelState() {
       lastPingAt: now,
       connectedAt: now,
     });
-    const nextSchemas = await schemaService.schemas(profileId);
-    setSchemas(nextSchemas);
-    const tableEntries = await Promise.all(
-      nextSchemas.map(async (schema) => [schema.name, await schemaService.tables(profileId, schema.name)] as const)
-    );
-    setTablesBySchema(Object.fromEntries(tableEntries));
+    await loadMetadata(profileId, options);
     return result;
-  }, []);
+  }, [clearSelectedTable, loadMetadata]);
 
   const loadProfiles = useCallback(async () => {
     const nextProfiles = await connectionService.list();
@@ -89,11 +113,19 @@ export function useDataPanelState() {
   }, []);
 
   useEffect(() => {
-    void Promise.all([loadProfiles(), settingsService.get().then(setSettings)])
+    void Promise.all([
+      loadProfiles(),
+      settingsService.get().then((nextSettings) => {
+        setSettings(nextSettings);
+        return nextSettings;
+      }),
+    ])
       .then(async ([nextProfiles]) => {
         const firstProfileId = nextProfiles[0]?.id;
         if (firstProfileId) {
-          await connectAndLoadMetadata(firstProfileId);
+          await connectAndLoadMetadata(firstProfileId, "", {
+            refresh: true,
+          });
         }
       })
       .catch((error: unknown) => {
@@ -173,7 +205,9 @@ export function useDataPanelState() {
     }
     setBusy(true);
     try {
-      const result = await connectAndLoadMetadata(profileId, password);
+      const result = await connectAndLoadMetadata(profileId, password, {
+        refresh: settings?.autoRefreshMetadata ?? true,
+      });
       const profile = profiles.find((item) => item.id === profileId);
       notify("success", "Connected", profile?.name || result.message);
     } catch (error) {
@@ -188,7 +222,7 @@ export function useDataPanelState() {
         setWorkspaceSwitching(null);
       }
     }
-  }, [activeConnectionId, connectAndLoadMetadata, profiles]);
+  }, [activeConnectionId, connectAndLoadMetadata, profiles, settings?.autoRefreshMetadata]);
 
   const disconnect = useCallback(async () => {
     if (!activeConnectionId) return;
@@ -208,12 +242,8 @@ export function useDataPanelState() {
     setBusy(true);
     try {
       const started = performance.now();
-      const nextSchemas = await schemaService.schemas(activeConnectionId);
-      setSchemas(nextSchemas);
-      const tableEntries = await Promise.all(
-        nextSchemas.map(async (schema) => [schema.name, await schemaService.tables(activeConnectionId, schema.name)] as const)
-      );
-      setTablesBySchema(Object.fromEntries(tableEntries));
+      clearSelectedTable();
+      await loadMetadata(activeConnectionId, { refresh: true });
       setConnectionHealth((current) => ({
         ...current,
         connected: true,
@@ -230,7 +260,7 @@ export function useDataPanelState() {
     } finally {
       setBusy(false);
     }
-  }, [activeConnectionId]);
+  }, [activeConnectionId, clearSelectedTable, loadMetadata]);
 
   const inspectTable = useCallback(
     async (table: TableSummary, options: { force?: boolean } = {}) => {
