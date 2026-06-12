@@ -344,7 +344,7 @@ export const queryService = {
         truncated: false
       };
     }
-    return QueryBindings.ExecuteQuery(request);
+    return normalizeQueryResult(await QueryBindings.ExecuteQuery(request));
   },
   async explain(request: QueryRequest): Promise<QueryResult> {
     if (!isWailsRuntime()) {
@@ -368,7 +368,7 @@ export const queryService = {
         truncated: false
       };
     }
-    return QueryBindings.ExplainQuery(request);
+    return normalizeQueryResult(await QueryBindings.ExplainQuery(request));
   },
   async cancel(requestId: string): Promise<void> {
     if (!isWailsRuntime()) return;
@@ -379,6 +379,15 @@ export const queryService = {
     return QueryBindings.GetQueryHistory();
   }
 };
+
+function normalizeQueryResult(result: QueryResult): QueryResult {
+  return {
+    ...result,
+    columns: Array.isArray(result.columns) ? result.columns : [],
+    rows: Array.isArray(result.rows) ? result.rows.filter(Array.isArray) : [],
+    notices: Array.isArray(result.notices) ? result.notices : [],
+  };
+}
 
 export const settingsService = {
   async get(): Promise<AppSettings> {

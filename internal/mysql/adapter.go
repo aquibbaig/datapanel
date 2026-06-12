@@ -222,10 +222,8 @@ func (a *Adapter) Execute(ctx context.Context, request query.QueryRequest) (quer
 		limit = 500
 	}
 	data := make([][]any, 0)
+	truncated := false
 	for rows.Next() {
-		if len(data) >= limit {
-			break
-		}
 		values := make([]any, len(names))
 		destinations := make([]any, len(names))
 		for index := range values {
@@ -233,6 +231,10 @@ func (a *Adapter) Execute(ctx context.Context, request query.QueryRequest) (quer
 		}
 		if err := rows.Scan(destinations...); err != nil {
 			return query.QueryResult{}, apperrors.New(apperrors.CodeDatabase, "could not read query row")
+		}
+		if len(data) >= limit {
+			truncated = true
+			break
 		}
 		data = append(data, normalizeRow(values))
 	}
@@ -247,7 +249,7 @@ func (a *Adapter) Execute(ctx context.Context, request query.QueryRequest) (quer
 		Columns:    columns,
 		Rows:       data,
 		DurationMS: time.Since(started).Milliseconds(),
-		Truncated:  len(data) >= limit,
+		Truncated:  truncated,
 	}, nil
 }
 
