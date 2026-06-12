@@ -766,3 +766,88 @@ export namespace settings {
 
 }
 
+export namespace updater {
+	
+	export class InstallUpdateRequest {
+	    assetName: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new InstallUpdateRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.assetName = source["assetName"];
+	    }
+	}
+	export class InstallUpdateResult {
+	    restarting: boolean;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new InstallUpdateResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.restarting = source["restarting"];
+	        this.message = source["message"];
+	    }
+	}
+	export class ReleaseState {
+	    currentVersion: string;
+	    currentReleaseHash: string;
+	    lastCheckedAt: string;
+	    lastInstalledAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ReleaseState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.currentVersion = source["currentVersion"];
+	        this.currentReleaseHash = source["currentReleaseHash"];
+	        this.lastCheckedAt = source["lastCheckedAt"];
+	        this.lastInstalledAt = source["lastInstalledAt"];
+	    }
+	}
+	export class UpdateCheckResult {
+	    currentVersion: string;
+	    currentReleaseHash: string;
+	    latestVersion: string;
+	    latestReleaseHash: string;
+	    releaseName: string;
+	    releaseUrl: string;
+	    publishedAt: string;
+	    assetName: string;
+	    assetSize: number;
+	    assetDigest: string;
+	    updateAvailable: boolean;
+	    canInstall: boolean;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new UpdateCheckResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.currentVersion = source["currentVersion"];
+	        this.currentReleaseHash = source["currentReleaseHash"];
+	        this.latestVersion = source["latestVersion"];
+	        this.latestReleaseHash = source["latestReleaseHash"];
+	        this.releaseName = source["releaseName"];
+	        this.releaseUrl = source["releaseUrl"];
+	        this.publishedAt = source["publishedAt"];
+	        this.assetName = source["assetName"];
+	        this.assetSize = source["assetSize"];
+	        this.assetDigest = source["assetDigest"];
+	        this.updateAvailable = source["updateAvailable"];
+	        this.canInstall = source["canInstall"];
+	        this.message = source["message"];
+	    }
+	}
+
+}
+

@@ -1,4 +1,4 @@
-import type { ai, appdata, connections, postgres, query, settings } from "../../wailsjs/go/models";
+import type { ai, appdata, connections, postgres, query, settings, updater } from "../../wailsjs/go/models";
 
 export type AICredentialStatus = ai.CredentialStatus;
 export type AIGenerateRequest = ai.GenerateRequest;
@@ -53,6 +53,10 @@ export type QueryHistoryItem = query.QueryHistoryItem;
 export type SQLAnalysis = query.SQLAnalysis;
 
 export type AppSettings = settings.AppSettings;
+export type ReleaseState = updater.ReleaseState;
+export type UpdateCheckResult = updater.UpdateCheckResult;
+export type InstallUpdateRequest = updater.InstallUpdateRequest;
+export type InstallUpdateResult = updater.InstallUpdateResult;
 
 export interface QueryHistoryEntry {
   id: string;

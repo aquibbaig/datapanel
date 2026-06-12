@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Check, Info, Loader2, XCircle } from "lucide-react";
+import { AlertTriangle, Check, Download, ExternalLink, Info, Loader2, XCircle } from "lucide-react";
 import { toast } from "sonner";
-import { appDataService, connectionService, queryService, schemaService, settingsService } from "../lib/backend";
+import { BrowserOpenURL } from "../../wailsjs/runtime/runtime";
+import { appDataService, connectionService, queryService, schemaService, settingsService, updateService } from "../lib/backend";
 import type {
   AppSettings,
   ConnectionHealth,
@@ -58,6 +59,7 @@ export function useDataPanelState() {
   const [workspaceSwitching, setWorkspaceSwitching] =
     useState<WorkspaceSwitchState | null>(null);
   const inspectRequestRef = useRef(0);
+  const updateCheckStartedRef = useRef(false);
 
   const activeProfile = useMemo(
     () => profiles.find((profile) => profile.id === activeConnectionId) || null,
@@ -136,6 +138,64 @@ export function useDataPanelState() {
       })
       .finally(() => setInitializing(false));
   }, [connectAndLoadMetadata, loadProfiles]);
+
+  useEffect(() => {
+    if (updateCheckStartedRef.current) return;
+    updateCheckStartedRef.current = true;
+
+    void updateService
+      .check()
+      .then((result) => {
+        if (!result.updateAvailable) return;
+
+        setStatus({ tone: "warning", text: result.message });
+        toast("Update available", {
+          description: updateDescription(result.latestVersion, result.assetName),
+          duration: Infinity,
+          icon: result.canInstall ? (
+            <Download className="h-4 w-4 text-zinc-300" />
+          ) : (
+            <ExternalLink className="h-4 w-4 text-zinc-300" />
+          ),
+          action: {
+            label: result.canInstall ? "Download" : "Open",
+            onClick: () => {
+              if (result.canInstall) {
+                void installAppUpdate(result.assetName);
+                return;
+              }
+              if (result.releaseUrl) {
+                BrowserOpenURL(result.releaseUrl);
+              }
+            },
+          },
+        });
+      })
+      .catch((error: unknown) => {
+        console.warn("Update check failed", error);
+      });
+  }, []);
+
+  async function installAppUpdate(assetName: string) {
+    const toastId = "datapanel-install-update";
+    toast.loading("Downloading update", {
+      id: toastId,
+      description: "Datapanel will restart after the download is verified.",
+    });
+    try {
+      await updateService.install(assetName);
+      toast.success("Update ready", {
+        id: toastId,
+        description: "Datapanel is restarting to finish installing.",
+      });
+    } catch (error) {
+      const message = errorMessage(error, "Could not install update");
+      toast.error("Could not install update", {
+        id: toastId,
+        description: message,
+      });
+    }
+  }
 
   useEffect(() => {
     if (!activeConnectionId) {
@@ -586,6 +646,11 @@ function querySuccessMessage(rows: number, affectedRows: number, durationMs: num
     return `${affectedRows} ${affectedRows === 1 ? "row" : "rows"} affected in ${durationMs}ms`;
   }
   return `Query completed in ${durationMs}ms`;
+}
+
+function updateDescription(version: string, assetName: string) {
+  const release = version || "latest release";
+  return assetName ? `${release} / ${assetName}` : release;
 }
 
 function notify(

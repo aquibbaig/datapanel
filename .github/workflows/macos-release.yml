@@ -37,6 +37,10 @@ jobs:
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 
       - name: Build Datapanel.app
+        env:
+          DATAPANEL_RELEASE_HASH: ${{ github.sha }}
+          DATAPANEL_GITHUB_OWNER: aquibbaig
+          DATAPANEL_GITHUB_REPO: datapanel
         run: ./scripts/build-mac-app.sh
 
       - name: Package app bundle
@@ -47,14 +51,18 @@ jobs:
           short_sha="${GITHUB_SHA::7}"
           zip_path="build/dist/Datapanel-macOS-${short_sha}.zip"
           ditto -c -k --keepParent build/bin/datapanel.app "$zip_path"
+          shasum -a 256 "$zip_path" > "${zip_path}.sha256"
           echo "zip_path=$zip_path" >> "$GITHUB_OUTPUT"
+          echo "checksum_path=${zip_path}.sha256" >> "$GITHUB_OUTPUT"
           echo "tag=macos-${short_sha}" >> "$GITHUB_OUTPUT"
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: Datapanel-macOS
-          path: ${{ steps.package.outputs.zip_path }}
+          path: |
+            ${{ steps.package.outputs.zip_path }}
+            ${{ steps.package.outputs.checksum_path }}
           if-no-files-found: error
 
       - name: Create GitHub release
@@ -62,9 +70,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ steps.package.outputs.tag }}
           ZIP_PATH: ${{ steps.package.outputs.zip_path }}
+          CHECKSUM_PATH: ${{ steps.package.outputs.checksum_path }}
         run: |
           set -euo pipefail
-          gh release create "$TAG_NAME" "$ZIP_PATH" \
+          gh release create "$TAG_NAME" "$ZIP_PATH" "$CHECKSUM_PATH" \
             --target "$GITHUB_SHA" \
             --title "Datapanel macOS ${GITHUB_SHA::7}" \
             --notes "Automated macOS app build from main at ${GITHUB_SHA}."

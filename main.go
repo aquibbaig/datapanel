@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"log"
 
@@ -13,6 +14,7 @@ import (
 	"datapanel/internal/postgres"
 	"datapanel/internal/query"
 	"datapanel/internal/settings"
+	"datapanel/internal/updater"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/menu"
@@ -57,6 +59,7 @@ func main() {
 	aiService := ai.NewService(secretStore, secretStorage)
 	schemaService := postgres.NewSchemaService(databaseRouter)
 	queryService := query.NewService(databaseRouter, settingsService)
+	updateService := updater.NewService(paths.ConfigDir)
 	application := appcore.NewApplication(paths, appcore.MultiCloser{databaseRouter, appDataService})
 
 	err = wails.Run(&options.App{
@@ -70,8 +73,11 @@ func main() {
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 15, G: 16, B: 18, A: 1},
-		OnStartup:        application.Startup,
-		OnShutdown:       application.Shutdown,
+		OnStartup: func(ctx context.Context) {
+			application.Startup(ctx)
+			updater.Startup(updateService, ctx)
+		},
+		OnShutdown: application.Shutdown,
 		SingleInstanceLock: &options.SingleInstanceLock{
 			UniqueId: "com.datapanel.app",
 			OnSecondInstanceLaunch: func(data options.SecondInstanceData) {
@@ -85,6 +91,7 @@ func main() {
 			schemaService,
 			queryService,
 			settingsService,
+			updateService,
 		},
 	})
 	if err != nil {

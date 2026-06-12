@@ -28,7 +28,12 @@ else
 fi
 
 echo "Building Datapanel for macOS..."
-wails build
+release_hash="${DATAPANEL_RELEASE_HASH:-$(git rev-parse HEAD 2>/dev/null || echo dev)}"
+release_version="${DATAPANEL_VERSION:-0.1.0}"
+github_owner="${DATAPANEL_GITHUB_OWNER:-aquibbaig}"
+github_repo="${DATAPANEL_GITHUB_REPO:-datapanel}"
+ldflags="-X datapanel/internal/updater.CurrentVersion=$release_version -X datapanel/internal/updater.CurrentReleaseHash=$release_hash -X datapanel/internal/updater.GitHubOwner=$github_owner -X datapanel/internal/updater.GitHubRepo=$github_repo"
+wails build -ldflags "$ldflags"
 
 if [[ ! -d "$APP_PATH" ]]; then
   echo "Build finished, but $APP_PATH was not found." >&2

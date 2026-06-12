@@ -20,7 +20,8 @@ import type {
   SQLAnalysis,
   TableDetails,
   TableSummary,
-  TestConnectionRequest
+  TestConnectionRequest,
+  UpdateCheckResult,
 } from "./types";
 import * as AIBindings from "../../wailsjs/go/ai/Service";
 import * as AppDataBindings from "../../wailsjs/go/appdata/Service";
@@ -28,6 +29,7 @@ import * as ConnectionBindings from "../../wailsjs/go/connections/Service";
 import * as SchemaBindings from "../../wailsjs/go/postgres/SchemaService";
 import * as QueryBindings from "../../wailsjs/go/query/Service";
 import * as SettingsBindings from "../../wailsjs/go/settings/Service";
+import * as UpdaterBindings from "../../wailsjs/go/updater/Service";
 
 const mockProfiles: ConnectionProfile[] = [
   {
@@ -387,5 +389,32 @@ export const settingsService = {
     if (!isWailsRuntime()) Object.assign(defaultSettings, input);
     if (!isWailsRuntime()) return defaultSettings;
     return SettingsBindings.UpdateSettings(input);
+  }
+};
+
+export const updateService = {
+  async check(): Promise<UpdateCheckResult> {
+    if (!isWailsRuntime()) {
+      return {
+        currentVersion: "0.1.0",
+        currentReleaseHash: "dev",
+        latestVersion: "0.1.0",
+        latestReleaseHash: "dev",
+        releaseName: "Datapanel preview",
+        releaseUrl: "https://github.com/aquibbaig/datapanel/releases",
+        publishedAt: "",
+        assetName: "",
+        assetSize: 0,
+        assetDigest: "",
+        updateAvailable: false,
+        canInstall: false,
+        message: "Datapanel is up to date.",
+      };
+    }
+    return UpdaterBindings.CheckForUpdate();
+  },
+  async install(assetName: string): Promise<void> {
+    if (!isWailsRuntime()) return;
+    await UpdaterBindings.InstallUpdate({ assetName });
   }
 };
