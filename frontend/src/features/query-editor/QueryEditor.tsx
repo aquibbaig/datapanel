@@ -120,7 +120,7 @@ export function QueryEditor({
         </span>
       </div>
 
-      <div className="relative min-h-0">
+      <div className="relative min-h-0 overflow-hidden">
         <SqlCodeEditor
           activeProfile={activeProfile}
           schemas={schemas}

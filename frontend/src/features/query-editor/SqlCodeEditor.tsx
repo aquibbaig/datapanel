@@ -154,7 +154,9 @@ export function SqlCodeEditor({
         },
         ".cm-scroller": {
           fontFamily: '"SFMono-Regular", ui-monospace, Menlo, Consolas, monospace',
-          lineHeight: "1.6"
+          height: "100%",
+          lineHeight: "1.6",
+          overflow: "auto"
         },
         ".cm-content": {
           padding: "16px 0",
@@ -246,7 +248,7 @@ export function SqlCodeEditor({
     });
   }, [value]);
 
-  return <div className="min-h-0 flex-1 overflow-hidden" ref={containerRef} />;
+  return <div className="h-full min-h-0 w-full overflow-hidden" ref={containerRef} />;
 }
 
 function sqlCompletion(schemaCompletions: CompletionOption[]) {
