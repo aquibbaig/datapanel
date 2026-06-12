@@ -373,21 +373,16 @@ export function ResultsGrid({
                           key={column.name}
                         >
                           {editable ? (
-                            <input
-                              className={cn(
-                                "h-7 min-w-[144px] border-transparent bg-transparent px-2 text-xs text-zinc-200 focus:border-accent focus:bg-surface-850",
-                                changed &&
-                                  "border-yellow-700/60 bg-yellow-900/35 text-yellow-50 focus:border-yellow-500 focus:bg-yellow-900/45",
-                              )}
+                            <CellEditor
+                              changed={changed}
                               disabled={saving}
-                              onChange={(event) =>
+                              draft={draft}
+                              onChange={(nextDraft) =>
                                 updateCell(row, rowIndex, column.name, {
-                                  value: event.target.value,
-                                  isNull: false,
+                                  value: nextDraft.value,
+                                  isNull: nextDraft.isNull,
                                 })
                               }
-                              placeholder={draft.isNull ? "NULL" : ""}
-                              value={draft.isNull ? "" : draft.value}
                             />
                           ) : (
                             formatCell(cell)
@@ -461,6 +456,63 @@ export function ResultsGrid({
         </aside>
       ) : null}
     </section>
+  );
+}
+
+function CellEditor({
+  changed,
+  disabled,
+  draft,
+  onChange,
+}: {
+  changed: boolean;
+  disabled: boolean;
+  draft: CellDraft;
+  onChange(draft: CellDraft): void;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex h-7 min-w-[176px] items-center rounded-md border border-transparent bg-transparent transition focus-within:border-accent focus-within:bg-surface-850",
+        changed &&
+          "border-yellow-700/60 bg-yellow-900/35 text-yellow-50 focus-within:border-yellow-500 focus-within:bg-yellow-900/45",
+      )}
+    >
+      <input
+        className="h-full min-w-0 flex-1 border-0 bg-transparent px-2 text-xs text-zinc-200 focus:border-transparent focus:shadow-none"
+        disabled={disabled}
+        onChange={(event) =>
+          onChange({
+            value: event.target.value,
+            isNull: false,
+          })
+        }
+        placeholder={draft.isNull ? "NULL" : ""}
+        value={draft.isNull ? "" : draft.value}
+      />
+      <button
+        aria-label={draft.isNull ? "Set empty string" : "Set NULL"}
+        aria-pressed={draft.isNull}
+        className={cn(
+          "mr-1 h-5 shrink-0 rounded border px-1.5 text-[10px] font-semibold leading-none transition disabled:opacity-50",
+          draft.isNull
+            ? "border-accent/60 bg-accent/20 text-zinc-100"
+            : "border-white/[0.08] bg-white/[0.03] text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200",
+        )}
+        disabled={disabled}
+        title={draft.isNull ? "Set empty string" : "Set NULL"}
+        type="button"
+        onClick={() =>
+          onChange(
+            draft.isNull
+              ? { value: "", isNull: false }
+              : { value: "", isNull: true },
+          )
+        }
+      >
+        NULL
+      </button>
+    </div>
   );
 }
 
