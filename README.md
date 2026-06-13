@@ -60,6 +60,17 @@ Build a macOS `.app` bundle:
 
 The app bundle is written to `build/bin/datapanel.app`.
 
+## Install on macOS
+
+Install the latest macOS build with Homebrew:
+
+```bash
+brew tap aquibbaig/datapanel https://github.com/aquibbaig/datapanel.git
+brew install --cask datapanel
+```
+
+The current macOS build is unsigned. If macOS blocks the first launch, open System Settings > Privacy & Security and choose Open Anyway for Datapanel.
+
 ## Project Layout
 
 - `internal/app`: Wails lifecycle and app paths.

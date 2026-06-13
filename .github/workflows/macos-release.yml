@@ -39,8 +39,8 @@ jobs:
       - name: Build Datapanel.app
         env:
           DATAPANEL_RELEASE_HASH: ${{ github.sha }}
-          DATAPANEL_GITHUB_OWNER: aquibbaig
-          DATAPANEL_GITHUB_REPO: datapanel
+          DATAPANEL_GITHUB_OWNER: ${{ github.repository_owner }}
+          DATAPANEL_GITHUB_REPO: ${{ github.event.repository.name }}
         run: ./scripts/build-mac-app.sh
 
       - name: Package app bundle
@@ -49,7 +49,7 @@ jobs:
           set -euo pipefail
           mkdir -p build/dist
           short_sha="${GITHUB_SHA::7}"
-          zip_path="build/dist/Datapanel-macOS-${short_sha}.zip"
+          zip_path="build/dist/Datapanel-macOS.zip"
           ditto -c -k --keepParent build/bin/datapanel.app "$zip_path"
           shasum -a 256 "$zip_path" > "${zip_path}.sha256"
           echo "zip_path=$zip_path" >> "$GITHUB_OUTPUT"
