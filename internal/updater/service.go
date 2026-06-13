@@ -25,7 +25,7 @@ var (
 	CurrentVersion     = "0.1.0"
 	CurrentReleaseHash = "dev"
 	GitHubOwner        = "aquibbaig"
-	GitHubRepo         = "datapanel"
+	GitHubRepo         = "sequel"
 )
 
 type Service struct {
@@ -77,11 +77,9 @@ func (s *Service) CheckForUpdate() (UpdateCheckResult, error) {
 		assetDigest, _ = s.assetDigest(*asset, release.Assets)
 	}
 	latestHash := releaseHash(release)
-	currentHash := normalizeHash(state.CurrentReleaseHash)
-	normalizedLatestHash := normalizeHash(latestHash)
-	updateAvailable := normalizedLatestHash != "" &&
-		normalizedLatestHash != currentHash &&
-		normalizedLatestHash != normalizeHash(CurrentReleaseHash)
+	updateAvailable := strings.TrimSpace(latestHash) != "" &&
+		!sameRelease(latestHash, state.CurrentReleaseHash) &&
+		!sameRelease(latestHash, CurrentReleaseHash)
 
 	result := UpdateCheckResult{
 		CurrentVersion:     state.CurrentVersion,
@@ -215,14 +213,19 @@ func (s *Service) ensureState() (ReleaseState, error) {
 	if err != nil {
 		return ReleaseState{}, err
 	}
-	if state.CurrentVersion == "" {
+	changed := false
+	if state.CurrentVersion != CurrentVersion {
 		state.CurrentVersion = CurrentVersion
+		changed = true
 	}
-	if state.CurrentReleaseHash == "" {
+	if !sameRelease(state.CurrentReleaseHash, CurrentReleaseHash) {
 		state.CurrentReleaseHash = CurrentReleaseHash
+		changed = true
 	}
-	if err := s.saveState(state); err != nil {
-		return ReleaseState{}, err
+	if changed {
+		if err := s.saveState(state); err != nil {
+			return ReleaseState{}, err
+		}
 	}
 	return state, nil
 }
@@ -438,6 +441,45 @@ func normalizeHash(value string) string {
 	return strings.TrimSpace(strings.ToLower(value))
 }
 
+func sameRelease(left string, right string) bool {
+	normalizedLeft := normalizeHash(left)
+	normalizedRight := normalizeHash(right)
+	if normalizedLeft == "" || normalizedRight == "" {
+		return false
+	}
+	if normalizedLeft == normalizedRight {
+		return true
+	}
+
+	leftHash := releaseIdentifierHash(normalizedLeft)
+	rightHash := releaseIdentifierHash(normalizedRight)
+	if leftHash == "" || rightHash == "" {
+		return false
+	}
+	return hashPrefixMatch(leftHash, rightHash)
+}
+
+func releaseIdentifierHash(value string) string {
+	value = normalizeHash(value)
+	for _, prefix := range []string{"macos-", "darwin-", "datapanel-macos-", "datapanel-darwin-"} {
+		value = strings.TrimPrefix(value, prefix)
+	}
+	if looksLikeGitHash(value) {
+		return value
+	}
+	return ""
+}
+
+func hashPrefixMatch(left string, right string) bool {
+	if len(left) > len(right) {
+		left, right = right, left
+	}
+	if len(left) < 7 {
+		return false
+	}
+	return strings.HasPrefix(right, left)
+}
+
 func releaseHash(release githubRelease) string {
 	target := strings.TrimSpace(release.TargetCommit)
 	if looksLikeGitHash(target) {
@@ -597,13 +639,28 @@ destination_app="$3"
 cleanup_dir="$4"
 backup_app="${destination_app}.previous-update"
 
+launch_destination() {
+  if /usr/bin/open -n "$destination_app" >/dev/null 2>&1; then
+    return 0
+  fi
+  executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$destination_app/Contents/Info.plist" 2>/dev/null || true)"
+  if [ -n "$executable" ] && [ -x "$destination_app/Contents/MacOS/$executable" ]; then
+    nohup "$destination_app/Contents/MacOS/$executable" >/dev/null 2>&1 &
+    return 0
+  fi
+  return 1
+}
+
 while kill -0 "$pid" >/dev/null 2>&1; do
   sleep 0.2
 done
 
-rm -rf "$backup_app"
+rm -rf "$backup_app" || true
 if [ -d "$destination_app" ]; then
-  mv "$destination_app" "$backup_app"
+  if ! mv "$destination_app" "$backup_app"; then
+    launch_destination || true
+    exit 1
+  fi
 fi
 
 if ! ditto "$source_app" "$destination_app"; then
@@ -611,11 +668,14 @@ if ! ditto "$source_app" "$destination_app"; then
     rm -rf "$destination_app"
     mv "$backup_app" "$destination_app"
   fi
+  launch_destination || true
   exit 1
 fi
 
 xattr -dr com.apple.quarantine "$destination_app" >/dev/null 2>&1 || true
-open "$destination_app"
+if ! launch_destination; then
+  exit 1
+fi
 rm -rf "$backup_app"
 rm -rf "$cleanup_dir"
 `
