@@ -65,8 +65,13 @@ The app bundle is written to `build/bin/datapanel.app`.
 Install the latest macOS build with Homebrew:
 
 ```bash
-brew tap aquibbaig/datapanel https://github.com/aquibbaig/datapanel.git
-brew install --cask datapanel
+curl -fsSL https://raw.githubusercontent.com/aquibbaig/datapanel/main/scripts/install-macos.sh | sh
+```
+
+Technical users can also install without quarantine:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aquibbaig/datapanel/main/scripts/install-macos.sh | sh -s -- --no-quarantine
 ```
 
 The current macOS build is unsigned. If macOS blocks the first launch, open System Settings > Privacy & Security and choose Open Anyway for Datapanel.
