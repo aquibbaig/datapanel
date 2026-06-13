@@ -37,10 +37,12 @@ interface QueryToastOptions {
 
 interface MetadataLoadOptions {
   refresh?: boolean;
+  reconnectKeychain?: boolean;
 }
 
 interface ConnectOptions {
   suppressErrorToast?: boolean;
+  reconnectKeychain?: boolean;
 }
 
 interface SchemaSnapshot {
@@ -132,7 +134,11 @@ export function useDataPanelState() {
     options: MetadataLoadOptions = { refresh: true },
   ) => {
     const started = performance.now();
-    const result = await connectionService.connect({ profileId, password });
+    const result = await connectionService.connect({
+      profileId,
+      password,
+      reconnectKeychain: Boolean(options.reconnectKeychain),
+    });
     const now = new Date().toISOString();
     setActiveConnectionId(profileId);
     clearSelectedTable();
@@ -314,6 +320,7 @@ export function useDataPanelState() {
     try {
       const result = await connectAndLoadMetadata(profileId, password, {
         refresh: settings?.autoRefreshMetadata ?? true,
+        reconnectKeychain: options.reconnectKeychain,
       });
       const profile = profiles.find((item) => item.id === profileId);
       notify("success", "Connected", profile?.name || result.message);

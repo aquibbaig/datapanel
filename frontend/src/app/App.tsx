@@ -137,6 +137,7 @@ export function App() {
     if (!model.activeProfile) return;
     try {
       await model.connect(model.activeProfile.id, "", {
+        reconnectKeychain: true,
         suppressErrorToast: true,
       });
     } catch {
