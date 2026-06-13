@@ -1,4 +1,4 @@
-import { RotateCcw, Save, SlidersHorizontal } from "lucide-react";
+import { RotateCcw, Save } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../../components/ui/Button";
 import type { AppSettings } from "../../lib/types";
@@ -34,7 +34,9 @@ export function SettingsPanel({ settings, onUpdate }: Props) {
     try {
       await onUpdate(draft);
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "Could not save settings");
+      setSaveError(
+        error instanceof Error ? error.message : "Could not save settings",
+      );
     } finally {
       setSaving(false);
     }
@@ -42,12 +44,6 @@ export function SettingsPanel({ settings, onUpdate }: Props) {
 
   return (
     <section className="flex max-h-[72vh] flex-col">
-      <div className="flex min-w-0 items-center gap-2 pb-4">
-        <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-zinc-200">
-          <SlidersHorizontal size={14} />
-          Preferences
-        </div>
-      </div>
       <div className="min-h-0 flex-1 overflow-y-auto pb-4 pr-1">
         <div className="flex flex-col gap-2">
           <label className="grid grid-cols-[18px_minmax(0,1fr)] items-center gap-2 text-sm text-zinc-300">

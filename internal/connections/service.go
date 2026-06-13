@@ -100,6 +100,11 @@ func (s *Service) Connect(input ConnectRequest) (ConnectionStatus, error) {
 
 	password := input.Password
 	if password == "" {
+		if input.ReconnectKeychain {
+			if err := s.secrets.RequestAccess(context.Background()); err != nil {
+				return ConnectionStatus{}, err
+			}
+		}
 		password, err = s.secrets.Get(context.Background(), profile.ID)
 		if err != nil {
 			return ConnectionStatus{}, err
