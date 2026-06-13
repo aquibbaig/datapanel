@@ -59,7 +59,14 @@ interface Props {
   tableDetails: TableDetails | null;
   settings: AppSettings | null;
   onExecuteSQL(sql: string): Promise<unknown>;
+  onEnsureSchemaFresh?(): Promise<SchemaSnapshot>;
   onLoadSQL(sql: string): void;
+}
+
+interface SchemaSnapshot {
+  schemas: SchemaSummary[];
+  tablesBySchema: Record<string, TableSummary[]>;
+  fingerprint?: string;
 }
 
 interface AICallbackEvent {
@@ -150,6 +157,7 @@ export function AiAssistantPanel({
   tablesBySchema,
   tableDetails,
   onExecuteSQL,
+  onEnsureSchemaFresh,
   onLoadSQL,
 }: Props) {
   const [selectedProvider, setSelectedProvider] =
@@ -177,6 +185,7 @@ export function AiAssistantPanel({
     modelsByProvider.openai[0],
   );
   const schemaDetailsCacheRef = useRef(new Map<string, Promise<TableDetails>>());
+  const schemaFingerprintRef = useRef("");
 
   const selected =
     providers.find((provider) => provider.id === selectedProvider) ??
@@ -579,12 +588,25 @@ export function AiAssistantPanel({
       if (thread.title === "New chat") {
         await renameThread(thread, prompt.slice(0, 48));
       }
+      const schemaSnapshot = onEnsureSchemaFresh
+        ? await onEnsureSchemaFresh()
+        : { schemas, tablesBySchema };
+      if (
+        schemaSnapshot.fingerprint &&
+        schemaSnapshot.fingerprint !== schemaFingerprintRef.current
+      ) {
+        clearDetailsCacheForConnection(
+          schemaDetailsCacheRef.current,
+          activeProfile?.id || "",
+        );
+        schemaFingerprintRef.current = schemaSnapshot.fingerprint;
+      }
       const schemaContext = await buildSchemaContext({
         activeProfile,
         prompt,
-        schemas,
+        schemas: schemaSnapshot.schemas,
         tableDetails,
-        tablesBySchema,
+        tablesBySchema: schemaSnapshot.tablesBySchema,
         detailsCache: schemaDetailsCacheRef.current,
       });
       const response = await aiCredentialService.generate({
@@ -1579,6 +1601,17 @@ function loadTableDetails(
 
 function schemaTableKey(connectionId: string, schema: string, table: string) {
   return `${connectionId}:${schema}.${table}`.toLowerCase();
+}
+
+function clearDetailsCacheForConnection(
+  detailsCache: Map<string, Promise<TableDetails>>,
+  connectionId: string,
+) {
+  if (!connectionId) return;
+  const prefix = `${connectionId}:`.toLowerCase();
+  for (const key of detailsCache.keys()) {
+    if (key.startsWith(prefix)) detailsCache.delete(key);
+  }
 }
 
 function appendTableDetails(

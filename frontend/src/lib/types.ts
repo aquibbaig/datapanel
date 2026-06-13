@@ -40,6 +40,7 @@ export type ConnectRequest = connections.ConnectRequest;
 export type ConnectionStatus = connections.ConnectionStatus;
 
 export type SchemaSummary = postgres.SchemaSummary;
+export type SchemaFingerprint = postgres.SchemaFingerprint;
 export type TableSummary = postgres.TableSummary;
 export type ColumnSummary = postgres.ColumnSummary;
 export type IndexSummary = postgres.IndexSummary;

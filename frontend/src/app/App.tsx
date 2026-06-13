@@ -441,7 +441,6 @@ export function App() {
                 <Clock3 size={14} />
               </Button>
               <Button
-                className={cn(rightPanel && "bg-white/[0.07] text-zinc-200")}
                 size="icon"
                 onClick={toggleLastRightPanel}
                 title="Panels"
@@ -587,6 +586,7 @@ export function App() {
                     tableDetails={model.tableDetails}
                     tablesBySchema={model.tablesBySchema}
                     onExecuteSQL={executeAISQL}
+                    onEnsureSchemaFresh={model.ensureFreshSchema}
                     onLoadSQL={loadSQL}
                     onUseQuery={loadHistoryQuery}
                   />

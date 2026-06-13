@@ -2,7 +2,9 @@ package mysql
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"strconv"
@@ -167,6 +169,90 @@ func (a *Adapter) DescribeTable(ctx context.Context, connectionID string, schema
 	}
 	details.Type, _ = loadTableType(ctx, db, schema, table)
 	return details, nil
+}
+
+func (a *Adapter) SchemaFingerprint(ctx context.Context, connectionID string) (postgres.SchemaFingerprint, error) {
+	db, err := a.db(connectionID)
+	if err != nil {
+		return postgres.SchemaFingerprint{}, err
+	}
+
+	rows, err := db.QueryContext(ctx, `
+		select fingerprint_row
+		from (
+			select concat_ws(char(31), 'schema', schema_name) as fingerprint_row
+			from information_schema.schemata
+			where schema_name not in ('information_schema', 'mysql', 'performance_schema', 'sys')
+			union all
+			select concat_ws(char(31), 'table', table_schema, table_name, table_type)
+			from information_schema.tables
+			where table_schema not in ('information_schema', 'mysql', 'performance_schema', 'sys')
+			union all
+			select concat_ws(
+				char(31),
+				'column',
+				table_schema,
+				table_name,
+				cast(ordinal_position as char),
+				column_name,
+				column_type,
+				is_nullable,
+				coalesce(column_default, '')
+			)
+			from information_schema.columns
+			where table_schema not in ('information_schema', 'mysql', 'performance_schema', 'sys')
+			union all
+			select concat_ws(
+				char(31),
+				'index',
+				table_schema,
+				table_name,
+				index_name,
+				cast(non_unique as char),
+				group_concat(column_name order by seq_in_index separator ',')
+			)
+			from information_schema.statistics
+			where table_schema not in ('information_schema', 'mysql', 'performance_schema', 'sys')
+			group by table_schema, table_name, index_name, non_unique
+			union all
+			select concat_ws(
+				char(31),
+				'constraint',
+				tc.table_schema,
+				tc.table_name,
+				tc.constraint_name,
+				tc.constraint_type,
+				coalesce(group_concat(kcu.column_name order by kcu.ordinal_position separator ','), '')
+			)
+			from information_schema.table_constraints tc
+			left join information_schema.key_column_usage kcu
+			  on tc.constraint_schema = kcu.constraint_schema
+			 and tc.constraint_name = kcu.constraint_name
+			 and tc.table_schema = kcu.table_schema
+			 and tc.table_name = kcu.table_name
+			where tc.table_schema not in ('information_schema', 'mysql', 'performance_schema', 'sys')
+			group by tc.table_schema, tc.table_name, tc.constraint_name, tc.constraint_type
+		) rows
+		order by fingerprint_row
+	`)
+	if err != nil {
+		return postgres.SchemaFingerprint{}, apperrors.New(apperrors.CodeDatabase, "could not fingerprint schema")
+	}
+	defer rows.Close()
+
+	hash := sha256.New()
+	for rows.Next() {
+		var row string
+		if err := rows.Scan(&row); err != nil {
+			return postgres.SchemaFingerprint{}, apperrors.New(apperrors.CodeDatabase, "could not read schema fingerprint")
+		}
+		hash.Write([]byte(row))
+		hash.Write([]byte{'\n'})
+	}
+	if err := rows.Err(); err != nil {
+		return postgres.SchemaFingerprint{}, apperrors.New(apperrors.CodeDatabase, "could not read schema fingerprint")
+	}
+	return postgres.SchemaFingerprint{Hash: hex.EncodeToString(hash.Sum(nil))}, nil
 }
 
 func (a *Adapter) Execute(ctx context.Context, request query.QueryRequest) (query.QueryResult, error) {

@@ -555,6 +555,18 @@ export namespace postgres {
 	        this.name = source["name"];
 	    }
 	}
+	export class SchemaFingerprint {
+	    hash: string;
+
+	    static createFrom(source: any = {}) {
+	        return new SchemaFingerprint(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.hash = source["hash"];
+	    }
+	}
 	export class TableDetails {
 	    schema: string;
 	    name: string;
@@ -850,4 +862,3 @@ export namespace updater {
 	}
 
 }
-

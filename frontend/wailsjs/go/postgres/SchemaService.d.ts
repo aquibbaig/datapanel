@@ -9,3 +9,5 @@ export function ListSchemas(arg1:string):Promise<Array<postgres.SchemaSummary>>;
 export function ListTables(arg1:string,arg2:string):Promise<Array<postgres.TableSummary>>;
 
 export function RefreshMetadata(arg1:string):Promise<Array<postgres.SchemaSummary>>;
+
+export function SchemaFingerprint(arg1:string):Promise<postgres.SchemaFingerprint>;

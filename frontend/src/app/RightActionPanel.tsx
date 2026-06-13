@@ -29,6 +29,7 @@ export function RightActionPanel({
   tableDetails,
   tablesBySchema,
   onExecuteSQL,
+  onEnsureSchemaFresh,
   onLoadSQL,
   onUseQuery,
 }: {
@@ -40,6 +41,11 @@ export function RightActionPanel({
   tableDetails: TableDetails | null;
   tablesBySchema: Record<string, TableSummary[]>;
   onExecuteSQL(sql: string): Promise<unknown>;
+  onEnsureSchemaFresh(): Promise<{
+    schemas: SchemaSummary[];
+    tablesBySchema: Record<string, TableSummary[]>;
+    fingerprint?: string;
+  }>;
   onLoadSQL(sql: string): void;
   onUseQuery(sql: string): void;
 }) {
@@ -72,6 +78,7 @@ export function RightActionPanel({
             tableDetails={tableDetails}
             tablesBySchema={tablesBySchema}
             onExecuteSQL={onExecuteSQL}
+            onEnsureSchemaFresh={onEnsureSchemaFresh}
             onLoadSQL={onLoadSQL}
           />
         ) : null}

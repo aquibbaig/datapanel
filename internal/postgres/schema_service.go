@@ -14,6 +14,7 @@ type MetadataProvider interface {
 	ListSchemas(ctx context.Context, connectionID string) ([]SchemaSummary, error)
 	ListTables(ctx context.Context, connectionID string, schema string) ([]TableSummary, error)
 	DescribeTable(ctx context.Context, connectionID string, schema string, table string) (TableDetails, error)
+	SchemaFingerprint(ctx context.Context, connectionID string) (SchemaFingerprint, error)
 }
 
 type SchemaService struct {
@@ -59,4 +60,13 @@ func (s *SchemaService) DescribeTable(connectionID string, schema string, table 
 
 func (s *SchemaService) RefreshMetadata(connectionID string) ([]SchemaSummary, error) {
 	return s.ListSchemas(connectionID)
+}
+
+func (s *SchemaService) SchemaFingerprint(connectionID string) (SchemaFingerprint, error) {
+	if strings.TrimSpace(connectionID) == "" {
+		return SchemaFingerprint{}, apperrors.New(apperrors.CodeValidation, "connection id is required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), metadataTimeout)
+	defer cancel()
+	return s.adapter.SchemaFingerprint(ctx, connectionID)
 }

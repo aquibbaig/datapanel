@@ -17,3 +17,7 @@ export function ListTables(arg1, arg2) {
 export function RefreshMetadata(arg1) {
   return window['go']['postgres']['SchemaService']['RefreshMetadata'](arg1);
 }
+
+export function SchemaFingerprint(arg1) {
+  return window['go']['postgres']['SchemaService']['SchemaFingerprint'](arg1);
+}

@@ -11,6 +11,10 @@ type TableSummary struct {
 	RowEstimate int64  `json:"rowEstimate"`
 }
 
+type SchemaFingerprint struct {
+	Hash string `json:"hash"`
+}
+
 type ColumnSummary struct {
 	Name      string `json:"name"`
 	DataType  string `json:"dataType"`

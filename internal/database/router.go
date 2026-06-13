@@ -19,6 +19,7 @@ type Adapter interface {
 	ListSchemas(ctx context.Context, connectionID string) ([]postgres.SchemaSummary, error)
 	ListTables(ctx context.Context, connectionID string, schema string) ([]postgres.TableSummary, error)
 	DescribeTable(ctx context.Context, connectionID string, schema string, table string) (postgres.TableDetails, error)
+	SchemaFingerprint(ctx context.Context, connectionID string) (postgres.SchemaFingerprint, error)
 	Execute(ctx context.Context, request query.QueryRequest) (query.QueryResult, error)
 }
 
@@ -118,6 +119,14 @@ func (r *Router) DescribeTable(ctx context.Context, connectionID string, schema 
 		return postgres.TableDetails{}, err
 	}
 	return adapter.DescribeTable(ctx, connectionID, schema, table)
+}
+
+func (r *Router) SchemaFingerprint(ctx context.Context, connectionID string) (postgres.SchemaFingerprint, error) {
+	adapter, err := r.adapterForConnection(connectionID)
+	if err != nil {
+		return postgres.SchemaFingerprint{}, err
+	}
+	return adapter.SchemaFingerprint(ctx, connectionID)
 }
 
 func (r *Router) Execute(ctx context.Context, request query.QueryRequest) (query.QueryResult, error) {

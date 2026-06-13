@@ -16,6 +16,7 @@ import type {
   SaveConnectionRequest,
   SaveAICredentialRequest,
   SaveQueryHistoryRequest,
+  SchemaFingerprint,
   SchemaSummary,
   SQLAnalysis,
   TableDetails,
@@ -280,6 +281,10 @@ function normalizeQueryHistoryItem(item: {
 }
 
 export const schemaService = {
+  async fingerprint(connectionId: string): Promise<SchemaFingerprint> {
+    if (!isWailsRuntime()) return { hash: "preview-schema" };
+    return SchemaBindings.SchemaFingerprint(connectionId);
+  },
   async schemas(connectionId: string): Promise<SchemaSummary[]> {
     if (!isWailsRuntime()) return [{ name: "public" }, { name: "analytics" }];
     return SchemaBindings.ListSchemas(connectionId);

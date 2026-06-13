@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"net/url"
@@ -172,6 +174,87 @@ func (a *Adapter) DescribeTable(ctx context.Context, connectionID string, schema
 	}
 	details.Type, _ = loadTableType(ctx, pool, schema, table)
 	return details, nil
+}
+
+func (a *Adapter) SchemaFingerprint(ctx context.Context, connectionID string) (SchemaFingerprint, error) {
+	pool, err := a.pool(connectionID)
+	if err != nil {
+		return SchemaFingerprint{}, err
+	}
+
+	rows, err := pool.Query(ctx, `
+		select fingerprint_row
+		from (
+			select concat_ws(chr(31), 'schema', schema_name) as fingerprint_row
+			from information_schema.schemata
+			where schema_name not in ('pg_catalog', 'information_schema')
+			  and schema_name not like 'pg_toast%'
+			union all
+			select concat_ws(chr(31), 'table', n.nspname, c.relname, c.relkind::text)
+			from pg_class c
+			join pg_namespace n on n.oid = c.relnamespace
+			where n.nspname not in ('pg_catalog', 'information_schema')
+			  and n.nspname not like 'pg_toast%'
+			  and c.relkind in ('r', 'v', 'm', 'f')
+			union all
+			select concat_ws(
+				chr(31),
+				'column',
+				c.table_schema,
+				c.table_name,
+				c.ordinal_position::text,
+				c.column_name,
+				coalesce(c.udt_name, c.data_type),
+				c.is_nullable,
+				coalesce(c.column_default, '')
+			)
+			from information_schema.columns c
+			where c.table_schema not in ('pg_catalog', 'information_schema')
+			  and c.table_schema not like 'pg_toast%'
+			union all
+			select concat_ws(chr(31), 'index', schemaname, tablename, indexname, indexdef)
+			from pg_indexes
+			where schemaname not in ('pg_catalog', 'information_schema')
+			  and schemaname not like 'pg_toast%'
+			union all
+			select concat_ws(
+				chr(31),
+				'constraint',
+				tc.table_schema,
+				tc.table_name,
+				tc.constraint_name,
+				tc.constraint_type,
+				coalesce(string_agg(kcu.column_name, ',' order by kcu.ordinal_position), '')
+			)
+			from information_schema.table_constraints tc
+			left join information_schema.key_column_usage kcu
+			  on tc.constraint_name = kcu.constraint_name
+			 and tc.table_schema = kcu.table_schema
+			 and tc.table_name = kcu.table_name
+			where tc.table_schema not in ('pg_catalog', 'information_schema')
+			  and tc.table_schema not like 'pg_toast%'
+			group by tc.table_schema, tc.table_name, tc.constraint_name, tc.constraint_type
+		) rows
+		order by fingerprint_row
+	`)
+	if err != nil {
+		return SchemaFingerprint{}, apperrors.New(apperrors.CodeDatabase, "could not fingerprint schema")
+	}
+	defer rows.Close()
+
+	hash := sha256.New()
+	for rows.Next() {
+		var row string
+		if err := rows.Scan(&row); err != nil {
+			return SchemaFingerprint{}, apperrors.New(apperrors.CodeDatabase, "could not read schema fingerprint")
+		}
+		hash.Write([]byte(row))
+		hash.Write([]byte{'\n'})
+	}
+	if err := rows.Err(); err != nil {
+		return SchemaFingerprint{}, apperrors.New(apperrors.CodeDatabase, "could not read schema fingerprint")
+	}
+	return SchemaFingerprint{Hash: hex.EncodeToString(hash.Sum(nil))}, nil
 }
 
 func (a *Adapter) Execute(ctx context.Context, request query.QueryRequest) (query.QueryResult, error) {

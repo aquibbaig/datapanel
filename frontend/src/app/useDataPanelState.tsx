@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Check, Download, ExternalLink, Info, Loader2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { BrowserOpenURL } from "../../wailsjs/runtime/runtime";
-import { appDataService, connectionService, queryService, schemaService, settingsService, updateService } from "../lib/backend";
+import { aiCredentialService, appDataService, connectionService, queryService, schemaService, settingsService, updateService } from "../lib/backend";
 import type {
   AppSettings,
   ConnectionHealth,
@@ -38,7 +39,20 @@ interface MetadataLoadOptions {
   refresh?: boolean;
 }
 
+interface SchemaSnapshot {
+  schemas: SchemaSummary[];
+  tablesBySchema: Record<string, TableSummary[]>;
+  fingerprint?: string;
+}
+
+const schemaSnapshotQueryKey = (profileId: string) =>
+  ["schemaSnapshot", profileId] as const;
+
+const tableDetailsQueryKey = (connectionId: string, schema: string, table: string) =>
+  ["tableDetails", connectionId, schema, table] as const;
+
 export function useDataPanelState() {
+  const queryClient = useQueryClient();
   const [profiles, setProfiles] = useState<ConnectionProfile[]>([]);
   const [activeConnectionId, setActiveConnectionId] = useState<string>("");
   const [schemas, setSchemas] = useState<SchemaSummary[]>([]);
@@ -67,17 +81,39 @@ export function useDataPanelState() {
   );
 
   const loadMetadata = useCallback(async (profileId: string, options: MetadataLoadOptions = {}) => {
-    const nextSchemas = options.refresh
-      ? await schemaService.refresh(profileId)
-      : await schemaService.schemas(profileId);
+    const cached = queryClient.getQueryData<SchemaSnapshot>(
+      schemaSnapshotQueryKey(profileId),
+    );
+    const fingerprint = await schemaService
+      .fingerprint(profileId)
+      .then((result) => result.hash)
+      .catch(() => "");
+
+    if (!options.refresh && fingerprint && cached?.fingerprint === fingerprint) {
+      setSchemas(cached.schemas);
+      setTablesBySchema(cached.tablesBySchema);
+      return cached;
+    }
+
+    if (cached?.fingerprint && fingerprint && cached.fingerprint !== fingerprint) {
+      queryClient.removeQueries({ queryKey: ["tableDetails", profileId] });
+    }
+
+    const nextSchemas = await schemaService.refresh(profileId);
     setSchemas(nextSchemas);
     const tableEntries = await Promise.all(
       nextSchemas.map(async (schema) => [schema.name, await schemaService.tables(profileId, schema.name)] as const)
     );
     const nextTablesBySchema = Object.fromEntries(tableEntries);
     setTablesBySchema(nextTablesBySchema);
-    return { schemas: nextSchemas, tablesBySchema: nextTablesBySchema };
-  }, []);
+    const snapshot = {
+      schemas: nextSchemas,
+      tablesBySchema: nextTablesBySchema,
+      fingerprint,
+    };
+    queryClient.setQueryData(schemaSnapshotQueryKey(profileId), snapshot);
+    return snapshot;
+  }, [queryClient]);
 
   const clearSelectedTable = useCallback(() => {
     inspectRequestRef.current += 1;
@@ -120,6 +156,9 @@ export function useDataPanelState() {
       settingsService.get().then((nextSettings) => {
         setSettings(nextSettings);
         return nextSettings;
+      }),
+      aiCredentialService.list().catch((error: unknown) => {
+        console.warn("AI credential warmup failed", error);
       }),
     ])
       .then(async ([nextProfiles]) => {
@@ -322,6 +361,13 @@ export function useDataPanelState() {
     }
   }, [activeConnectionId, clearSelectedTable, loadMetadata]);
 
+  const ensureFreshSchema = useCallback(async () => {
+    if (!activeConnectionId) {
+      return { schemas: [], tablesBySchema: {} };
+    }
+    return loadMetadata(activeConnectionId, { refresh: false });
+  }, [activeConnectionId, loadMetadata]);
+
   const inspectTable = useCallback(
     async (table: TableSummary, options: { force?: boolean } = {}) => {
       if (!activeConnectionId) return null;
@@ -343,10 +389,31 @@ export function useDataPanelState() {
       const requestId = inspectRequestRef.current + 1;
       inspectRequestRef.current = requestId;
       setSelectedTable(table);
+      const detailsKey = tableDetailsQueryKey(
+        activeConnectionId,
+        table.schema,
+        table.name,
+      );
+      const cachedDetails = !options.force
+        ? queryClient.getQueryData<TableDetails>(detailsKey)
+        : null;
+      if (cachedDetails) {
+        setTableDetails(cachedDetails);
+        setInspectingTable(null);
+        return cachedDetails;
+      }
+      if (options.force) {
+        queryClient.removeQueries({ queryKey: detailsKey });
+      }
       setTableDetails(null);
       setInspectingTable(table);
       try {
-        const details = await schemaService.describe(activeConnectionId, table.schema, table.name);
+        const details = await queryClient.fetchQuery({
+          queryKey: detailsKey,
+          queryFn: () =>
+            schemaService.describe(activeConnectionId, table.schema, table.name),
+          staleTime: Infinity,
+        });
         if (inspectRequestRef.current === requestId) {
           setTableDetails(details);
         }
@@ -364,7 +431,7 @@ export function useDataPanelState() {
         }
       }
     },
-    [activeConnectionId, selectedTable, tableDetails]
+    [activeConnectionId, queryClient, selectedTable, tableDetails]
   );
 
   const recordQueryHistory = useCallback((item: QueryHistoryEntry) => {
@@ -609,6 +676,7 @@ export function useDataPanelState() {
     connect,
     disconnect,
     refreshMetadata,
+    ensureFreshSchema,
     inspectTable,
     runQuery,
     explainQuery,
