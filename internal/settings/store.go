@@ -82,6 +82,9 @@ func normalize(settings AppSettings) AppSettings {
 	if settings.InspectorWidth <= 0 {
 		settings.InspectorWidth = defaults.InspectorWidth
 	}
+	if settings.CursorMode != "pointer" {
+		settings.CursorMode = defaults.CursorMode
+	}
 	settings.ChatResponsePrompt = strings.TrimSpace(settings.ChatResponsePrompt)
 	return settings
 }

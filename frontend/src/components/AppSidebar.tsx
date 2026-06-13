@@ -33,7 +33,6 @@ interface Props {
   onEditConnection(): void;
   onRefresh(): Promise<void>;
   onInspectTable(table: TableSummary): Promise<TableDetails | null>;
-  onRunTable(table: TableSummary): Promise<void>;
 }
 
 export function AppSidebar({
@@ -50,7 +49,6 @@ export function AppSidebar({
   onEditConnection,
   onRefresh,
   onInspectTable,
-  onRunTable,
 }: Props) {
   const sidebar = useSidebar();
 
@@ -80,7 +78,6 @@ export function AppSidebar({
             tablesBySchema={tablesBySchema}
             onInspectTable={onInspectTable}
             onRefresh={onRefresh}
-            onRunTable={onRunTable}
           />
         </div>
       ) : null}

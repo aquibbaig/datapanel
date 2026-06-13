@@ -14,6 +14,9 @@ func TestFileStoreLoadsDefaultsWhenMissing(t *testing.T) {
 	if settings.QueryLimit != DefaultSettings().QueryLimit {
 		t.Fatalf("expected default query limit, got %d", settings.QueryLimit)
 	}
+	if settings.CursorMode != DefaultSettings().CursorMode {
+		t.Fatalf("expected default cursor mode, got %q", settings.CursorMode)
+	}
 }
 
 func TestFileStoreSavesAndNormalizesSettings(t *testing.T) {
@@ -37,5 +40,8 @@ func TestFileStoreSavesAndNormalizesSettings(t *testing.T) {
 	}
 	if got.QueryLimit != input.QueryLimit || got.QueryTimeoutSeconds != input.QueryTimeoutSeconds {
 		t.Fatalf("settings did not round trip: %#v", got)
+	}
+	if got.CursorMode != DefaultSettings().CursorMode {
+		t.Fatalf("expected cursor mode to default, got %q", got.CursorMode)
 	}
 }

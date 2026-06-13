@@ -30,7 +30,14 @@ const defaultPorts: Record<string, number> = {
   mysql: 3306
 };
 
-export function ConnectionPanel({ busy, initialProfile, onConnect, onSave, onTest, onDone }: Props) {
+export function ConnectionPanel({
+  busy,
+  initialProfile,
+  onConnect,
+  onSave,
+  onTest,
+  onDone,
+}: Props) {
   const [form, setForm] = useState<SaveConnectionRequest>(emptyForm);
 
   useEffect(() => {
@@ -146,7 +153,7 @@ export function ConnectionPanel({ busy, initialProfile, onConnect, onSave, onTes
         ) : null}
         <Button type="submit" variant="primary" disabled={busy}>
           <Save size={14} />
-          Save
+          Save & Connect
         </Button>
       </div>
     </form>

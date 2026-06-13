@@ -3,6 +3,7 @@ import {
   ChevronDown,
   ChevronUp,
   Clock3,
+  KeyRound,
   PanelRight,
   Search,
   Settings,
@@ -126,8 +127,20 @@ export function App() {
   async function connectProfile(profile: ConnectionProfile) {
     try {
       await model.connect(profile.id);
-    } catch {
+    } catch (error) {
+      if (isKeychainAccessIssue(appErrorMessage(error))) return;
       openEditConnection(profile);
+    }
+  }
+
+  async function reconnectKeychain() {
+    if (!model.activeProfile) return;
+    try {
+      await model.connect(model.activeProfile.id, "", {
+        suppressErrorToast: true,
+      });
+    } catch {
+      // Keep the footer action visible so the user can approve the next prompt.
     }
   }
 
@@ -327,8 +340,12 @@ export function App() {
     setActiveQueryWorkspaceId(nextActiveId);
   }
 
+  const cursorMode =
+    model.settings?.cursorMode === "pointer" ? "pointer" : "default";
+  const activeKeychainAccessHint = currentKeychainAccessHint(model);
+
   return (
-    <>
+    <div className="contents" data-cursor-mode={cursorMode}>
       <Toaster
         closeButton
         position="top-right"
@@ -368,7 +385,6 @@ export function App() {
           onEditConnection={() => openEditConnection(model.activeProfile)}
           onInspectTable={model.inspectTable}
           onRefresh={model.refreshMetadata}
-          onRunTable={selectTableForEditing}
         />
 
         <SidebarInset
@@ -382,9 +398,7 @@ export function App() {
                 <BreadcrumbList>
                   <BreadcrumbItem>
                     <BreadcrumbPage>
-                      {model.selectedTable
-                        ? model.selectedTable.name
-                        : "Query workspace"}
+                      {activeQueryWorkspace?.title || "Query workspace"}
                     </BreadcrumbPage>
                   </BreadcrumbItem>
                 </BreadcrumbList>
@@ -523,9 +537,9 @@ export function App() {
                       </Button>
                     </div>
                     <div className="flex min-w-0 items-center gap-2">
-                      {model.selectedTable ? (
+                      {editableResultTable ? (
                         <span className="truncate px-2 text-xs text-muted">
-                          {model.selectedTable.schema}.{model.selectedTable.name}
+                          {editableResultTable.schema}.{editableResultTable.name}
                         </span>
                       ) : null}
                       <Button
@@ -596,22 +610,37 @@ export function App() {
           </section>
 
           <footer className="flex items-center justify-between border-t border-white/[0.06] bg-[#101012] px-3 text-xs text-zinc-400">
-            <span className="group relative flex min-w-0 items-center gap-2">
-              <span
-                className={cn(
-                  "h-2 w-2 rounded-full",
-                  statusDot(model.status.tone, Boolean(model.activeProfile)),
-                )}
-              />
-              <span className="truncate">
-                {model.activeProfile
-                  ? model.activeProfile.name
-                  : "No connection"}
-              </span>
-              <span className="pointer-events-none absolute bottom-6 left-0 z-40 hidden min-w-[260px] rounded-ui border border-white/[0.08] bg-[#17171a] p-3 text-left text-xs text-zinc-300 shadow-xl group-hover:block">
-                {connectionTooltip(model)}
-              </span>
-            </span>
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="group relative flex min-w-0 items-center gap-2">
+                <span
+                  className={cn(
+                    "h-2 w-2 rounded-full",
+                    statusDot(model.status.tone, Boolean(model.activeProfile)),
+                  )}
+                />
+                <span className="truncate">
+                  {model.activeProfile
+                    ? model.activeProfile.name
+                    : "No connection"}
+                </span>
+                <div className="pointer-events-auto absolute bottom-6 left-0 z-40 hidden min-w-[280px] rounded-ui border border-white/[0.08] bg-[#17171a] p-3 text-left text-xs text-zinc-300 shadow-xl group-hover:block">
+                  {connectionTooltip(model)}
+                </div>
+              </div>
+              {activeKeychainAccessHint ? (
+                <button
+                  className="group relative grid h-5 w-5 shrink-0 place-items-center rounded text-yellow-200 transition hover:bg-yellow-500/10 hover:text-yellow-100"
+                  title="Reconnect Keychain"
+                  type="button"
+                  onClick={() => void reconnectKeychain()}
+                >
+                  <KeyRound size={12} />
+                  <span className="pointer-events-none absolute bottom-6 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-yellow-500/25 bg-[#17171a] px-2 py-1 text-[11px] font-medium text-yellow-100 shadow-xl group-hover:block">
+                    Reconnect Keychain
+                  </span>
+                </button>
+              ) : null}
+            </div>
             <span>
               {model.activeProfile
                 ? `${model.activeProfile.host}:${model.activeProfile.port}`
@@ -651,7 +680,7 @@ export function App() {
           workspaceName={model.workspaceSwitching.name}
         />
       ) : null}
-    </>
+    </div>
   );
 }
 
@@ -799,29 +828,66 @@ function connectionTooltip(model: ReturnType<typeof useDataPanelState>) {
   }
 
   const health = model.connectionHealth;
+  const keychainAccessHint = currentKeychainAccessHint(model);
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-2">
       <b className="font-medium text-zinc-100">
         {profile.driver === "mysql" ? "MySQL" : "Postgres"} / {profile.database}
       </b>
-      <span>
-        {health.connected ? "Connected" : health.error || model.status.text}
-      </span>
-      <span>
-        Last ping{" "}
-        {health.latencyMs !== undefined
-          ? `${health.latencyMs}ms`
-          : "not available"}
-        {health.lastPingAt ? ` at ${formatClock(health.lastPingAt)}` : ""}
-      </span>
-      {health.connectedAt ? (
-        <span>Connected {relativeTime(health.connectedAt)}</span>
-      ) : null}
-      <span className="truncate text-muted">
-        {profile.host}:{profile.port}
-      </span>
+      <div className="flex flex-col gap-1">
+        <span>
+          {health.connected ? "Connected" : health.error || model.status.text}
+        </span>
+        {keychainAccessHint ? (
+          <span className="text-zinc-100">
+            Approve the macOS prompt to let Datapanel read saved secrets.
+          </span>
+        ) : null}
+        <span>
+          Last ping{" "}
+          {health.latencyMs !== undefined
+            ? `${health.latencyMs}ms`
+            : "not available"}
+          {health.lastPingAt ? ` at ${formatClock(health.lastPingAt)}` : ""}
+        </span>
+        {health.connectedAt ? (
+          <span>Connected {relativeTime(health.connectedAt)}</span>
+        ) : null}
+        <span className="truncate text-muted">
+          {profile.host}:{profile.port}
+        </span>
+      </div>
     </div>
   );
+}
+
+function currentKeychainAccessHint(
+  model: ReturnType<typeof useDataPanelState>,
+) {
+  const message = model.connectionHealth.error || model.status.text;
+  if (!isKeychainAccessIssue(message)) return "";
+  return "Keychain access required";
+}
+
+function isKeychainAccessIssue(message = "") {
+  const normalized = message.toLowerCase();
+  return normalized.includes("keychain access required") ||
+    normalized.includes("could not unlock saved secrets") ||
+    normalized.includes("saved password not found") ||
+    normalized.includes("user interaction") ||
+    normalized.includes("passphrase") ||
+    normalized.includes("access control");
+}
+
+function appErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object") {
+    const shaped = error as { message?: unknown; error?: unknown };
+    if (typeof shaped.message === "string") return shaped.message;
+    if (typeof shaped.error === "string") return shaped.error;
+  }
+  return "";
 }
 
 function formatClock(value: string) {

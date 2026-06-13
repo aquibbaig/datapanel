@@ -218,3 +218,11 @@ td {
   background: #2a2a30;
   color: #ffffff;
 }
+
+[data-cursor-mode="default"] :where(button, a, summary, [role="button"], [cmdk-item]) {
+  cursor: default !important;
+}
+
+[data-cursor-mode="pointer"] :where(button, a, summary, [role="button"], [cmdk-item]) {
+  cursor: pointer;
+}

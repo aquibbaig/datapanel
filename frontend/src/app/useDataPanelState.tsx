@@ -39,6 +39,10 @@ interface MetadataLoadOptions {
   refresh?: boolean;
 }
 
+interface ConnectOptions {
+  suppressErrorToast?: boolean;
+}
+
 interface SchemaSnapshot {
   schemas: SchemaSummary[];
   tablesBySchema: Record<string, TableSummary[]>;
@@ -293,7 +297,11 @@ export function useDataPanelState() {
     }
   }, []);
 
-  const connect = useCallback(async (profileId: string, password = "") => {
+  const connect = useCallback(async (
+    profileId: string,
+    password = "",
+    options: ConnectOptions = {},
+  ) => {
     const switchingWorkspace = profileId !== activeConnectionId;
     if (switchingWorkspace) {
       const profile = profiles.find((item) => item.id === profileId);
@@ -313,7 +321,9 @@ export function useDataPanelState() {
       const message = errorMessage(error, "Could not connect");
       setStatus({ tone: "danger", text: message });
       setConnectionHealth({ connected: false, error: message });
-      notify("danger", "Could not connect", message);
+      if (!options.suppressErrorToast) {
+        notify("danger", "Could not connect", message);
+      }
       throw error;
     } finally {
       setBusy(false);

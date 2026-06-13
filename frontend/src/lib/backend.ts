@@ -56,7 +56,8 @@ const defaultSettings: AppSettings = {
   sidebarWidth: 304,
   inspectorWidth: 360,
   autoRefreshMetadata: true,
-  chatResponsePrompt: ""
+  chatResponsePrompt: "",
+  cursorMode: "default"
 };
 
 const mockAICredentials: Record<string, AICredentialStatus> = {};

@@ -3,6 +3,7 @@ package connections
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 
 	"datapanel/internal/apperrors"
@@ -21,7 +22,6 @@ type OSKeyringStore struct {
 	ring    keyring.Keyring
 	loaded  bool
 	secrets map[string]string
-	missing map[string]struct{}
 }
 
 const bundledSecretsKey = "datapanel:secrets:v1"
@@ -36,7 +36,6 @@ func NewOSKeyringStore(serviceName string) (*OSKeyringStore, error) {
 	return &OSKeyringStore{
 		ring:    ring,
 		secrets: map[string]string{},
-		missing: map[string]struct{}{},
 	}, nil
 }
 
@@ -45,10 +44,9 @@ func (s *OSKeyringStore) Save(ctx context.Context, profileID string, password st
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.loadBundleLocked(); err != nil {
-		return apperrors.New(apperrors.CodeSecurity, "could not unlock saved secrets")
+		return apperrors.New(apperrors.CodeSecurity, "Keychain access required")
 	}
 	s.secrets[profileID] = password
-	delete(s.missing, profileID)
 	if err := s.saveBundleLocked(); err != nil {
 		return apperrors.New(apperrors.CodeSecurity, "could not save secret")
 	}
@@ -60,17 +58,16 @@ func (s *OSKeyringStore) Get(ctx context.Context, profileID string) (string, err
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.loadBundleLocked(); err != nil {
-		return "", apperrors.New(apperrors.CodeSecurity, "could not unlock saved secrets")
+		return "", apperrors.New(apperrors.CodeSecurity, "Keychain access required")
 	}
 	if secret, ok := s.secrets[profileID]; ok {
 		return secret, nil
 	}
-	if _, ok := s.missing[profileID]; ok {
-		return "", apperrors.New(apperrors.CodeSecurity, "saved password not found")
-	}
 	secret, err := s.getLegacySecretLocked(profileID)
 	if err != nil {
-		s.missing[profileID] = struct{}{}
+		if !errors.Is(err, keyring.ErrKeyNotFound) {
+			return "", apperrors.New(apperrors.CodeSecurity, "Keychain access required")
+		}
 		return "", apperrors.New(apperrors.CodeSecurity, "saved password not found")
 	}
 	return secret, nil
@@ -81,10 +78,9 @@ func (s *OSKeyringStore) Delete(ctx context.Context, profileID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.loadBundleLocked(); err != nil {
-		return apperrors.New(apperrors.CodeSecurity, "could not unlock saved secrets")
+		return apperrors.New(apperrors.CodeSecurity, "Keychain access required")
 	}
 	delete(s.secrets, profileID)
-	s.missing[profileID] = struct{}{}
 	if err := s.saveBundleLocked(); err != nil {
 		return apperrors.New(apperrors.CodeSecurity, "could not delete secret")
 	}
@@ -99,6 +95,10 @@ func (s *OSKeyringStore) loadBundleLocked() error {
 	s.loaded = true
 	item, err := s.ring.Get(bundledSecretsKey)
 	if err != nil {
+		if !errors.Is(err, keyring.ErrKeyNotFound) {
+			s.loaded = false
+			return err
+		}
 		s.secrets = map[string]string{}
 		return nil
 	}
@@ -129,7 +129,6 @@ func (s *OSKeyringStore) getLegacySecretLocked(key string) (string, error) {
 	}
 	secret := string(item.Data)
 	s.secrets[key] = secret
-	delete(s.missing, key)
 	_ = s.saveBundleLocked()
 	return secret, nil
 }

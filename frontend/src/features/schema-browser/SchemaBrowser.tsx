@@ -11,7 +11,8 @@ import {
   ToggleLeft,
   Type,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "../../components/ui/Button";
 import { cn } from "../../lib/cn";
 import type {
@@ -29,7 +30,6 @@ interface Props {
   tableDetails: TableDetails | null;
   onRefresh(): Promise<void>;
   onInspectTable(table: TableSummary): Promise<TableDetails | null>;
-  onRunTable(table: TableSummary): Promise<void>;
 }
 
 export function SchemaBrowser({
@@ -41,13 +41,32 @@ export function SchemaBrowser({
   tableDetails,
   onRefresh,
   onInspectTable,
-  onRunTable,
 }: Props) {
   const [filter, setFilter] = useState("");
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const filteredSchemas = useMemo(
     () => filterSchemas(schemas, tablesBySchema, filter),
     [filter, schemas, tablesBySchema],
   );
+  const rows = useMemo(
+    () =>
+      buildBrowserRows({
+        filteredSchemas,
+        selectedTable,
+        tableDetails,
+      }),
+    [filteredSchemas, selectedTable, tableDetails],
+  );
+  const selectedForeignKeys = useMemo(
+    () => (tableDetails ? foreignKeyColumns(tableDetails) : new Set<string>()),
+    [tableDetails],
+  );
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (index) => estimatedRowHeight(rows[index]),
+    overscan: 14,
+  });
 
   return (
     <aside className="flex min-h-0 w-full min-w-0 flex-1 flex-col bg-transparent">
@@ -63,7 +82,7 @@ export function SchemaBrowser({
         </Button>
       </div> */}
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto px-3 py-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 px-3 py-3">
         <label className="relative block">
           <Search
             className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500"
@@ -85,66 +104,156 @@ export function SchemaBrowser({
           </div>
         ) : null}
 
-        <div className="flex flex-col gap-4">
-          {filteredSchemas.map(({ schema, tables }) => (
-            <div className="flex flex-col gap-1.5" key={schema.name}>
-              <div className="px-2 text-[11px] font-semibold uppercase text-muted">
-                {schema.name}
-              </div>
-              <div className="flex flex-col gap-1">
-                {tables.map((table) => {
-                  const active =
-                    selectedTable?.schema === table.schema &&
-                    selectedTable.name === table.name;
-                  const loading =
-                    inspectingTable?.schema === table.schema &&
-                    inspectingTable.name === table.name;
-                  return (
-                    <div
-                      className="flex flex-col gap-2"
-                      key={`${table.schema}.${table.name}`}
-                    >
-                      <Button
-                        size="row"
-                        className={cn(
-                          "w-full justify-start rounded-md text-left",
-                          active
-                            ? "bg-white/[0.07] text-zinc-100"
-                            : "text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-200",
-                        )}
-                        onClick={() => void onInspectTable(table)}
-                        onDoubleClick={() => void onRunTable(table)}
-                      >
-                        <Table2 size={14} />
-                        <span className="min-w-0 flex-1 truncate">
-                          {table.name}
-                        </span>
-                        <span className="text-[11px] text-muted">
-                          {table.type.replace("BASE ", "")}
-                        </span>
-                        {loading ? (
-                          <Loader2
-                            aria-label="Loading table metadata"
-                            className="animate-spin text-zinc-300"
-                            size={14}
-                          />
-                        ) : null}
-                      </Button>
-                      {active && tableDetails ? (
-                        <ColumnList tableDetails={tableDetails} />
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
+          <div
+            className="relative w-full"
+            style={{ height: rowVirtualizer.getTotalSize() }}
+          >
+            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+              const row = rows[virtualRow.index];
+              return (
+                <div
+                  key={row.key}
+                  className="absolute left-0 top-0 w-full"
+                  style={{
+                    height: virtualRow.size,
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                >
+                  <BrowserRow
+                    row={row}
+                    selectedForeignKeys={selectedForeignKeys}
+                    inspectingTable={inspectingTable}
+                    selectedTable={selectedTable}
+                    onInspectTable={onInspectTable}
+                  />
+                </div>
+              );
+            })}
+          </div>
           {activeConnectionId && filteredSchemas.length === 0 ? (
             <p className="text-sm text-muted">No matching tables.</p>
           ) : null}
         </div>
       </div>
     </aside>
+  );
+}
+
+type BrowserRow =
+  | { kind: "schema"; key: string; schema: SchemaSummary }
+  | { kind: "table"; key: string; table: TableSummary }
+  | {
+      kind: "column";
+      key: string;
+      column: TableDetails["columns"][number];
+    };
+
+function buildBrowserRows({
+  filteredSchemas,
+  selectedTable,
+  tableDetails,
+}: {
+  filteredSchemas: Array<{ schema: SchemaSummary; tables: TableSummary[] }>;
+  selectedTable: TableSummary | null;
+  tableDetails: TableDetails | null;
+}) {
+  const rows: BrowserRow[] = [];
+  for (const { schema, tables } of filteredSchemas) {
+    rows.push({ kind: "schema", key: `schema:${schema.name}`, schema });
+    for (const table of tables) {
+      rows.push({
+        kind: "table",
+        key: `table:${table.schema}.${table.name}`,
+        table,
+      });
+      if (
+        selectedTable?.schema === table.schema &&
+        selectedTable.name === table.name &&
+        tableDetails
+      ) {
+        for (const column of tableDetails.columns) {
+          rows.push({
+            kind: "column",
+            key: `column:${table.schema}.${table.name}.${column.name}`,
+            column,
+          });
+        }
+      }
+    }
+  }
+  return rows;
+}
+
+function estimatedRowHeight(row: BrowserRow | undefined) {
+  if (!row) return 32;
+  if (row.kind === "schema") return 28;
+  return 32;
+}
+
+function BrowserRow({
+  row,
+  selectedForeignKeys,
+  inspectingTable,
+  selectedTable,
+  onInspectTable,
+}: {
+  row: BrowserRow;
+  selectedForeignKeys: Set<string>;
+  inspectingTable: TableSummary | null;
+  selectedTable: TableSummary | null;
+  onInspectTable(table: TableSummary): Promise<TableDetails | null>;
+}) {
+  if (row.kind === "schema") {
+    return (
+      <div className="flex h-7 items-center px-2 text-[11px] font-semibold uppercase text-muted">
+        {row.schema.name}
+      </div>
+    );
+  }
+
+  if (row.kind === "column") {
+    return (
+      <ColumnRow
+        column={row.column}
+        isForeign={selectedForeignKeys.has(row.column.name)}
+      />
+    );
+  }
+
+  const table = row.table;
+  const active =
+    selectedTable?.schema === table.schema && selectedTable.name === table.name;
+  const loading =
+    inspectingTable?.schema === table.schema &&
+    inspectingTable.name === table.name;
+
+  return (
+    <div className="py-0.5">
+      <Button
+        size="row"
+        className={cn(
+          "w-full justify-start rounded-md text-left",
+          active
+            ? "bg-white/[0.07] text-zinc-100"
+            : "text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-200",
+        )}
+        onClick={() => void onInspectTable(table)}
+      >
+        <Table2 size={14} />
+        <span className="min-w-0 flex-1 truncate">{table.name}</span>
+        <span className="text-[11px] text-muted">
+          {table.type.replace("BASE ", "")}
+        </span>
+        {loading ? (
+          <Loader2
+            aria-label="Loading table metadata"
+            className="animate-spin text-zinc-300"
+            size={14}
+          />
+        ) : null}
+      </Button>
+    </div>
   );
 }
 
@@ -172,41 +281,39 @@ function filterSchemas(
     .filter((entry) => entry.tables.length > 0);
 }
 
-function ColumnList({ tableDetails }: { tableDetails: TableDetails }) {
-  const foreignKeys = foreignKeyColumns(tableDetails);
-
+function ColumnRow({
+  column,
+  isForeign,
+}: {
+  column: TableDetails["columns"][number];
+  isForeign: boolean;
+}) {
   return (
-    <div className="ml-6 flex flex-col gap-1 border-l border-white/[0.06] pl-2">
-      {tableDetails.columns.map((column) => {
-        const isForeign = foreignKeys.has(column.name);
-        return (
-          <Button
-            key={column.name}
-            size="row"
-            className="w-full justify-between rounded-md text-left text-xs text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-100"
-          >
-            <span className="flex min-w-0 items-center gap-1.5">
-              <ColumnTypeIcon dataType={column.dataType} />
-              {column.isPrimary ? (
-                <KeyRound
-                  className="text-yellow-200"
-                  size={8}
-                  aria-label="Primary key"
-                />
-              ) : null}
-              {isForeign ? (
-                <Link2
-                  className="text-sky-200"
-                  size={8}
-                  aria-label="Foreign key"
-                />
-              ) : null}
-              <span className="min-w-0 truncate">{column.name}</span>
-            </span>
-            <code className="text-[11px] text-muted">{column.dataType}</code>
-          </Button>
-        );
-      })}
+    <div className="ml-6 border-l border-white/[0.06] py-0.5 pl-2">
+      <Button
+        size="row"
+        className="w-full justify-between rounded-md text-left text-xs text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-100"
+      >
+        <span className="flex min-w-0 items-center gap-1.5">
+          <ColumnTypeIcon dataType={column.dataType} />
+          {column.isPrimary ? (
+            <KeyRound
+              className="text-yellow-200"
+              size={8}
+              aria-label="Primary key"
+            />
+          ) : null}
+          {isForeign ? (
+            <Link2
+              className="text-sky-200"
+              size={8}
+              aria-label="Foreign key"
+            />
+          ) : null}
+          <span className="min-w-0 truncate">{column.name}</span>
+        </span>
+        <code className="text-[11px] text-muted">{column.dataType}</code>
+      </Button>
     </div>
   );
 }

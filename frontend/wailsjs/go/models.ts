@@ -1,5 +1,5 @@
 export namespace ai {
-	
+
 	export class CredentialStatus {
 	    provider: string;
 	    connected: boolean;
@@ -7,11 +7,11 @@ export namespace ai {
 	    label: string;
 	    updatedAt: string;
 	    storage: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new CredentialStatus(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.provider = source["provider"];
@@ -29,11 +29,11 @@ export namespace ai {
 	    schemaContext: string;
 	    dialect: string;
 	    responseStyle: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new GenerateRequest(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.provider = source["provider"];
@@ -49,11 +49,11 @@ export namespace ai {
 	    sql: string;
 	    destructiveRisk: boolean;
 	    assumptions: string[];
-	
+
 	    static createFrom(source: any = {}) {
 	        return new GenerateResponse(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.answer = source["answer"];
@@ -66,11 +66,11 @@ export namespace ai {
 	    provider: string;
 	    token: string;
 	    label: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new SaveCredentialRequest(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.provider = source["provider"];
@@ -82,7 +82,7 @@ export namespace ai {
 }
 
 export namespace appdata {
-	
+
 	export class AIChatMessage {
 	    id: string;
 	    threadId: string;
@@ -93,11 +93,11 @@ export namespace appdata {
 	    content: string;
 	    response?: ai.GenerateResponse;
 	    createdAt: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new AIChatMessage(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -110,7 +110,7 @@ export namespace appdata {
 	        this.response = this.convertValues(source["response"], ai.GenerateResponse);
 	        this.createdAt = source["createdAt"];
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -137,11 +137,11 @@ export namespace appdata {
 	    model: string;
 	    createdAt: string;
 	    updatedAt: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new AIChatThread(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -155,11 +155,11 @@ export namespace appdata {
 	}
 	export class ClearAIChatMessagesRequest {
 	    threadId: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new ClearAIChatMessagesRequest(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.threadId = source["threadId"];
@@ -170,11 +170,11 @@ export namespace appdata {
 	    title: string;
 	    provider: string;
 	    model: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new CreateAIChatThreadRequest(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.connectionId = source["connectionId"];
@@ -185,11 +185,11 @@ export namespace appdata {
 	}
 	export class DeleteAIChatThreadRequest {
 	    id: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new DeleteAIChatThreadRequest(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -198,11 +198,11 @@ export namespace appdata {
 	export class ListAIChatMessagesRequest {
 	    threadId: string;
 	    limit: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new ListAIChatMessagesRequest(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.threadId = source["threadId"];
@@ -211,11 +211,11 @@ export namespace appdata {
 	}
 	export class ListAIChatThreadsRequest {
 	    connectionId: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new ListAIChatThreadsRequest(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.connectionId = source["connectionId"];
@@ -224,11 +224,11 @@ export namespace appdata {
 	export class ListQueryHistoryRequest {
 	    connectionId: string;
 	    limit: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new ListQueryHistoryRequest(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.connectionId = source["connectionId"];
@@ -246,11 +246,11 @@ export namespace appdata {
 	    rowCount: number;
 	    affectedRows: number;
 	    error?: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new QueryHistoryEntry(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -275,11 +275,11 @@ export namespace appdata {
 	    content: string;
 	    response?: ai.GenerateResponse;
 	    createdAt: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new SaveAIChatMessageRequest(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -292,7 +292,7 @@ export namespace appdata {
 	        this.response = this.convertValues(source["response"], ai.GenerateResponse);
 	        this.createdAt = source["createdAt"];
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -322,11 +322,11 @@ export namespace appdata {
 	    rowCount: number;
 	    affectedRows: number;
 	    error?: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new SaveQueryHistoryRequest(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -346,11 +346,11 @@ export namespace appdata {
 	    title: string;
 	    provider: string;
 	    model: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new UpdateAIChatThreadRequest(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -363,15 +363,15 @@ export namespace appdata {
 }
 
 export namespace connections {
-	
+
 	export class ConnectRequest {
 	    profileId: string;
 	    password: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new ConnectRequest(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.profileId = source["profileId"];
@@ -390,11 +390,11 @@ export namespace connections {
 	    color: string;
 	    createdAt: string;
 	    updatedAt: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new ConnectionProfile(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -414,11 +414,11 @@ export namespace connections {
 	    profileId: string;
 	    connected: boolean;
 	    message: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new ConnectionStatus(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.profileId = source["profileId"];
@@ -437,11 +437,11 @@ export namespace connections {
 	    password: string;
 	    sslMode: string;
 	    color: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new SaveConnectionRequest(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -467,11 +467,11 @@ export namespace connections {
 	    password: string;
 	    sslMode: string;
 	    color: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new TestConnectionRequest(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.profileId = source["profileId"];
@@ -490,7 +490,7 @@ export namespace connections {
 }
 
 export namespace postgres {
-	
+
 	export class ColumnSummary {
 	    name: string;
 	    dataType: string;
@@ -498,11 +498,11 @@ export namespace postgres {
 	    default: string;
 	    position: number;
 	    isPrimary: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new ColumnSummary(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -517,11 +517,11 @@ export namespace postgres {
 	    name: string;
 	    type: string;
 	    definition: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new ConstraintSummary(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -532,27 +532,15 @@ export namespace postgres {
 	export class IndexSummary {
 	    name: string;
 	    definition: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new IndexSummary(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
 	        this.definition = source["definition"];
-	    }
-	}
-	export class SchemaSummary {
-	    name: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new SchemaSummary(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
 	    }
 	}
 	export class SchemaFingerprint {
@@ -567,6 +555,18 @@ export namespace postgres {
 	        this.hash = source["hash"];
 	    }
 	}
+	export class SchemaSummary {
+	    name: string;
+
+	    static createFrom(source: any = {}) {
+	        return new SchemaSummary(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	    }
+	}
 	export class TableDetails {
 	    schema: string;
 	    name: string;
@@ -574,11 +574,11 @@ export namespace postgres {
 	    columns: ColumnSummary[];
 	    indexes: IndexSummary[];
 	    constraints: ConstraintSummary[];
-	
+
 	    static createFrom(source: any = {}) {
 	        return new TableDetails(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.schema = source["schema"];
@@ -588,7 +588,7 @@ export namespace postgres {
 	        this.indexes = this.convertValues(source["indexes"], IndexSummary);
 	        this.constraints = this.convertValues(source["constraints"], ConstraintSummary);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -612,11 +612,11 @@ export namespace postgres {
 	    name: string;
 	    type: string;
 	    rowEstimate: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new TableSummary(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.schema = source["schema"];
@@ -629,15 +629,15 @@ export namespace postgres {
 }
 
 export namespace query {
-	
+
 	export class QueryColumn {
 	    name: string;
 	    dataType: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new QueryColumn(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -651,11 +651,11 @@ export namespace query {
 	    durationMs: number;
 	    executedAt: string;
 	    success: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new QueryHistoryItem(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -673,11 +673,11 @@ export namespace query {
 	    maxRows: number;
 	    timeoutSeconds: number;
 	    confirmDestructive: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new QueryRequest(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.requestId = source["requestId"];
@@ -696,11 +696,11 @@ export namespace query {
 	    notices: string[];
 	    error: string;
 	    truncated: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new QueryResult(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.columns = this.convertValues(source["columns"], QueryColumn);
@@ -711,7 +711,7 @@ export namespace query {
 	        this.error = source["error"];
 	        this.truncated = source["truncated"];
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -733,11 +733,11 @@ export namespace query {
 	export class SQLAnalysis {
 	    destructive: boolean;
 	    warnings: string[];
-	
+
 	    static createFrom(source: any = {}) {
 	        return new SQLAnalysis(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.destructive = source["destructive"];
@@ -748,7 +748,7 @@ export namespace query {
 }
 
 export namespace settings {
-	
+
 	export class AppSettings {
 	    theme: string;
 	    queryLimit: number;
@@ -758,11 +758,12 @@ export namespace settings {
 	    inspectorWidth: number;
 	    autoRefreshMetadata: boolean;
 	    chatResponsePrompt: string;
-	
+	    cursorMode: string;
+
 	    static createFrom(source: any = {}) {
 	        return new AppSettings(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.theme = source["theme"];
@@ -773,20 +774,21 @@ export namespace settings {
 	        this.inspectorWidth = source["inspectorWidth"];
 	        this.autoRefreshMetadata = source["autoRefreshMetadata"];
 	        this.chatResponsePrompt = source["chatResponsePrompt"];
+	        this.cursorMode = source["cursorMode"];
 	    }
 	}
 
 }
 
 export namespace updater {
-	
+
 	export class InstallUpdateRequest {
 	    assetName: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new InstallUpdateRequest(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.assetName = source["assetName"];
@@ -795,11 +797,11 @@ export namespace updater {
 	export class InstallUpdateResult {
 	    restarting: boolean;
 	    message: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new InstallUpdateResult(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.restarting = source["restarting"];
@@ -811,11 +813,11 @@ export namespace updater {
 	    currentReleaseHash: string;
 	    lastCheckedAt: string;
 	    lastInstalledAt: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new ReleaseState(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.currentVersion = source["currentVersion"];
@@ -838,11 +840,11 @@ export namespace updater {
 	    updateAvailable: boolean;
 	    canInstall: boolean;
 	    message: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new UpdateCheckResult(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.currentVersion = source["currentVersion"];

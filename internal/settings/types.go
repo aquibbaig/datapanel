@@ -9,6 +9,7 @@ type AppSettings struct {
 	InspectorWidth        int    `json:"inspectorWidth"`
 	AutoRefreshMetadata   bool   `json:"autoRefreshMetadata"`
 	ChatResponsePrompt    string `json:"chatResponsePrompt"`
+	CursorMode            string `json:"cursorMode"`
 }
 
 func DefaultSettings() AppSettings {
@@ -21,5 +22,6 @@ func DefaultSettings() AppSettings {
 		InspectorWidth:        360,
 		AutoRefreshMetadata:   true,
 		ChatResponsePrompt:    "",
+		CursorMode:            "default",
 	}
 }
