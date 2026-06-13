@@ -189,6 +189,7 @@ export function useDataPanelState() {
   }, [connectAndLoadMetadata, loadProfiles]);
 
   useEffect(() => {
+    if (isLocalDev()) return;
     if (updateCheckStartedRef.current) return;
     updateCheckStartedRef.current = true;
 
@@ -226,16 +227,17 @@ export function useDataPanelState() {
   }, []);
 
   async function installAppUpdate(assetName: string) {
+    if (isLocalDev()) return;
     const toastId = "datapanel-install-update";
     toast.loading("Downloading update", {
       id: toastId,
-      description: "Datapanel will restart after the download is verified.",
+      description: "DataPanel will restart after the download is verified.",
     });
     try {
       await updateService.install(assetName);
       toast.success("Update ready", {
         id: toastId,
-        description: "Datapanel is restarting to finish installing.",
+        description: "DataPanel is restarting to finish installing.",
       });
     } catch (error) {
       const message = errorMessage(error, "Could not install update");
@@ -701,6 +703,10 @@ export function useDataPanelState() {
     cancelQuery,
     updateSettings
   };
+}
+
+function isLocalDev() {
+  return import.meta.env.DEV;
 }
 
 function isExplainSQL(sql: string) {

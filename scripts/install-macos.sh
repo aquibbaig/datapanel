@@ -10,7 +10,7 @@ usage() {
   cat <<EOF
 Usage: install-macos.sh [--no-quarantine]
 
-Installs Datapanel with Homebrew Cask.
+Installs DataPanel with Homebrew Cask.
 
 Options:
   --no-quarantine  Ask Homebrew not to quarantine the app download.
@@ -37,12 +37,12 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ "$(uname -s)" != "Darwin" ]; then
-  echo "Datapanel's desktop app installer currently supports macOS only." >&2
+  echo "DataPanel's desktop app installer currently supports macOS only." >&2
   exit 1
 fi
 
 if ! command -v brew >/dev/null 2>&1; then
-  echo "Homebrew is required to install Datapanel." >&2
+  echo "Homebrew is required to install DataPanel." >&2
   echo "Install Homebrew from https://brew.sh, then run this script again." >&2
   exit 1
 fi
@@ -55,11 +55,11 @@ if brew trust --help >/dev/null 2>&1; then
   brew trust --tap "$tap_name"
 fi
 
-echo "Installing Datapanel..."
+echo "Installing DataPanel..."
 if [ "$no_quarantine" = "1" ]; then
   brew install --cask --no-quarantine "$cask_name"
 else
   brew install --cask "$cask_name"
 fi
 
-echo "Datapanel installed."
+echo "DataPanel installed."

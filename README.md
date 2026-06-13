@@ -1,6 +1,6 @@
-# datapanel
+# DataPanel
 
-datapanel is a local-first desktop database GUI client. The MVP is a Wails app with a Go backend, React + TypeScript frontend, and Postgres support.
+DataPanel is a local-first desktop database GUI client. The MVP is a Wails app with a Go backend, React + TypeScript frontend, and Postgres support.
 
 ## Goals
 
@@ -58,7 +58,7 @@ Build a macOS `.app` bundle:
 ./scripts/build-mac-app.sh
 ```
 
-The app bundle is written to `build/bin/datapanel.app`.
+The app bundle is written to `build/bin/DataPanel.app`.
 
 ## Install on macOS
 
@@ -74,7 +74,7 @@ Technical users can also install without quarantine:
 curl -fsSL https://raw.githubusercontent.com/aquibbaig/datapanel/main/scripts/install-macos.sh | sh -s -- --no-quarantine
 ```
 
-The current macOS build is unsigned. If macOS blocks the first launch, open System Settings > Privacy & Security and choose Open Anyway for Datapanel.
+The current macOS build is unsigned. If macOS blocks the first launch, open System Settings > Privacy & Security and choose Open Anyway for DataPanel.
 
 ## Project Layout
 

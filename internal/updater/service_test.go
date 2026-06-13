@@ -21,24 +21,49 @@ func TestNormalizeDigest(t *testing.T) {
 
 func TestSelectInstallableAssetPrefersMacOSZip(t *testing.T) {
 	assets := []githubAsset{
-		{Name: "Datapanel-Windows.zip", Digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
-		{Name: "Datapanel-macOS.zip", Digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+		{Name: "DataPanel-Windows.zip", Digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+		{Name: "DataPanel-macOS.zip", Digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
 	}
 
 	asset := selectInstallableAsset(assets)
 	if asset == nil {
 		t.Fatal("expected asset")
 	}
-	if asset.Name != "Datapanel-macOS.zip" {
+	if asset.Name != "DataPanel-macOS.zip" {
 		t.Fatalf("expected macOS asset, got %q", asset.Name)
 	}
 }
 
 func TestParseChecksumDigest(t *testing.T) {
-	contents := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  other.zip\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  Datapanel-macOS.zip\n"
-	digest := parseChecksumDigest(contents, "Datapanel-macOS.zip")
+	contents := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  other.zip\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  DataPanel-macOS.zip\n"
+	digest := parseChecksumDigest(contents, "DataPanel-macOS.zip")
 	if digest != "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" {
 		t.Fatalf("unexpected digest %q", digest)
+	}
+}
+
+func TestCheckForUpdateSkipsDevelopmentBuild(t *testing.T) {
+	previousHash := CurrentReleaseHash
+	CurrentReleaseHash = "dev"
+	t.Cleanup(func() {
+		CurrentReleaseHash = previousHash
+	})
+
+	configDir := t.TempDir()
+	service := NewService(configDir)
+
+	result, err := service.CheckForUpdate()
+	if err != nil {
+		t.Fatalf("expected dev update check to succeed, got %v", err)
+	}
+	if result.UpdateAvailable {
+		t.Fatal("expected no update in development build")
+	}
+	if result.CanInstall {
+		t.Fatal("expected install to be disabled in development build")
+	}
+	if _, err := os.Stat(filepath.Join(configDir, "release.json")); !os.IsNotExist(err) {
+		t.Fatalf("expected dev update check not to write release state, got %v", err)
 	}
 }
 

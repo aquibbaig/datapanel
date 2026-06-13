@@ -415,7 +415,7 @@ export const updateService = {
         currentReleaseHash: "dev",
         latestVersion: "0.1.0",
         latestReleaseHash: "dev",
-        releaseName: "Datapanel preview",
+        releaseName: "DataPanel preview",
         releaseUrl: "https://github.com/aquibbaig/datapanel/releases",
         publishedAt: "",
         assetName: "",
@@ -423,7 +423,7 @@ export const updateService = {
         assetDigest: "",
         updateAvailable: false,
         canInstall: false,
-        message: "Datapanel is up to date.",
+        message: "DataPanel is up to date.",
       };
     }
     return UpdaterBindings.CheckForUpdate();

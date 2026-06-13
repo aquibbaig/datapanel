@@ -2,20 +2,20 @@ cask "datapanel" do
   version :latest
   sha256 :no_check
 
-  url "https://github.com/aquibbaig/datapanel/releases/latest/download/Datapanel-macOS.zip",
+  url "https://github.com/aquibbaig/datapanel/releases/latest/download/DataPanel-macOS.zip",
       verified: "github.com/aquibbaig/datapanel/"
-  name "Datapanel"
+  name "DataPanel"
   desc "Desktop database workspace for querying, inspecting, and editing data"
   homepage "https://github.com/aquibbaig/datapanel"
 
-  app "datapanel.app", target: "Datapanel.app"
+  app "DataPanel.app"
 
   caveats <<~EOS
-    Datapanel is currently unsigned. If macOS blocks it on first launch, open
-    System Settings > Privacy & Security and choose Open Anyway for Datapanel.
+    DataPanel is currently unsigned. If macOS blocks it on first launch, open
+    System Settings > Privacy & Security and choose Open Anyway for DataPanel.
 
     Technical users can also clear quarantine with:
-      xattr -dr com.apple.quarantine #{appdir}/Datapanel.app
+      xattr -dr com.apple.quarantine #{appdir}/DataPanel.app
   EOS
 
   zap trash: [

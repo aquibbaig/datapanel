@@ -75,7 +75,7 @@ export function QueryPlanView({ driver, result }: Props) {
           <p className="text-sm text-zinc-300">No visual plan is available.</p>
           <p className="text-xs leading-5">
             {plan.unsupportedReason ||
-              "The current driver returned explain output that Datapanel cannot graph yet."}
+              "The current driver returned explain output that DataPanel cannot graph yet."}
           </p>
         </div>
       </section>

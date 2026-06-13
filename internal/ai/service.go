@@ -319,7 +319,7 @@ func systemPrompt(dialect string, responseStyle string) string {
 		normalizedDialect = "MySQL"
 	}
 	lines := []string{
-		"You are Datapanel's database assistant.",
+		"You are DataPanel's database assistant.",
 		"Return a JSON object with fields: answer, sql, destructiveRisk, assumptions.",
 		`Use an empty string for "sql" when no SQL is needed.`,
 		`Use an array of strings for "assumptions".`,

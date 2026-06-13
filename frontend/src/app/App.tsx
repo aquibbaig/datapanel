@@ -69,9 +69,7 @@ export function App() {
   const [connectionModalOpen, setConnectionModalOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [rightPanel, setRightPanel] = useState<RightPanel | null>(() =>
-    loadLastRightPanel(),
-  );
+  const [rightPanel, setRightPanel] = useState<RightPanel | null>(null);
   const [bottomView, setBottomView] = useState<"results" | "plan">(
     "results",
   );
@@ -841,7 +839,7 @@ function connectionTooltip(model: ReturnType<typeof useDataPanelState>) {
         </span>
         {keychainAccessHint ? (
           <span className="text-zinc-100">
-            Approve the macOS prompt to let Datapanel read saved secrets.
+            Approve the macOS prompt to let DataPanel read saved secrets.
           </span>
         ) : null}
         <span>

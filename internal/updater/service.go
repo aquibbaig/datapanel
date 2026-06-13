@@ -61,6 +61,10 @@ func (s *Service) GetReleaseState() (ReleaseState, error) {
 }
 
 func (s *Service) CheckForUpdate() (UpdateCheckResult, error) {
+	if isDevelopmentBuild() {
+		return developmentUpdateResult(), nil
+	}
+
 	state, err := s.ensureState()
 	if err != nil {
 		return UpdateCheckResult{}, err
@@ -101,7 +105,7 @@ func (s *Service) CheckForUpdate() (UpdateCheckResult, error) {
 
 	switch {
 	case !updateAvailable:
-		result.Message = "Datapanel is up to date."
+		result.Message = "DataPanel is up to date."
 	case asset == nil:
 		result.Message = "A new release is available, but no macOS zip asset was found."
 	case runtime.GOOS != "darwin":
@@ -111,7 +115,7 @@ func (s *Service) CheckForUpdate() (UpdateCheckResult, error) {
 	case !strings.HasSuffix(strings.ToLower(asset.Name), ".zip"):
 		result.Message = "A new release is available, but the selected asset is not a zip archive."
 	default:
-		result.Message = "A new Datapanel update is available."
+		result.Message = "A new DataPanel update is available."
 	}
 
 	state.LastCheckedAt = time.Now().UTC().Format(time.RFC3339)
@@ -121,12 +125,19 @@ func (s *Service) CheckForUpdate() (UpdateCheckResult, error) {
 }
 
 func (s *Service) InstallUpdate(input InstallUpdateRequest) (InstallUpdateResult, error) {
+	if isDevelopmentBuild() {
+		return InstallUpdateResult{
+			Restarting: false,
+			Message:    "Automatic updates are disabled in local dev.",
+		}, nil
+	}
+
 	check, err := s.CheckForUpdate()
 	if err != nil {
 		return InstallUpdateResult{}, err
 	}
 	if !check.UpdateAvailable {
-		return InstallUpdateResult{Restarting: false, Message: "Datapanel is already up to date."}, nil
+		return InstallUpdateResult{Restarting: false, Message: "DataPanel is already up to date."}, nil
 	}
 	if !check.CanInstall {
 		return InstallUpdateResult{}, errors.New(check.Message)
@@ -204,8 +215,25 @@ func (s *Service) InstallUpdate(input InstallUpdateRequest) (InstallUpdateResult
 
 	return InstallUpdateResult{
 		Restarting: true,
-		Message:    "Update downloaded. Datapanel will restart to finish installing.",
+		Message:    "Update downloaded. DataPanel will restart to finish installing.",
 	}, nil
+}
+
+func isDevelopmentBuild() bool {
+	return strings.EqualFold(strings.TrimSpace(CurrentReleaseHash), "dev")
+}
+
+func developmentUpdateResult() UpdateCheckResult {
+	return UpdateCheckResult{
+		CurrentVersion:     CurrentVersion,
+		CurrentReleaseHash: CurrentReleaseHash,
+		LatestVersion:      CurrentVersion,
+		LatestReleaseHash:  CurrentReleaseHash,
+		ReleaseName:        "DataPanel local dev",
+		UpdateAvailable:    false,
+		CanInstall:         false,
+		Message:            "Automatic updates are disabled in local dev.",
+	}
 }
 
 func (s *Service) ensureState() (ReleaseState, error) {
@@ -597,7 +625,7 @@ func currentAppBundle() (string, error) {
 		}
 		current = parent
 	}
-	return "", errors.New("Datapanel is not running from a macOS .app bundle")
+	return "", errors.New("DataPanel is not running from a macOS .app bundle")
 }
 
 func findAppBundle(root string) (string, error) {

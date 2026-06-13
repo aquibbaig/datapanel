@@ -1,24 +1,24 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "datapanel",
-  "outputfilename": "datapanel",
+  "name": "DataPanel",
+  "outputfilename": "DataPanel",
   "frontend:install": "npm install",
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "author": {
-    "name": "datapanel",
+    "name": "DataPanel",
     "email": ""
   },
   "info": {
-    "productName": "Datapanel",
+    "productName": "DataPanel",
     "productVersion": "0.1.0",
-    "copyright": "Copyright 2026 Datapanel. All rights reserved.",
-    "comments": "Datapanel is a desktop database workspace for querying, inspecting, and editing data.",
+    "copyright": "Copyright 2026 DataPanel. All rights reserved.",
+    "comments": "DataPanel is a desktop database workspace for querying, inspecting, and editing data.",
     "protocols": [
       {
         "scheme": "datapanel",
-        "description": "Datapanel AI provider login callback",
+        "description": "DataPanel AI provider login callback",
         "role": "Editor"
       }
     ]

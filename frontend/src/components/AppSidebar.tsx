@@ -121,7 +121,7 @@ function WorkspaceSelector({
         <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-2 text-left transition">
           <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.04]">
             <img
-              alt="Datapanel"
+              alt="DataPanel"
               className="h-full w-full object-cover"
               src={logoMarkUrl}
             />

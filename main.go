@@ -63,7 +63,7 @@ func main() {
 	application := appcore.NewApplication(paths, appcore.MultiCloser{databaseRouter, appDataService})
 
 	err = wails.Run(&options.App{
-		Title:     "datapanel",
+		Title:     "DataPanel",
 		Width:     1440,
 		Height:    920,
 		MinWidth:  1040,
@@ -105,16 +105,16 @@ func applicationMenu(application *appcore.Application) *menu.Menu {
 		application.OpenSettings()
 	})
 	appMenu.AddSeparator()
-	appMenu.AddText("Hide datapanel", keys.CmdOrCtrl("h"), func(_ *menu.CallbackData) {
+	appMenu.AddText("Hide DataPanel", keys.CmdOrCtrl("h"), func(_ *menu.CallbackData) {
 		application.Hide()
 	})
 	appMenu.AddSeparator()
-	appMenu.AddText("Quit datapanel", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
+	appMenu.AddText("Quit DataPanel", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
 		application.Quit()
 	})
 
 	return menu.NewMenuFromItems(
-		menu.SubMenu("datapanel", appMenu),
+		menu.SubMenu("DataPanel", appMenu),
 		menu.EditMenu(),
 		menu.WindowMenu(),
 	)

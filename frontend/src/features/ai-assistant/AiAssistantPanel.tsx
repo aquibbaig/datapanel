@@ -255,7 +255,7 @@ export function AiAssistantPanel({
         description:
           event.status === "error"
             ? "The provider returned an error. No sensitive values were stored."
-            : "Datapanel received the app callback without storing credentials.",
+            : "DataPanel received the app callback without storing credentials.",
       });
     });
   }, []);
@@ -473,7 +473,7 @@ export function AiAssistantPanel({
     setPendingProvider(provider.id);
     openExternalUrl(provider.authUrl);
     toast("Browser opened", {
-      description: `Finish ${provider.name} sign-in, then return to Datapanel.`,
+      description: `Finish ${provider.name} sign-in, then return to DataPanel.`,
     });
   }
 
@@ -492,7 +492,7 @@ export function AiAssistantPanel({
     const token = credentialToken.trim();
     if (!token) {
       toast("Paste a provider token", {
-        description: "Datapanel stores it locally in your Mac Keychain.",
+        description: "DataPanel stores it locally in your Mac Keychain.",
       });
       return;
     }
@@ -744,7 +744,7 @@ export function AiAssistantPanel({
             >
               <div className="rounded-[22px] border border-line bg-surface-850 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
                 <PromptInputTextarea
-                  placeholder="Ask Datapanel to write, fix, or explain SQL..."
+                  placeholder="Ask DataPanel to write, fix, or explain SQL..."
                   value={chatPrompt}
                   onChange={(event) => setChatPrompt(event.target.value)}
                   onKeyDown={(event) => {
@@ -902,7 +902,7 @@ export function AiAssistantPanel({
       >
         <div className="grid min-w-0 gap-3">
           <p className="text-sm leading-6 text-muted">
-            Paste the provider token after login. Datapanel stores it locally in
+            Paste the provider token after login. DataPanel stores it locally in
             your Mac Keychain and never shows the full value again.
           </p>
 
@@ -1130,7 +1130,7 @@ function ManualLoginSection({
             onOpen={() => onOpenProvider(selected)}
           />
           <UrlRow
-            label="Datapanel return URL"
+            label="DataPanel return URL"
             help="Copy this into the provider's allowed callback or redirect URLs."
             value={returnUrl}
             onCopy={() => void onCopyText("Return URL copied.", returnUrl)}
