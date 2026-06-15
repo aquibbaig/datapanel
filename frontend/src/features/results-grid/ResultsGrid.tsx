@@ -32,6 +32,7 @@ interface Props {
 interface CellDraft {
   value: string;
   isNull: boolean;
+  typedNull?: boolean;
 }
 
 type RowChanges = Record<string, CellDraft>;
@@ -187,7 +188,7 @@ export function ResultsGrid({
           for (const [columnName, draft] of Object.entries(rowChanges)) {
             const index = columnIndexes.get(columnName);
             if (index !== undefined) {
-              next[index] = draft.isNull ? null : draft.value;
+              next[index] = isNullDraft(draft) ? null : draft.value;
             }
           }
           return next;
@@ -479,39 +480,18 @@ function CellEditor({
       )}
     >
       <input
-        className="h-full min-w-0 flex-1 border-0 bg-transparent px-2 text-xs text-zinc-200 focus:border-transparent focus:shadow-none"
+        className="h-full min-w-0 flex-1 border-0 bg-transparent px-2 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-transparent focus:shadow-none"
         disabled={disabled}
         onChange={(event) =>
           onChange({
             value: event.target.value,
             isNull: false,
+            typedNull: isTypedNull(event.target.value),
           })
         }
         placeholder={draft.isNull ? "NULL" : ""}
         value={draft.isNull ? "" : draft.value}
       />
-      <button
-        aria-label={draft.isNull ? "Set empty string" : "Set NULL"}
-        aria-pressed={draft.isNull}
-        className={cn(
-          "mr-1 h-5 shrink-0 rounded border px-1.5 text-[10px] font-semibold leading-none transition disabled:opacity-50",
-          draft.isNull
-            ? "border-accent/60 bg-accent/20 text-zinc-100"
-            : "border-white/[0.08] bg-white/[0.03] text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200",
-        )}
-        disabled={disabled}
-        title={draft.isNull ? "Set empty string" : "Set NULL"}
-        type="button"
-        onClick={() =>
-          onChange(
-            draft.isNull
-              ? { value: "", isNull: false }
-              : { value: "", isNull: true },
-          )
-        }
-      >
-        NULL
-      </button>
     </div>
   );
 }
@@ -648,11 +628,12 @@ function toDraft(value: unknown): CellDraft {
 }
 
 function sameDraft(left: CellDraft, right: CellDraft) {
+  if (isNullDraft(left) && isNullDraft(right)) return true;
   return left.isNull === right.isNull && left.value === right.value;
 }
 
 function sqlValue(draft: CellDraft, column?: ColumnSummary) {
-  if (draft.isNull) return "null";
+  if (isNullDraft(draft)) return "null";
   const value = draft.value;
   const dataType = column?.dataType.toLowerCase() || "";
 
@@ -665,6 +646,14 @@ function sqlValue(draft: CellDraft, column?: ColumnSummary) {
     if (["false", "f", "0", "no"].includes(normalized)) return "false";
   }
   return `'${value.split("'").join("''")}'`;
+}
+
+function isNullDraft(draft: CellDraft) {
+  return draft.isNull || draft.typedNull === true;
+}
+
+function isTypedNull(value: string) {
+  return value.trim().toUpperCase() === "NULL";
 }
 
 function sqlRowLocatorValue(value: unknown) {
