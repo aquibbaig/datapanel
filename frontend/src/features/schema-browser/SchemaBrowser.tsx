@@ -327,11 +327,13 @@ function ColumnRow({
   column: TableDetails["columns"][number];
   isForeign: boolean;
 }) {
+  const displayType = formatDisplayDataType(column.dataType);
+
   return (
     <div className="ml-6 border-l border-white/[0.06] py-0.5 pl-2">
-      <Button
-        size="row"
-        className="w-full justify-between rounded-md text-left text-xs text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-100"
+      <div
+        className="grid h-7 w-full grid-cols-[minmax(0,1fr)_minmax(4.75rem,auto)] items-center gap-2 rounded-md px-2 text-left text-xs font-medium text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-100"
+        title={`${column.name}: ${displayType}`}
       >
         <span className="flex min-w-0 items-center gap-1.5">
           <ColumnTypeIcon dataType={column.dataType} />
@@ -351,10 +353,22 @@ function ColumnRow({
           ) : null}
           <span className="min-w-0 truncate">{column.name}</span>
         </span>
-        <code className="text-[11px] text-muted">{column.dataType}</code>
-      </Button>
+        <code className="min-w-0 truncate text-right text-[11px] text-muted">
+          {displayType}
+        </code>
+      </div>
     </div>
   );
+}
+
+function formatDisplayDataType(dataType: string) {
+  return dataType
+    .replace(/^character varying(\s*\([^)]*\))?/i, "varchar$1")
+    .replace(/^timestamp(\s*\([^)]*\))?\s+with\s+time\s+zone$/i, "timestamptz$1")
+    .replace(
+      /^timestamp(\s*\([^)]*\))?\s+without\s+time\s+zone$/i,
+      "timestamp$1",
+    );
 }
 
 function ColumnTypeIcon({ dataType }: { dataType: string }) {
