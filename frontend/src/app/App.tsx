@@ -5,6 +5,7 @@ import {
   Clock3,
   KeyRound,
   PanelRight,
+  RefreshCw,
   Search,
   Settings,
 } from "lucide-react";
@@ -140,6 +141,15 @@ export function App() {
       });
     } catch {
       // Keep the footer action visible so the user can approve the next prompt.
+    }
+  }
+
+  async function retryActiveConnection() {
+    if (!model.activeProfile) return;
+    try {
+      await model.connect(model.activeProfile.id);
+    } catch {
+      // The shared connection path already surfaces the error toast/status.
     }
   }
 
@@ -614,7 +624,10 @@ export function App() {
                 <span
                   className={cn(
                     "h-2 w-2 rounded-full",
-                    statusDot(model.status.tone, Boolean(model.activeProfile)),
+                    statusDot(
+                      model.status.tone,
+                      model.connectionHealth.connected,
+                    ),
                   )}
                 />
                 <span className="truncate">
@@ -637,6 +650,18 @@ export function App() {
                   <span className="pointer-events-none absolute bottom-6 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-yellow-500/25 bg-[#17171a] px-2 py-1 text-[11px] font-medium text-yellow-100 shadow-xl group-hover:block">
                     Reconnect Keychain
                   </span>
+                </button>
+              ) : null}
+              {canRetryConnection(model) ? (
+                <button
+                  className="inline-flex h-5 shrink-0 items-center gap-1 rounded border border-red-400/30 bg-red-500/10 px-1.5 text-[11px] font-medium text-red-100 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-65 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:shrink-0"
+                  disabled={model.busy}
+                  onClick={() => void retryActiveConnection()}
+                  title="Retry connection"
+                  type="button"
+                >
+                  <RefreshCw className={cn(model.busy && "animate-spin")} />
+                  Retry
                 </button>
               ) : null}
             </div>
@@ -688,6 +713,16 @@ function statusDot(tone: string, connected: boolean) {
   if (tone === "warning") return "bg-yellow-300";
   if (connected) return "bg-green-400";
   return "bg-zinc-600";
+}
+
+function canRetryConnection(model: ReturnType<typeof useDataPanelState>) {
+  const message = model.connectionHealth.error || model.status.text;
+  return Boolean(
+    model.activeProfile &&
+      !model.connectionHealth.connected &&
+      model.connectionHealth.error &&
+      !isKeychainAccessIssue(message),
+  );
 }
 
 function rightPanelWidth(panel: RightPanel) {
