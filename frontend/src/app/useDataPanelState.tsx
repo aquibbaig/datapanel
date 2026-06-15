@@ -453,6 +453,24 @@ export function useDataPanelState() {
     [activeConnectionId, queryClient, selectedTable, tableDetails]
   );
 
+  const prefetchTableDetails = useCallback(
+    async (table: TableSummary) => {
+      if (!activeConnectionId) return;
+      const detailsKey = tableDetailsQueryKey(
+        activeConnectionId,
+        table.schema,
+        table.name,
+      );
+      await queryClient.prefetchQuery({
+        queryKey: detailsKey,
+        queryFn: () =>
+          schemaService.describe(activeConnectionId, table.schema, table.name),
+        staleTime: Infinity,
+      });
+    },
+    [activeConnectionId, queryClient],
+  );
+
   const recordQueryHistory = useCallback((item: QueryHistoryEntry) => {
     setQueryHistory((current) => [item, ...current.filter((entry) => entry.sql !== item.sql)].slice(0, 50));
     void appDataService.saveQueryHistory(item).catch((error: unknown) => {
@@ -697,6 +715,7 @@ export function useDataPanelState() {
     refreshMetadata,
     ensureFreshSchema,
     inspectTable,
+    prefetchTableDetails,
     runQuery,
     explainQuery,
     commitSQL,

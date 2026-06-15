@@ -33,6 +33,7 @@ interface Props {
   onEditConnection(): void;
   onRefresh(): Promise<void>;
   onInspectTable(table: TableSummary): Promise<TableDetails | null>;
+  onPrefetchTableDetails(table: TableSummary): Promise<void>;
 }
 
 export function AppSidebar({
@@ -49,6 +50,7 @@ export function AppSidebar({
   onEditConnection,
   onRefresh,
   onInspectTable,
+  onPrefetchTableDetails,
 }: Props) {
   const sidebar = useSidebar();
 
@@ -77,6 +79,7 @@ export function AppSidebar({
             tableDetails={tableDetails}
             tablesBySchema={tablesBySchema}
             onInspectTable={onInspectTable}
+            onPrefetchTableDetails={onPrefetchTableDetails}
             onRefresh={onRefresh}
           />
         </div>

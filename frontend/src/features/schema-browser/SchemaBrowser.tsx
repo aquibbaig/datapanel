@@ -11,7 +11,7 @@ import {
   ToggleLeft,
   Type,
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "../../components/ui/Button";
 import { cn } from "../../lib/cn";
@@ -30,6 +30,7 @@ interface Props {
   tableDetails: TableDetails | null;
   onRefresh(): Promise<void>;
   onInspectTable(table: TableSummary): Promise<TableDetails | null>;
+  onPrefetchTableDetails(table: TableSummary): Promise<void>;
 }
 
 export function SchemaBrowser({
@@ -41,6 +42,7 @@ export function SchemaBrowser({
   tableDetails,
   onRefresh,
   onInspectTable,
+  onPrefetchTableDetails,
 }: Props) {
   const [filter, setFilter] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -67,6 +69,27 @@ export function SchemaBrowser({
     estimateSize: (index) => estimatedRowHeight(rows[index]),
     overscan: 14,
   });
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  const virtualRowIndexes = virtualItems.map((item) => item.index);
+  const virtualRowIndexKey = virtualRowIndexes.join("|");
+  const visibleTableRows = useMemo(
+    () => visibleTables(rows, virtualRowIndexes),
+    [rows, virtualRowIndexKey],
+  );
+  const visibleTableKeys = useMemo(
+    () =>
+      visibleTableRows
+        .map((table) => `${table.schema}.${table.name}`)
+        .join("|"),
+    [visibleTableRows],
+  );
+
+  useEffect(() => {
+    if (!activeConnectionId || visibleTableRows.length === 0) return;
+    for (const table of visibleTableRows.slice(0, maxPrefetchTablesPerRange)) {
+      void onPrefetchTableDetails(table);
+    }
+  }, [activeConnectionId, onPrefetchTableDetails, visibleTableKeys, visibleTableRows]);
 
   return (
     <aside className="flex min-h-0 w-full min-w-0 flex-1 flex-col bg-transparent">
@@ -109,7 +132,7 @@ export function SchemaBrowser({
             className="relative w-full"
             style={{ height: rowVirtualizer.getTotalSize() }}
           >
-            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+            {virtualItems.map((virtualRow) => {
               const row = rows[virtualRow.index];
               return (
                 <div
@@ -148,6 +171,8 @@ type BrowserRow =
       key: string;
       column: TableDetails["columns"][number];
     };
+
+const maxPrefetchTablesPerRange = 36;
 
 function buildBrowserRows({
   filteredSchemas,
@@ -189,6 +214,20 @@ function estimatedRowHeight(row: BrowserRow | undefined) {
   if (!row) return 32;
   if (row.kind === "schema") return 28;
   return 32;
+}
+
+function visibleTables(rows: BrowserRow[], indexes: number[]) {
+  const seen = new Set<string>();
+  const tables: TableSummary[] = [];
+  for (const index of indexes) {
+    const row = rows[index];
+    if (row?.kind !== "table") continue;
+    const key = `${row.table.schema}.${row.table.name}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tables.push(row.table);
+  }
+  return tables;
 }
 
 function BrowserRow({
