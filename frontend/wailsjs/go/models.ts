@@ -62,6 +62,81 @@ export namespace ai {
 	        this.assumptions = source["assumptions"];
 	    }
 	}
+	export class PlanRequest {
+	    provider: string;
+	    model: string;
+	    prompt: string;
+	    tableContext: string;
+	    dialect: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PlanRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.provider = source["provider"];
+	        this.model = source["model"];
+	        this.prompt = source["prompt"];
+	        this.tableContext = source["tableContext"];
+	        this.dialect = source["dialect"];
+	    }
+	}
+	export class PlanTable {
+	    schema: string;
+	    name: string;
+	    confidence: number;
+	    reason: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PlanTable(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.schema = source["schema"];
+	        this.name = source["name"];
+	        this.confidence = source["confidence"];
+	        this.reason = source["reason"];
+	    }
+	}
+	export class PlanResponse {
+	    needsClarification: boolean;
+	    question: string;
+	    tables: PlanTable[];
+	    assumptions: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PlanResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.needsClarification = source["needsClarification"];
+	        this.question = source["question"];
+	        this.tables = this.convertValues(source["tables"], PlanTable);
+	        this.assumptions = source["assumptions"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class SaveCredentialRequest {
 	    provider: string;
 	    token: string;
@@ -545,6 +620,77 @@ export namespace postgres {
 	        this.definition = source["definition"];
 	    }
 	}
+	export class SchemaContext {
+	    context: string;
+	    detailedTables: number;
+	    totalTables: number;
+	    truncated: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SchemaContext(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.context = source["context"];
+	        this.detailedTables = source["detailedTables"];
+	        this.totalTables = source["totalTables"];
+	        this.truncated = source["truncated"];
+	    }
+	}
+	export class SchemaContextTable {
+	    schema: string;
+	    name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SchemaContextTable(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.schema = source["schema"];
+	        this.name = source["name"];
+	    }
+	}
+	export class SchemaContextRequest {
+	    connectionId: string;
+	    prompt: string;
+	    dialect: string;
+	    maxDetailedTables: number;
+	    tables: SchemaContextTable[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SchemaContextRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.connectionId = source["connectionId"];
+	        this.prompt = source["prompt"];
+	        this.dialect = source["dialect"];
+	        this.maxDetailedTables = source["maxDetailedTables"];
+	        this.tables = this.convertValues(source["tables"], SchemaContextTable);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class SchemaFingerprint {
 	    hash: string;
 	

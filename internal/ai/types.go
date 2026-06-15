@@ -24,6 +24,28 @@ type GenerateRequest struct {
 	ResponseStyle string `json:"responseStyle"`
 }
 
+type PlanRequest struct {
+	Provider     string `json:"provider"`
+	Model        string `json:"model"`
+	Prompt       string `json:"prompt"`
+	TableContext string `json:"tableContext"`
+	Dialect      string `json:"dialect"`
+}
+
+type PlanTable struct {
+	Schema     string  `json:"schema"`
+	Name       string  `json:"name"`
+	Confidence float64 `json:"confidence"`
+	Reason     string  `json:"reason"`
+}
+
+type PlanResponse struct {
+	NeedsClarification bool        `json:"needsClarification"`
+	Question           string      `json:"question"`
+	Tables             []PlanTable `json:"tables"`
+	Assumptions        []string    `json:"assumptions"`
+}
+
 type GenerateResponse struct {
 	Answer          string   `json:"answer"`
 	SQL             string   `json:"sql"`

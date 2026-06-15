@@ -5,6 +5,8 @@ import type {
   AIChatThread,
   AIGenerateRequest,
   AIGenerateResponse,
+  AIPlanRequest,
+  AIPlanResponse,
   ConnectRequest,
   ConnectionProfile,
   ConnectionStatus,
@@ -16,6 +18,8 @@ import type {
   SaveConnectionRequest,
   SaveAICredentialRequest,
   SaveQueryHistoryRequest,
+  SchemaContext,
+  SchemaContextRequest,
   SchemaFingerprint,
   SchemaSummary,
   SQLAnalysis,
@@ -147,6 +151,24 @@ export const aiCredentialService = {
       };
     }
     return AIBindings.GenerateSQL(input);
+  },
+  async plan(input: AIPlanRequest): Promise<AIPlanResponse> {
+    if (!isWailsRuntime()) {
+      return {
+        needsClarification: false,
+        question: "",
+        tables: [
+          {
+            schema: "public",
+            name: "users",
+            confidence: 0.9,
+            reason: "Preview mode uses the demo users table."
+          }
+        ],
+        assumptions: ["Preview mode does not call an AI provider."]
+      };
+    }
+    return AIBindings.PlanSQL(input);
   }
 };
 
@@ -282,6 +304,32 @@ function normalizeQueryHistoryItem(item: {
 }
 
 export const schemaService = {
+  async context(input: SchemaContextRequest): Promise<SchemaContext> {
+    if (!isWailsRuntime()) {
+      return {
+        context: [
+          "Schema context rules:",
+          "- Only generate SQL against tables that include a DDL block below.",
+          "",
+          "Schemas and tables:",
+          "- public",
+          "  - public.users (BASE TABLE, estimated rows: 1240)",
+          "    DDL:",
+          '    CREATE TABLE "public"."users" (',
+          '      "id" uuid NOT NULL PRIMARY KEY,',
+          '      "email" text NOT NULL,',
+          '      "created_at" timestamptz NOT NULL DEFAULT now()',
+          "    );",
+        ].join("\n"),
+        detailedTables: 1,
+        totalTables: 1,
+        truncated: false
+      };
+    }
+    return SchemaBindings.BuildSchemaContext(
+      input as Parameters<typeof SchemaBindings.BuildSchemaContext>[0],
+    );
+  },
   async fingerprint(connectionId: string): Promise<SchemaFingerprint> {
     if (!isWailsRuntime()) return { hash: "preview-schema" };
     return SchemaBindings.SchemaFingerprint(connectionId);

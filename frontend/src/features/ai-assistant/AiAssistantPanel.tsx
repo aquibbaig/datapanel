@@ -17,7 +17,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { BrowserOpenURL, EventsOn } from "../../../wailsjs/runtime/runtime";
 import {
@@ -184,8 +184,6 @@ export function AiAssistantPanel({
   const [selectedModel, setSelectedModel] = useState(
     modelsByProvider.openai[0],
   );
-  const schemaDetailsCacheRef = useRef(new Map<string, Promise<TableDetails>>());
-  const schemaFingerprintRef = useRef("");
 
   const selected =
     providers.find((provider) => provider.id === selectedProvider) ??
@@ -296,10 +294,6 @@ export function AiAssistantPanel({
     setSelectedProvider(provider);
     setSelectedModel(activeThread.model || modelsByProvider[provider][0]);
   }, [activeThread?.id]);
-
-  useEffect(() => {
-    schemaDetailsCacheRef.current.clear();
-  }, [activeProfile?.id, schemas, tablesBySchema]);
 
   async function loadCredentialStatuses() {
     try {
@@ -591,24 +585,64 @@ export function AiAssistantPanel({
       const schemaSnapshot = onEnsureSchemaFresh
         ? await onEnsureSchemaFresh()
         : { schemas, tablesBySchema };
-      if (
-        schemaSnapshot.fingerprint &&
-        schemaSnapshot.fingerprint !== schemaFingerprintRef.current
-      ) {
-        clearDetailsCacheForConnection(
-          schemaDetailsCacheRef.current,
-          activeProfile?.id || "",
+      if (!activeProfile) {
+        const response = clarificationResponse(
+          "Connect to a database before asking for schema-aware SQL.",
         );
-        schemaFingerprintRef.current = schemaSnapshot.fingerprint;
+        await saveAssistantResponse(thread.id, response);
+        return;
       }
-      const schemaContext = await buildSchemaContext({
-        activeProfile,
+      const deterministicTables = resolveTablesFromPrompt(
         prompt,
-        schemas: schemaSnapshot.schemas,
-        tableDetails,
-        tablesBySchema: schemaSnapshot.tablesBySchema,
-        detailsCache: schemaDetailsCacheRef.current,
-      });
+        schemaSnapshot.schemas,
+        schemaSnapshot.tablesBySchema,
+      );
+      const tablePlan =
+        deterministicTables.length > 0
+          ? {
+              assumptions: [
+                "Matched table names directly from the user request before planning.",
+              ],
+              needsClarification: false,
+              question: "",
+              tables: deterministicTables.map((table) => ({
+                schema: table.schema,
+                name: table.name,
+                confidence: 1,
+                reason: "The request references this table name.",
+              })),
+            }
+          : await aiCredentialService.plan({
+              provider: selected.id,
+              model: selectedModel,
+              prompt,
+              dialect: activeProfile.driver,
+              tableContext: buildTablePlanningContext(
+                activeProfile,
+                schemaSnapshot.schemas,
+                schemaSnapshot.tablesBySchema,
+              ),
+            });
+      if (tablePlan.needsClarification || tablePlan.tables.length === 0) {
+        const response = clarificationResponse(
+          tablePlan.question || "Which table should I use for this request?",
+          tablePlan.assumptions,
+        );
+        await saveAssistantResponse(thread.id, response);
+        return;
+      }
+      const schemaContext = (
+        await schemaService.context({
+          connectionId: activeProfile.id,
+          prompt,
+          dialect: activeProfile.driver,
+          maxDetailedTables: Math.max(tablePlan.tables.length, 1),
+          tables: tablePlan.tables.map((table) => ({
+            schema: table.schema,
+            name: table.name,
+          })),
+        })
+      ).context;
       const response = await aiCredentialService.generate({
         provider: selected.id,
         model: selectedModel,
@@ -644,6 +678,31 @@ export function AiAssistantPanel({
     } finally {
       setChatBusy(false);
     }
+  }
+
+  async function saveAssistantResponse(
+    threadId: string,
+    response: AIGenerateResponse,
+  ) {
+    const assistantMessage = {
+      id: crypto.randomUUID(),
+      role: "assistant" as const,
+      content: response.answer,
+      response,
+      createdAt: new Date().toISOString(),
+    };
+    setChatMessages((current) => [...current, assistantMessage]);
+    await appDataService.saveMessage({
+      id: assistantMessage.id,
+      threadId,
+      connectionId: connectionScopeId,
+      provider: selected.id,
+      model: selectedModel,
+      role: assistantMessage.role,
+      content: assistantMessage.content,
+      response,
+      createdAt: assistantMessage.createdAt,
+    });
   }
 
   async function executeGeneratedSQL(sql: string) {
@@ -1403,233 +1462,102 @@ function summarizeSchema(
   };
 }
 
-async function buildSchemaContext({
-  activeProfile,
-  detailsCache,
-  prompt,
-  schemas,
-  tableDetails,
-  tablesBySchema,
-}: {
-  activeProfile: ConnectionProfile | null;
-  detailsCache: Map<string, Promise<TableDetails>>;
-  prompt: string;
-  schemas: SchemaSummary[];
-  tableDetails: TableDetails | null;
-  tablesBySchema: Record<string, TableSummary[]>;
-}) {
-  if (!activeProfile) return "No active connection.";
-
-  const allTables = flattenTables(schemas, tablesBySchema);
-  const detailedTables = await loadDetailedTables({
-    activeProfile,
-    allTables,
-    detailsCache,
-    prompt,
-    tableDetails,
-  });
-  const detailsByKey = new Map(
-    detailedTables.map((details) => [
-      schemaTableKey(activeProfile.id, details.schema, details.name),
-      details,
-    ]),
-  );
-
+function buildTablePlanningContext(
+  activeProfile: ConnectionProfile,
+  schemas: SchemaSummary[],
+  tablesBySchema: Record<string, TableSummary[]>,
+) {
   const lines = [
     `Connection: ${activeProfile.name}`,
     `Dialect: ${activeProfile.driver}`,
     `Database: ${activeProfile.database}`,
     "",
-    "Schema context rules:",
-    "- Only generate SQL against tables that include a Columns block below.",
-    "- Column lists and data types below are authoritative. Every SELECT, WHERE, GROUP BY, ORDER BY, and JOIN column must appear in that table's Columns block.",
-    "- For array data types such as text[], group by each tag value with dialect-appropriate array expansion instead of treating the array as a scalar string.",
-    "- If a needed table lacks a Columns block, return an empty sql string and explain that column metadata is not loaded for that table.",
-    "- If a requested column, metric, or join key is not listed, return an empty sql string and state the missing schema item instead of guessing.",
-    "- Prefer listed FOREIGN KEY constraints for joins.",
-    "",
-    "Schemas and tables:",
+    "Tables:",
   ];
 
   for (const schema of schemas) {
-    lines.push(`- ${schema.name}`);
     for (const table of tablesBySchema[schema.name] || []) {
-      const details = detailsByKey.get(
-        schemaTableKey(activeProfile.id, table.schema, table.name),
-      );
       lines.push(
-        `  - ${table.schema}.${table.name} (${table.type}, estimated rows: ${table.rowEstimate})`,
+        `- ${table.schema}.${table.name} (${table.type}, estimated rows: ${table.rowEstimate})`,
       );
-      if (details) {
-        appendTableDetails(lines, details, "    ");
-      } else {
-        lines.push("    Columns: not loaded. Do not generate SQL against this table.");
-      }
     }
   }
 
-  lines.push("");
-  if (detailedTables.length > 0) {
-    lines.push(
-      `Detailed column metadata included for ${detailedTables.length} table(s).`,
-    );
-  } else {
-    lines.push("No detailed column metadata was available.");
+  if (lines.length === 5) {
+    lines.push("- No tables loaded.");
   }
 
   return lines.join("\n");
 }
 
-const maxDetailedTablesInSchemaContext = 120;
-
-function flattenTables(
+function resolveTablesFromPrompt(
+  prompt: string,
   schemas: SchemaSummary[],
   tablesBySchema: Record<string, TableSummary[]>,
 ) {
-  return schemas.flatMap((schema) => tablesBySchema[schema.name] || []);
+  const allTables = schemas.flatMap((schema) => tablesBySchema[schema.name] || []);
+  const exactMatches = allTables.filter((table) =>
+    promptReferencesTableName(prompt, table, "exact"),
+  );
+  if (exactMatches.length > 0) return uniqueTables(exactMatches);
+
+  const componentMatches = allTables.filter((table) =>
+    promptReferencesTableName(prompt, table, "components"),
+  );
+  return uniqueTables(componentMatches);
 }
 
-async function loadDetailedTables({
-  activeProfile,
-  allTables,
-  detailsCache,
-  prompt,
-  tableDetails,
-}: {
-  activeProfile: ConnectionProfile;
-  allTables: TableSummary[];
-  detailsCache: Map<string, Promise<TableDetails>>;
-  prompt: string;
-  tableDetails: TableDetails | null;
-}) {
-  const selected = selectTablesForSchemaContext(prompt, allTables, tableDetails);
-  const loadable = selected.slice(0, maxDetailedTablesInSchemaContext);
-  const settled = await Promise.allSettled(
-    loadable.map((table) =>
-      loadTableDetails(activeProfile.id, table, detailsCache),
-    ),
-  );
-
-  return settled.flatMap((result) =>
-    result.status === "fulfilled" ? [result.value] : [],
-  );
-}
-
-function selectTablesForSchemaContext(
+function promptReferencesTableName(
   prompt: string,
-  allTables: TableSummary[],
-  tableDetails: TableDetails | null,
+  table: TableSummary,
+  mode: "exact" | "components",
 ) {
-  const selectedKeys = new Set<string>();
-  const selected: TableSummary[] = [];
-
-  function addTable(table: Pick<TableSummary, "schema" | "name">) {
-    const key = `${table.schema}.${table.name}`.toLowerCase();
-    if (selectedKeys.has(key)) return;
-    const summary =
-      allTables.find(
-        (candidate) =>
-          candidate.schema.toLowerCase() === table.schema.toLowerCase() &&
-          candidate.name.toLowerCase() === table.name.toLowerCase(),
-      ) ??
-      ({
-        schema: table.schema,
-        name: table.name,
-        type: "TABLE",
-        rowEstimate: 0,
-      } as TableSummary);
-    selectedKeys.add(key);
-    selected.push(summary);
-  }
-
-  if (tableDetails) {
-    addTable({ schema: tableDetails.schema, name: tableDetails.name });
-  }
-
-  for (const table of allTables) {
-    if (promptReferencesTable(prompt, table)) addTable(table);
-  }
-
-  if (allTables.length <= maxDetailedTablesInSchemaContext) {
-    for (const table of allTables) addTable(table);
-  }
-
-  return selected;
-}
-
-function promptReferencesTable(prompt: string, table: TableSummary) {
   const normalizedPrompt = normalizeIdentifierText(prompt);
+  if (!normalizedPrompt) return false;
+
   const promptTokens = new Set(normalizedPrompt.split(/\s+/).filter(Boolean));
   const schema = table.schema.toLowerCase();
   const name = table.name.toLowerCase();
-  const nameParts = name.split("_").filter(Boolean);
+  const spacedName = name.split("_").filter(Boolean).join(" ");
 
   if (normalizedPrompt.includes(`${schema} ${name}`)) return true;
+  if (normalizedPrompt.includes(`${schema} ${spacedName}`)) return true;
   if (promptTokens.has(name)) return true;
-  if (name.endsWith("s") && promptTokens.has(name.slice(0, -1))) return true;
-  if (nameParts.length > 1 && nameParts.every((part) => promptTokens.has(part))) {
-    return true;
-  }
-  return false;
+  if (normalizedPrompt.includes(spacedName)) return true;
+  if (mode === "exact") return false;
+
+  const nameParts = name.split("_").filter(Boolean);
+  return nameParts.length > 1 && nameParts.every((part) => promptTokens.has(part));
 }
 
 function normalizeIdentifierText(value: string) {
   return value
     .toLowerCase()
-    .replace(/["'`[\]().,;:]/g, " ")
+    .replace(/[^a-z0-9_]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function loadTableDetails(
-  connectionId: string,
-  table: Pick<TableSummary, "schema" | "name">,
-  detailsCache: Map<string, Promise<TableDetails>>,
-) {
-  const key = schemaTableKey(connectionId, table.schema, table.name);
-  let existing = detailsCache.get(key);
-  if (!existing) {
-    existing = schemaService
-      .describe(connectionId, table.schema, table.name)
-      .catch((error) => {
-        detailsCache.delete(key);
-        throw error;
-      });
-    detailsCache.set(key, existing);
+function uniqueTables(tables: TableSummary[]) {
+  const seen = new Set<string>();
+  const unique: TableSummary[] = [];
+  for (const table of tables) {
+    const key = `${table.schema}.${table.name}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(table);
   }
-  return existing;
+  return unique;
 }
 
-function schemaTableKey(connectionId: string, schema: string, table: string) {
-  return `${connectionId}:${schema}.${table}`.toLowerCase();
-}
-
-function clearDetailsCacheForConnection(
-  detailsCache: Map<string, Promise<TableDetails>>,
-  connectionId: string,
-) {
-  if (!connectionId) return;
-  const prefix = `${connectionId}:`.toLowerCase();
-  for (const key of detailsCache.keys()) {
-    if (key.startsWith(prefix)) detailsCache.delete(key);
-  }
-}
-
-function appendTableDetails(
-  lines: string[],
-  tableDetails: TableDetails,
-  indent = "",
-) {
-  lines.push(`${indent}Columns:`);
-  for (const column of tableDetails.columns) {
-    lines.push(
-      `${indent}- ${column.name}: ${column.dataType}${column.nullable ? ", nullable" : ", not null"}${column.isPrimary ? ", primary key" : ""}${column.default ? `, default ${column.default}` : ""}`,
-    );
-  }
-  if (tableDetails.constraints.length > 0) {
-    lines.push(`${indent}Constraints:`);
-    for (const constraint of tableDetails.constraints) {
-      lines.push(`${indent}- ${constraint.type}: ${constraint.definition}`);
-    }
-  }
+function clarificationResponse(
+  answer: string,
+  assumptions: string[] = [],
+): AIGenerateResponse {
+  return {
+    answer,
+    sql: "",
+    destructiveRisk: false,
+    assumptions,
+  };
 }

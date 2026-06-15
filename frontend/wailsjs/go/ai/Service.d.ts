@@ -10,4 +10,6 @@ export function GetCredentialStatus(arg1:string):Promise<ai.CredentialStatus>;
 
 export function ListCredentials():Promise<Array<ai.CredentialStatus>>;
 
+export function PlanSQL(arg1:ai.PlanRequest):Promise<ai.PlanResponse>;
+
 export function SaveCredential(arg1:ai.SaveCredentialRequest):Promise<ai.CredentialStatus>;

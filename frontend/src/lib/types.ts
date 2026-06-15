@@ -3,6 +3,24 @@ import type { ai, appdata, connections, postgres, query, settings, updater } fro
 export type AICredentialStatus = ai.CredentialStatus;
 export type AIGenerateRequest = ai.GenerateRequest;
 export type AIGenerateResponse = ai.GenerateResponse;
+export interface AIPlanRequest {
+  provider: string;
+  model: string;
+  prompt: string;
+  tableContext: string;
+  dialect: string;
+}
+export interface AIPlanResponse {
+  needsClarification: boolean;
+  question: string;
+  tables: Array<{
+    schema: string;
+    name: string;
+    confidence: number;
+    reason: string;
+  }>;
+  assumptions: string[];
+}
 export type SaveAICredentialRequest = ai.SaveCredentialRequest;
 export type AIChatThread = appdata.AIChatThread;
 export type AIChatMessage = appdata.AIChatMessage;
@@ -41,6 +59,14 @@ export type ConnectionStatus = connections.ConnectionStatus;
 
 export type SchemaSummary = postgres.SchemaSummary;
 export type SchemaFingerprint = postgres.SchemaFingerprint;
+export type SchemaContext = postgres.SchemaContext;
+export interface SchemaContextRequest {
+  connectionId: string;
+  prompt: string;
+  dialect: string;
+  maxDetailedTables: number;
+  tables?: Array<{ schema: string; name: string }>;
+}
 export type TableSummary = postgres.TableSummary;
 export type ColumnSummary = postgres.ColumnSummary;
 export type IndexSummary = postgres.IndexSummary;

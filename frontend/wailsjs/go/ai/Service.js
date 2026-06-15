@@ -18,6 +18,10 @@ export function ListCredentials() {
   return window['go']['ai']['Service']['ListCredentials']();
 }
 
+export function PlanSQL(arg1) {
+  return window['go']['ai']['Service']['PlanSQL'](arg1);
+}
+
 export function SaveCredential(arg1) {
   return window['go']['ai']['Service']['SaveCredential'](arg1);
 }

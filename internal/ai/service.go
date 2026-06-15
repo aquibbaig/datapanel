@@ -159,6 +159,44 @@ func (s *Service) GenerateSQL(input GenerateRequest) (GenerateResponse, error) {
 	}
 }
 
+func (s *Service) PlanSQL(input PlanRequest) (PlanResponse, error) {
+	provider, err := normalizeProvider(input.Provider)
+	if err != nil {
+		return PlanResponse{}, err
+	}
+	if provider == "custom" {
+		return PlanResponse{}, apperrors.New(apperrors.CodeValidation, "custom AI providers need a configured endpoint before chat can run")
+	}
+
+	prompt := strings.TrimSpace(input.Prompt)
+	if prompt == "" {
+		return PlanResponse{}, apperrors.New(apperrors.CodeValidation, "prompt is required")
+	}
+
+	record, found := s.readRecord(provider)
+	if !found {
+		return PlanResponse{}, apperrors.New(apperrors.CodeSecurity, "AI provider is not connected")
+	}
+
+	system := planPrompt(input.Dialect)
+	user := strings.Join([]string{
+		"Available database tables:",
+		strings.TrimSpace(input.TableContext),
+		"",
+		"User request:",
+		prompt,
+	}, "\n")
+
+	switch provider {
+	case "openai":
+		return s.planOpenAI(record.Token, normalizeModel(provider, input.Model), system, user)
+	case "anthropic":
+		return s.planAnthropic(record.Token, normalizeModel(provider, input.Model), system, user)
+	default:
+		return PlanResponse{}, apperrors.New(apperrors.CodeValidation, "unsupported AI provider")
+	}
+}
+
 func (s *Service) generateOpenAI(token string, model string, system string, user string) (GenerateResponse, error) {
 	payload := map[string]any{
 		"model": model,
@@ -192,6 +230,41 @@ func (s *Service) generateOpenAI(token string, model string, system string, user
 		return GenerateResponse{}, apperrors.New(apperrors.CodeValidation, "AI provider returned no response")
 	}
 	return parseGenerateResponse(parsed.Choices[0].Message.Content)
+}
+
+func (s *Service) planOpenAI(token string, model string, system string, user string) (PlanResponse, error) {
+	payload := map[string]any{
+		"model": model,
+		"messages": []map[string]string{
+			{"role": "system", "content": system},
+			{"role": "user", "content": user},
+		},
+		"temperature":     0,
+		"response_format": map[string]string{"type": "json_object"},
+	}
+
+	var parsed struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := s.postJSON("https://api.openai.com/v1/chat/completions", map[string]string{
+		"Authorization": "Bearer " + strings.TrimSpace(token),
+	}, payload, &parsed); err != nil {
+		return PlanResponse{}, err
+	}
+	if parsed.Error != nil && strings.TrimSpace(parsed.Error.Message) != "" {
+		return PlanResponse{}, apperrors.New(apperrors.CodeValidation, parsed.Error.Message)
+	}
+	if len(parsed.Choices) == 0 {
+		return PlanResponse{}, apperrors.New(apperrors.CodeValidation, "AI provider returned no response")
+	}
+	return parsePlanResponse(parsed.Choices[0].Message.Content)
 }
 
 func (s *Service) generateAnthropic(token string, model string, system string, user string) (GenerateResponse, error) {
@@ -229,6 +302,43 @@ func (s *Service) generateAnthropic(token string, model string, system string, u
 		}
 	}
 	return GenerateResponse{}, apperrors.New(apperrors.CodeValidation, "AI provider returned no response")
+}
+
+func (s *Service) planAnthropic(token string, model string, system string, user string) (PlanResponse, error) {
+	payload := map[string]any{
+		"model":       model,
+		"max_tokens":  800,
+		"temperature": 0,
+		"system":      system,
+		"messages": []map[string]string{
+			{"role": "user", "content": user},
+		},
+	}
+
+	var parsed struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := s.postJSON("https://api.anthropic.com/v1/messages", map[string]string{
+		"x-api-key":         strings.TrimSpace(token),
+		"anthropic-version": "2023-06-01",
+	}, payload, &parsed); err != nil {
+		return PlanResponse{}, err
+	}
+	if parsed.Error != nil && strings.TrimSpace(parsed.Error.Message) != "" {
+		return PlanResponse{}, apperrors.New(apperrors.CodeValidation, parsed.Error.Message)
+	}
+	for _, block := range parsed.Content {
+		if block.Type == "text" && strings.TrimSpace(block.Text) != "" {
+			return parsePlanResponse(block.Text)
+		}
+	}
+	return PlanResponse{}, apperrors.New(apperrors.CodeValidation, "AI provider returned no response")
 }
 
 func (s *Service) postJSON(endpoint string, headers map[string]string, payload any, out any) error {
@@ -338,6 +448,29 @@ func systemPrompt(dialect string, responseStyle string) string {
 	return strings.Join(lines, "\n")
 }
 
+func planPrompt(dialect string) string {
+	normalizedDialect := "Postgres"
+	if strings.EqualFold(strings.TrimSpace(dialect), "mysql") {
+		normalizedDialect = "MySQL"
+	}
+	return strings.Join([]string{
+		"You are DataPanel's table-resolution planner.",
+		"Return a JSON object with fields: needsClarification, question, tables, assumptions.",
+		`Use an array for "tables"; each item must have schema, name, confidence, reason.`,
+		`Use an array of strings for "assumptions".`,
+		"Choose only tables that are explicitly listed in the available database tables.",
+		"Do not generate SQL.",
+		"Resolve the target table or tables before columns are inspected.",
+		"If a listed table clearly matches the requested subject, choose it even if the request mentions columns, tags, metrics, or fields that are not visible yet.",
+		"Do not ask whether a matched table contains a column; column validation happens in the next DDL step.",
+		"If no listed table clearly matches the request, set needsClarification true and ask one concise question.",
+		"If multiple tables plausibly match and the request does not disambiguate them, set needsClarification true and ask which table to use.",
+		"Use singular/plural and snake_case component matching when it is clear.",
+		"Prefer a smaller table set that is sufficient for the request; include join tables only when the request implies a join.",
+		"The SQL dialect is " + normalizedDialect + ".",
+	}, "\n")
+}
+
 func parseGenerateResponse(content string) (GenerateResponse, error) {
 	var parsed GenerateResponse
 	if err := json.Unmarshal([]byte(strings.TrimSpace(content)), &parsed); err != nil {
@@ -350,6 +483,50 @@ func parseGenerateResponse(content string) (GenerateResponse, error) {
 	}
 	if parsed.Answer == "" && parsed.SQL == "" {
 		return GenerateResponse{}, apperrors.New(apperrors.CodeValidation, "AI response was empty")
+	}
+	return parsed, nil
+}
+
+func parsePlanResponse(content string) (PlanResponse, error) {
+	var parsed PlanResponse
+	if err := json.Unmarshal([]byte(strings.TrimSpace(content)), &parsed); err != nil {
+		return PlanResponse{}, apperrors.New(apperrors.CodeValidation, "AI table plan was not valid JSON")
+	}
+	parsed.Question = strings.TrimSpace(parsed.Question)
+	if parsed.Assumptions == nil {
+		parsed.Assumptions = []string{}
+	}
+
+	tables := make([]PlanTable, 0, len(parsed.Tables))
+	seen := map[string]bool{}
+	for _, table := range parsed.Tables {
+		table.Schema = strings.TrimSpace(table.Schema)
+		table.Name = strings.TrimSpace(table.Name)
+		table.Reason = strings.TrimSpace(table.Reason)
+		if table.Schema == "" || table.Name == "" {
+			continue
+		}
+		if table.Confidence < 0 {
+			table.Confidence = 0
+		}
+		if table.Confidence > 1 {
+			table.Confidence = 1
+		}
+		key := strings.ToLower(table.Schema + "." + table.Name)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		tables = append(tables, table)
+	}
+	parsed.Tables = tables
+
+	if parsed.NeedsClarification && parsed.Question == "" {
+		parsed.Question = "Which table should I use for this request?"
+	}
+	if !parsed.NeedsClarification && len(parsed.Tables) == 0 {
+		parsed.NeedsClarification = true
+		parsed.Question = "Which table should I use for this request?"
 	}
 	return parsed, nil
 }

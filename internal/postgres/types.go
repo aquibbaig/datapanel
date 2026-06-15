@@ -15,6 +15,26 @@ type SchemaFingerprint struct {
 	Hash string `json:"hash"`
 }
 
+type SchemaContextRequest struct {
+	ConnectionID      string               `json:"connectionId"`
+	Prompt            string               `json:"prompt"`
+	Dialect           string               `json:"dialect"`
+	MaxDetailedTables int                  `json:"maxDetailedTables"`
+	Tables            []SchemaContextTable `json:"tables"`
+}
+
+type SchemaContextTable struct {
+	Schema string `json:"schema"`
+	Name   string `json:"name"`
+}
+
+type SchemaContext struct {
+	Context        string `json:"context"`
+	DetailedTables int    `json:"detailedTables"`
+	TotalTables    int    `json:"totalTables"`
+	Truncated      bool   `json:"truncated"`
+}
+
 type ColumnSummary struct {
 	Name      string `json:"name"`
 	DataType  string `json:"dataType"`
