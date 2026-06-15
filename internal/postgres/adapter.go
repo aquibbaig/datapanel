@@ -390,12 +390,19 @@ func loadColumns(ctx context.Context, pool *pgxpool.Pool, schema string, table s
 		)
 		select
 			c.column_name,
-			coalesce(c.udt_name, c.data_type),
+			coalesce(pg_catalog.format_type(a.atttypid, a.atttypmod), c.udt_name, c.data_type),
 			c.is_nullable = 'YES',
 			coalesce(c.column_default, ''),
 			c.ordinal_position,
 			pk.column_name is not null
 		from information_schema.columns c
+		left join pg_catalog.pg_namespace n on n.nspname = c.table_schema
+		left join pg_catalog.pg_class cl on cl.relnamespace = n.oid and cl.relname = c.table_name
+		left join pg_catalog.pg_attribute a
+		  on a.attrelid = cl.oid
+		 and a.attname = c.column_name
+		 and a.attnum > 0
+		 and not a.attisdropped
 		left join primary_keys pk on pk.column_name = c.column_name
 		where c.table_schema = $1 and c.table_name = $2
 		order by c.ordinal_position
