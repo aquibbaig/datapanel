@@ -1101,8 +1101,8 @@ function ChatThreadBar({
             className={cn(
               "group flex h-8 w-40 shrink-0 items-center rounded-full text-sm font-medium transition",
               active
-                ? "bg-surface-700 text-zinc-100"
-                : "text-zinc-500 hover:bg-surface-800 hover:text-zinc-200",
+                ? "bg-selection text-selection-foreground"
+                : "text-zinc-500 hover:bg-selection-hover hover:text-zinc-200",
             )}
             key={thread.id}
           >
@@ -1246,7 +1246,7 @@ function AIResponseView({
   return (
     <div className="flex min-w-0 justify-start">
       <div className="min-w-0 max-w-[98%]">
-        <div className="grid min-w-0 gap-3 rounded-[18px] bg-black/15 px-1 py-2 text-zinc-200">
+        <div className="grid min-w-0 gap-3 rounded-[18px] bg-overlay/15 px-1 py-2 text-zinc-200">
           {response.destructiveRisk ? (
             <div className="rounded-ui border border-yellow-500/30 bg-yellow-500/10 p-2 text-xs leading-5 text-yellow-100">
               Review carefully. The model marked this SQL as data-changing or
@@ -1320,7 +1320,7 @@ function ChatActionButton({
       className={cn(
         "flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-45",
         variant === "primary"
-          ? "bg-transparent text-[#8f97ff] hover:text-[#a8aeff]"
+          ? "bg-transparent text-accent hover:text-accent-hover"
           : "bg-transparent text-zinc-400 hover:text-zinc-100",
         !onClick &&
           "cursor-default bg-transparent text-zinc-400 hover:bg-transparent hover:text-zinc-400",
@@ -1333,7 +1333,7 @@ function ChatActionButton({
       <span
         className={cn(
           "grid h-4 w-4 shrink-0 place-items-center",
-          variant === "primary" ? "text-[#8f97ff]" : "text-zinc-400",
+          variant === "primary" ? "text-accent" : "text-zinc-400",
         )}
       >
         {children}

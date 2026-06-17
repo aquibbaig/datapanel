@@ -20,6 +20,7 @@ interface Props {
   schemas: SchemaSummary[];
   settings: AppSettings | null;
   tablesBySchema: Record<string, TableSummary[]>;
+  theme: "dark" | "light";
   titleDraft: string;
   value: string;
   workspaces: QueryWorkspace[];
@@ -51,6 +52,7 @@ export function QueryEditor({
   schemas,
   settings,
   tablesBySchema,
+  theme,
   titleDraft,
   value,
   workspaces,
@@ -125,6 +127,7 @@ export function QueryEditor({
           activeProfile={activeProfile}
           schemas={schemas}
           tablesBySchema={tablesBySchema}
+          theme={theme}
           value={value}
           onChange={onChange}
           onRun={(selectedSQL) => void run(false, selectedSQL)}
@@ -214,10 +217,10 @@ function QueryWorkspaceTabs({
           ) : (
             <div
               className={[
-                "group flex h-8 w-36 shrink-0 items-center rounded-md text-sm font-medium transition",
+                "group flex h-8 w-36 shrink-0 items-center rounded-md border text-sm font-medium transition",
                 active
-                  ? "bg-surface-850 text-zinc-100"
-                  : "text-zinc-500 hover:bg-surface-850 hover:text-zinc-200",
+                  ? "border-transparent bg-selection text-selection-foreground"
+                  : "border-transparent text-zinc-500 hover:bg-selection-hover hover:text-zinc-200",
               ].join(" ")}
               key={workspace.id}
             >
@@ -231,7 +234,7 @@ function QueryWorkspaceTabs({
                 {workspace.title}
               </button>
               <button
-                className="mr-1 grid h-6 w-6 shrink-0 place-items-center rounded-full text-zinc-500 opacity-0 transition hover:bg-surface-700 hover:text-zinc-100 group-hover:opacity-100 focus:opacity-100"
+                className="mr-1 grid h-6 w-6 shrink-0 place-items-center rounded-full text-zinc-500 opacity-0 transition hover:bg-selection-hover hover:text-zinc-100 group-hover:opacity-100 focus:opacity-100"
                 title="Delete query workspace"
                 type="button"
                 onClick={(event) => {

@@ -14,7 +14,7 @@ export function Modal({ title, open, children, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/55 p-6"
+      className="fixed inset-0 z-50 grid place-items-center bg-overlay/45 p-6"
       onClick={onClose}
     >
       <div

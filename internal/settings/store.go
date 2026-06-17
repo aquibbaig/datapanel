@@ -67,7 +67,7 @@ func (s *FileStore) Save(settings AppSettings) error {
 
 func normalize(settings AppSettings) AppSettings {
 	defaults := DefaultSettings()
-	if settings.Theme == "" {
+	if settings.Theme != "light" && settings.Theme != "dark" && settings.Theme != "system" {
 		settings.Theme = defaults.Theme
 	}
 	if settings.QueryLimit <= 0 {

@@ -85,6 +85,10 @@ export function SchemaBrowser({
   );
 
   useEffect(() => {
+    setFilter("");
+  }, [activeConnectionId]);
+
+  useEffect(() => {
     if (!activeConnectionId || visibleTableRows.length === 0) return;
     for (const table of visibleTableRows.slice(0, maxPrefetchTablesPerRange)) {
       void onPrefetchTableDetails(table);
@@ -112,7 +116,7 @@ export function SchemaBrowser({
             size={14}
           />
           <input
-            className="h-8 rounded-md border-white/[0.08] bg-white/[0.03] pl-8 pr-2 text-sm text-zinc-200 placeholder:text-zinc-600"
+            className="h-8 rounded-md border-line bg-control/[0.03] pl-8 pr-2 text-sm text-zinc-200 placeholder:text-zinc-600"
             disabled={!activeConnectionId}
             placeholder="Explorer..."
             value={filter}
@@ -274,8 +278,8 @@ function BrowserRow({
         className={cn(
           "w-full justify-start rounded-md text-left",
           active
-            ? "bg-white/[0.07] text-zinc-100"
-            : "text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-200",
+            ? "bg-selection text-selection-foreground"
+            : "text-zinc-500 hover:bg-selection-hover hover:text-zinc-200",
         )}
         onClick={() => void onInspectTable(table)}
       >
@@ -330,9 +334,9 @@ function ColumnRow({
   const displayType = formatDisplayDataType(column.dataType);
 
   return (
-    <div className="ml-6 border-l border-white/[0.06] py-0.5 pl-2">
+    <div className="ml-6 border-l border-line py-0.5 pl-2">
       <div
-        className="grid h-7 w-full grid-cols-[minmax(0,1fr)_minmax(4.75rem,auto)] items-center gap-2 rounded-md px-2 text-left text-xs font-medium text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-100"
+        className="grid h-7 w-full grid-cols-[minmax(0,1fr)_minmax(4.75rem,auto)] items-center gap-2 rounded-md px-2 text-left text-xs font-medium text-zinc-400 hover:bg-control/[0.05] hover:text-zinc-100"
         title={`${column.name}: ${displayType}`}
       >
         <span className="flex min-w-0 items-center gap-1.5">

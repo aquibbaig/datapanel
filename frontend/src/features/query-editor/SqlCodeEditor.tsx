@@ -26,6 +26,7 @@ interface Props {
   activeProfile: ConnectionProfile | null;
   schemas: SchemaSummary[];
   tablesBySchema: Record<string, TableSummary[]>;
+  theme: "dark" | "light";
   value: string;
   onChange(value: string): void;
   onRun(sql: string): void;
@@ -70,7 +71,10 @@ const sqlKeywords = [
 
 const shikiHighlighter = createHighlighterCore({
   langs: [import("@shikijs/langs/sql")],
-  themes: [import("@shikijs/themes/github-dark-high-contrast")],
+  themes: [
+    import("@shikijs/themes/github-dark-high-contrast"),
+    import("@shikijs/themes/github-light"),
+  ],
   engine: createOnigurumaEngine(import("shiki/wasm")),
 });
 
@@ -78,6 +82,7 @@ export function SqlCodeEditor({
   activeProfile,
   schemas,
   tablesBySchema,
+  theme,
   value,
   onChange,
   onRun,
@@ -132,7 +137,7 @@ export function SqlCodeEditor({
       shiki({
         highlighter: shikiHighlighter,
         language: "sql",
-        theme: "github-dark-high-contrast",
+        theme: theme === "light" ? "github-light" : "github-dark-high-contrast",
       }),
       autocompletion({
         override: [sqlCompletion(schemaCompletions)],
@@ -148,8 +153,8 @@ export function SqlCodeEditor({
       EditorView.theme({
         "&": {
           height: "100%",
-          backgroundColor: "#080808",
-          color: "#ededee",
+          backgroundColor: "rgb(var(--color-surface-950))",
+          color: "rgb(var(--color-foreground))",
           fontSize: "14px"
         },
         ".cm-scroller": {
@@ -160,22 +165,22 @@ export function SqlCodeEditor({
         },
         ".cm-content": {
           padding: "16px 0",
-          caretColor: "#ededee"
+          caretColor: "rgb(var(--color-foreground))"
         },
         ".cm-line": {
           padding: "0 16px"
         },
         ".cm-gutters": {
-          backgroundColor: "#080808",
-          color: "#5f5f66",
-          borderRight: "1px solid #202022"
+          backgroundColor: "rgb(var(--color-surface-950))",
+          color: "rgb(var(--color-muted))",
+          borderRight: "1px solid rgb(var(--color-line))"
         },
         ".cm-activeLine": {
-          backgroundColor: "#101012"
+          backgroundColor: "rgb(var(--color-surface-850))"
         },
         ".cm-activeLineGutter": {
-          backgroundColor: "#101012",
-          color: "#a5a5ad"
+          backgroundColor: "rgb(var(--color-surface-850))",
+          color: "rgb(var(--color-zinc-400))"
         },
         ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
           backgroundColor: "rgba(94, 106, 210, 0.35)"
@@ -184,10 +189,10 @@ export function SqlCodeEditor({
           outline: "none"
         },
         ".cm-tooltip": {
-          border: "1px solid #242426",
+          border: "1px solid rgb(var(--color-line))",
           borderRadius: "10px",
-          backgroundColor: "#1f1f23",
-          color: "#ededee",
+          backgroundColor: "rgb(var(--color-surface-700))",
+          color: "rgb(var(--color-foreground))",
           boxShadow: "0 18px 42px rgba(0, 0, 0, 0.35)",
           overflow: "hidden"
         },
@@ -201,12 +206,12 @@ export function SqlCodeEditor({
           padding: "6px 8px"
         },
         ".cm-tooltip-autocomplete ul li[aria-selected]": {
-          backgroundColor: "#2a2a30",
-          color: "#ffffff"
+          backgroundColor: "rgb(var(--color-surface-800))",
+          color: "rgb(var(--color-foreground))"
         }
       })
     ],
-    [schemaCompletions]
+    [schemaCompletions, theme]
   );
 
   useEffect(() => {

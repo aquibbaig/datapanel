@@ -1,4 +1,4 @@
-import { RotateCcw, Save } from "lucide-react";
+import { Monitor, Moon, RotateCcw, Save, Sun } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../../components/ui/Button";
 import type { AppSettings } from "../../lib/types";
@@ -46,6 +46,26 @@ export function SettingsPanel({ settings, onUpdate }: Props) {
     <section className="flex max-h-[72vh] flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto pb-4 pr-1">
         <div className="flex flex-col gap-2">
+          <div className="grid gap-2">
+            <span className="text-xs text-muted">Theme</span>
+            <div className="grid grid-cols-3 rounded-md border border-line bg-control/[0.03] p-1">
+              {themeOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`inline-flex h-7 items-center justify-center gap-1.5 rounded text-xs font-medium transition ${
+                    (draft.theme || "system") === option.value
+                      ? "bg-selection text-selection-foreground"
+                      : "text-zinc-500 hover:bg-selection-hover hover:text-zinc-200"
+                  }`}
+                  onClick={() => setDraft({ ...draft, theme: option.value })}
+                >
+                  {option.icon}
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <label className="grid grid-cols-[18px_minmax(0,1fr)] items-center gap-2 text-sm text-zinc-300">
             <input
               type="checkbox"
@@ -99,15 +119,15 @@ export function SettingsPanel({ settings, onUpdate }: Props) {
           </label>
           <div className="grid gap-2">
             <span className="text-xs text-muted">Cursor style</span>
-            <div className="grid grid-cols-2 rounded-md border border-white/[0.08] bg-white/[0.03] p-1">
+            <div className="grid grid-cols-2 rounded-md border border-line bg-control/[0.03] p-1">
               {(["default", "pointer"] as const).map((mode) => (
                 <button
                   key={mode}
                   type="button"
                   className={`h-7 rounded text-xs font-medium transition ${
                     (draft.cursorMode || "default") === mode
-                      ? "bg-white/[0.1] text-zinc-100"
-                      : "text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-200"
+                      ? "bg-selection text-selection-foreground"
+                      : "text-zinc-500 hover:bg-selection-hover hover:text-zinc-200"
                   }`}
                   onClick={() => setDraft({ ...draft, cursorMode: mode })}
                 >
@@ -163,3 +183,9 @@ export function SettingsPanel({ settings, onUpdate }: Props) {
     </section>
   );
 }
+
+const themeOptions = [
+  { value: "system", label: "System", icon: <Monitor size={13} /> },
+  { value: "light", label: "Light", icon: <Sun size={13} /> },
+  { value: "dark", label: "Dark", icon: <Moon size={13} /> },
+] as const;

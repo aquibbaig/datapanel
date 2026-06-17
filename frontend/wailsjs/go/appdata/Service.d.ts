@@ -10,6 +10,10 @@ export function CreateAIChatThread(arg1:appdata.CreateAIChatThreadRequest):Promi
 
 export function DeleteAIChatThread(arg1:appdata.DeleteAIChatThreadRequest):Promise<void>;
 
+export function GetQueryWorkspaceDrafts(arg1:appdata.GetQueryWorkspaceDraftsRequest):Promise<appdata.QueryWorkspaceDraftState>;
+
+export function GetSchemaSnapshot(arg1:appdata.GetSchemaSnapshotRequest):Promise<appdata.SchemaMetadataSnapshot>;
+
 export function ListAIChatMessages(arg1:appdata.ListAIChatMessagesRequest):Promise<Array<appdata.AIChatMessage>>;
 
 export function ListAIChatThreads(arg1:appdata.ListAIChatThreadsRequest):Promise<Array<appdata.AIChatThread>>;
@@ -19,5 +23,9 @@ export function ListQueryHistory(arg1:appdata.ListQueryHistoryRequest):Promise<A
 export function SaveAIChatMessage(arg1:appdata.SaveAIChatMessageRequest):Promise<appdata.AIChatMessage>;
 
 export function SaveQueryHistory(arg1:appdata.SaveQueryHistoryRequest):Promise<appdata.QueryHistoryEntry>;
+
+export function SaveQueryWorkspaceDrafts(arg1:appdata.SaveQueryWorkspaceDraftsRequest):Promise<appdata.QueryWorkspaceDraftState>;
+
+export function SaveSchemaSnapshot(arg1:appdata.SaveSchemaSnapshotRequest):Promise<appdata.SchemaMetadataSnapshot>;
 
 export function UpdateAIChatThread(arg1:appdata.UpdateAIChatThreadRequest):Promise<appdata.AIChatThread>;

@@ -18,6 +18,14 @@ export function DeleteAIChatThread(arg1) {
   return window['go']['appdata']['Service']['DeleteAIChatThread'](arg1);
 }
 
+export function GetQueryWorkspaceDrafts(arg1) {
+  return window['go']['appdata']['Service']['GetQueryWorkspaceDrafts'](arg1);
+}
+
+export function GetSchemaSnapshot(arg1) {
+  return window['go']['appdata']['Service']['GetSchemaSnapshot'](arg1);
+}
+
 export function ListAIChatMessages(arg1) {
   return window['go']['appdata']['Service']['ListAIChatMessages'](arg1);
 }
@@ -36,6 +44,14 @@ export function SaveAIChatMessage(arg1) {
 
 export function SaveQueryHistory(arg1) {
   return window['go']['appdata']['Service']['SaveQueryHistory'](arg1);
+}
+
+export function SaveQueryWorkspaceDrafts(arg1) {
+  return window['go']['appdata']['Service']['SaveQueryWorkspaceDrafts'](arg1);
+}
+
+export function SaveSchemaSnapshot(arg1) {
+  return window['go']['appdata']['Service']['SaveSchemaSnapshot'](arg1);
 }
 
 export function UpdateAIChatThread(arg1) {

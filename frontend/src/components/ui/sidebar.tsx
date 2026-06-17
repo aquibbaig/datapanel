@@ -35,7 +35,7 @@ export function SidebarInset({
   return (
     <main
       className={cn(
-        "m-2 mb-2 grid min-w-0 flex-1 overflow-hidden rounded-xl border border-line bg-surface-950 shadow-[0_18px_60px_rgba(0,0,0,0.24)]",
+        "m-2 mb-2 grid min-w-0 flex-1 overflow-hidden rounded-xl border border-line bg-surface-950",
         className,
       )}
     >

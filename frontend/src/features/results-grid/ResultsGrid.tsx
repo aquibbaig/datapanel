@@ -6,6 +6,7 @@ import {
   FileJson,
   FileSpreadsheet,
   KeyRound,
+  Loader2,
   RotateCcw,
   TableProperties,
 } from "lucide-react";
@@ -24,6 +25,7 @@ import type {
 interface Props {
   result: QueryResult | null;
   activeProfile?: ConnectionProfile | null;
+  isLoading?: boolean;
   selectedTable?: TableSummary | null;
   tableDetails?: TableDetails | null;
   onCommitSQL?(sql: string, summary: ChangeSummary): Promise<unknown>;
@@ -55,6 +57,7 @@ const postgresRowLocatorColumn = "__datapanel_internal_ctid__";
 
 export function ResultsGrid({
   activeProfile,
+  isLoading = false,
   onCommitSQL,
   result,
   selectedTable,
@@ -220,6 +223,21 @@ export function ResultsGrid({
         ),
       }
     : null;
+
+  if (isLoading) {
+    return (
+      <section className="grid min-h-0 place-items-center gap-2 bg-surface-900 text-muted">
+        <div className="flex flex-col items-center justify-center gap-4">
+          <Loader2
+            aria-label="Query running"
+            className="animate-spin text-zinc-300"
+            size={24}
+          />
+          <p>Running query...</p>
+        </div>
+      </section>
+    );
+  }
 
   if (!result) {
     return (
@@ -449,7 +467,7 @@ export function ResultsGrid({
               </span>
             </div>
             <textarea
-              className="min-h-0 resize-none rounded-ui border-line bg-[#080808] p-2 text-xs text-zinc-300"
+              className="min-h-0 resize-none rounded-ui border-line bg-background p-2 text-xs text-zinc-300"
               readOnly
               value={generatedSQL}
             />

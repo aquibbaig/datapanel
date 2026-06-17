@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"datapanel/internal/ai"
+	"datapanel/internal/postgres"
 )
 
 func TestAIChatMessagesRoundTrip(t *testing.T) {
@@ -170,5 +171,95 @@ func TestQueryHistoryRoundTripAndDedupe(t *testing.T) {
 	}
 	if items[0].Mode != "explain" || items[0].Success || items[0].Error != "failed" {
 		t.Fatalf("unexpected history item: %#v", items[0])
+	}
+}
+
+func TestQueryWorkspaceDraftsRoundTripPerConnection(t *testing.T) {
+	service, err := NewService(filepath.Join(t.TempDir(), "datapanel.sqlite3"))
+	if err != nil {
+		t.Fatalf("NewService returned error: %v", err)
+	}
+	defer service.CloseAll()
+
+	saved, err := service.SaveQueryWorkspaceDrafts(SaveQueryWorkspaceDraftsRequest{
+		ConnectionID:      "profile-1",
+		ActiveWorkspaceID: "query-2",
+		Workspaces: []QueryWorkspaceDraft{
+			{ID: "query-1", Title: "Scratch", SQL: "select 1;"},
+			{ID: "query-2", Title: "Report", SQL: "select * from reports;"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SaveQueryWorkspaceDrafts returned error: %v", err)
+	}
+	if saved.UpdatedAt == "" {
+		t.Fatalf("expected updated timestamp")
+	}
+
+	got, err := service.GetQueryWorkspaceDrafts(GetQueryWorkspaceDraftsRequest{
+		ConnectionID: "profile-1",
+	})
+	if err != nil {
+		t.Fatalf("GetQueryWorkspaceDrafts returned error: %v", err)
+	}
+	if got.ActiveWorkspaceID != "query-2" || len(got.Workspaces) != 2 {
+		t.Fatalf("unexpected draft state: %#v", got)
+	}
+	if got.Workspaces[1].SQL != "select * from reports;" {
+		t.Fatalf("unexpected SQL: %q", got.Workspaces[1].SQL)
+	}
+
+	empty, err := service.GetQueryWorkspaceDrafts(GetQueryWorkspaceDraftsRequest{
+		ConnectionID: "profile-2",
+	})
+	if err != nil {
+		t.Fatalf("GetQueryWorkspaceDrafts empty returned error: %v", err)
+	}
+	if empty.ConnectionID != "profile-2" || len(empty.Workspaces) != 0 {
+		t.Fatalf("expected empty state for separate connection, got %#v", empty)
+	}
+}
+
+func TestSchemaSnapshotRoundTripPerConnection(t *testing.T) {
+	service, err := NewService(filepath.Join(t.TempDir(), "datapanel.sqlite3"))
+	if err != nil {
+		t.Fatalf("NewService returned error: %v", err)
+	}
+	defer service.CloseAll()
+
+	_, err = service.SaveSchemaSnapshot(SaveSchemaSnapshotRequest{
+		ConnectionID: "profile-1",
+		Fingerprint:  "abc123",
+		Schemas: []postgres.SchemaSummary{
+			{Name: "public"},
+		},
+		TablesBySchema: map[string][]postgres.TableSummary{
+			"public": {
+				{Schema: "public", Name: "users", Type: "BASE TABLE", RowEstimate: 12},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SaveSchemaSnapshot returned error: %v", err)
+	}
+
+	got, err := service.GetSchemaSnapshot(GetSchemaSnapshotRequest{
+		ConnectionID: "profile-1",
+	})
+	if err != nil {
+		t.Fatalf("GetSchemaSnapshot returned error: %v", err)
+	}
+	if got.Fingerprint != "abc123" || len(got.Schemas) != 1 || len(got.TablesBySchema["public"]) != 1 {
+		t.Fatalf("unexpected snapshot: %#v", got)
+	}
+
+	empty, err := service.GetSchemaSnapshot(GetSchemaSnapshotRequest{
+		ConnectionID: "profile-2",
+	})
+	if err != nil {
+		t.Fatalf("GetSchemaSnapshot empty returned error: %v", err)
+	}
+	if empty.ConnectionID != "profile-2" || len(empty.Schemas) != 0 || len(empty.TablesBySchema) != 0 {
+		t.Fatalf("expected empty snapshot for separate connection, got %#v", empty)
 	}
 }

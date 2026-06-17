@@ -14,13 +14,17 @@ import type {
   QueryHistoryItem,
   QueryRequest,
   QueryResult,
+  QueryWorkspaceDraftState,
   SaveAIChatMessageRequest,
   SaveConnectionRequest,
   SaveAICredentialRequest,
   SaveQueryHistoryRequest,
+  SaveSchemaSnapshotRequest,
+  SaveQueryWorkspaceDraftsRequest,
   SchemaContext,
   SchemaContextRequest,
   SchemaFingerprint,
+  SchemaMetadataSnapshot,
   SchemaSummary,
   SQLAnalysis,
   TableDetails,
@@ -68,6 +72,8 @@ const mockAICredentials: Record<string, AICredentialStatus> = {};
 const mockAIThreads: AIChatThread[] = [];
 const mockAIMessages: AIChatMessage[] = [];
 const mockQueryHistory: QueryHistoryEntry[] = [];
+const mockQueryWorkspaceDrafts: Record<string, QueryWorkspaceDraftState> = {};
+const mockSchemaSnapshots: Record<string, SchemaMetadataSnapshot> = {};
 
 function isWailsRuntime() {
   return Boolean(window.go);
@@ -282,6 +288,72 @@ export const appDataService = {
     return normalizeQueryHistoryItem(
       await AppDataBindings.SaveQueryHistory(input as Parameters<typeof AppDataBindings.SaveQueryHistory>[0]),
     );
+  },
+  async getQueryWorkspaceDrafts(connectionId: string): Promise<QueryWorkspaceDraftState> {
+    const normalizedConnectionId = connectionId || "global";
+    if (!isWailsRuntime()) {
+      return mockQueryWorkspaceDrafts[normalizedConnectionId] ?? {
+        connectionId: normalizedConnectionId,
+        activeWorkspaceId: "",
+        workspaces: [],
+        updatedAt: "",
+      };
+    }
+    return normalizeQueryWorkspaceDraftState(
+      await AppDataBindings.GetQueryWorkspaceDrafts({ connectionId }),
+    );
+  },
+  async saveQueryWorkspaceDrafts(input: SaveQueryWorkspaceDraftsRequest): Promise<QueryWorkspaceDraftState> {
+    const normalizedConnectionId = input.connectionId || "global";
+    if (!isWailsRuntime()) {
+      const state = normalizeQueryWorkspaceDraftState({
+        connectionId: normalizedConnectionId,
+        activeWorkspaceId: input.activeWorkspaceId,
+        workspaces: input.workspaces,
+        updatedAt: new Date().toISOString(),
+      });
+      mockQueryWorkspaceDrafts[normalizedConnectionId] = state;
+      return state;
+    }
+    return normalizeQueryWorkspaceDraftState(
+      await AppDataBindings.SaveQueryWorkspaceDrafts(
+        input as Parameters<typeof AppDataBindings.SaveQueryWorkspaceDrafts>[0],
+      ),
+    );
+  },
+  async getSchemaSnapshot(connectionId: string): Promise<SchemaMetadataSnapshot> {
+    const normalizedConnectionId = connectionId || "global";
+    if (!isWailsRuntime()) {
+      return mockSchemaSnapshots[normalizedConnectionId] ?? {
+        connectionId: normalizedConnectionId,
+        schemas: [],
+        tablesBySchema: {},
+        fingerprint: "",
+        updatedAt: "",
+      };
+    }
+    return normalizeSchemaMetadataSnapshot(
+      await AppDataBindings.GetSchemaSnapshot({ connectionId }),
+    );
+  },
+  async saveSchemaSnapshot(input: SaveSchemaSnapshotRequest): Promise<SchemaMetadataSnapshot> {
+    const normalizedConnectionId = input.connectionId || "global";
+    if (!isWailsRuntime()) {
+      const snapshot = normalizeSchemaMetadataSnapshot({
+        connectionId: normalizedConnectionId,
+        schemas: input.schemas,
+        tablesBySchema: input.tablesBySchema,
+        fingerprint: input.fingerprint,
+        updatedAt: new Date().toISOString(),
+      });
+      mockSchemaSnapshots[normalizedConnectionId] = snapshot;
+      return snapshot;
+    }
+    return normalizeSchemaMetadataSnapshot(
+      await AppDataBindings.SaveSchemaSnapshot(
+        input as Parameters<typeof AppDataBindings.SaveSchemaSnapshot>[0],
+      ),
+    );
   }
 };
 
@@ -300,6 +372,27 @@ function normalizeQueryHistoryItem(item: {
   return {
     ...item,
     mode: item.mode === "explain" ? "explain" : "query",
+  };
+}
+
+function normalizeQueryWorkspaceDraftState(state: QueryWorkspaceDraftState): QueryWorkspaceDraftState {
+  return {
+    connectionId: state.connectionId || "global",
+    activeWorkspaceId: state.activeWorkspaceId || "",
+    workspaces: Array.isArray(state.workspaces) ? state.workspaces : [],
+    updatedAt: state.updatedAt || "",
+  };
+}
+
+function normalizeSchemaMetadataSnapshot(state: SchemaMetadataSnapshot): SchemaMetadataSnapshot {
+  return {
+    connectionId: state.connectionId || "global",
+    schemas: Array.isArray(state.schemas) ? state.schemas : [],
+    tablesBySchema: state.tablesBySchema && typeof state.tablesBySchema === "object"
+      ? state.tablesBySchema
+      : {},
+    fingerprint: state.fingerprint || "",
+    updatedAt: state.updatedAt || "",
   };
 }
 

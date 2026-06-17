@@ -56,7 +56,7 @@ export function CommandPalette({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/45 p-[14vh_16px_16px]"
+      className="fixed inset-0 z-50 bg-overlay/45 p-[14vh_16px_16px]"
       onMouseDown={onClose}
     >
       <Command

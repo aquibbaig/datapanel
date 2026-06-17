@@ -79,6 +79,7 @@ export function useDataPanelState() {
   const [workspaceSwitching, setWorkspaceSwitching] =
     useState<WorkspaceSwitchState | null>(null);
   const inspectRequestRef = useRef(0);
+  const queryRequestRef = useRef(0);
   const updateCheckStartedRef = useRef(false);
 
   const activeProfile = useMemo(
@@ -90,6 +91,33 @@ export function useDataPanelState() {
     const cached = queryClient.getQueryData<SchemaSnapshot>(
       schemaSnapshotQueryKey(profileId),
     );
+
+    if (!options.refresh && cached) {
+      setSchemas(cached.schemas);
+      setTablesBySchema(cached.tablesBySchema);
+      return cached;
+    }
+
+    if (!options.refresh) {
+      const persisted = await appDataService
+        .getSchemaSnapshot(profileId)
+        .catch((error: unknown) => {
+          console.warn("Schema snapshot cache load failed", error);
+          return null;
+        });
+      if (persisted && persisted.schemas.length > 0) {
+        const snapshot = {
+          schemas: persisted.schemas,
+          tablesBySchema: persisted.tablesBySchema,
+          fingerprint: persisted.fingerprint,
+        };
+        setSchemas(snapshot.schemas);
+        setTablesBySchema(snapshot.tablesBySchema);
+        queryClient.setQueryData(schemaSnapshotQueryKey(profileId), snapshot);
+        return snapshot;
+      }
+    }
+
     const fingerprint = await schemaService
       .fingerprint(profileId)
       .then((result) => result.hash)
@@ -118,6 +146,16 @@ export function useDataPanelState() {
       fingerprint,
     };
     queryClient.setQueryData(schemaSnapshotQueryKey(profileId), snapshot);
+    void appDataService
+      .saveSchemaSnapshot({
+        connectionId: profileId,
+        schemas: nextSchemas,
+        tablesBySchema: nextTablesBySchema,
+        fingerprint,
+      })
+      .catch((error: unknown) => {
+        console.warn("Schema snapshot cache save failed", error);
+      });
     return snapshot;
   }, [queryClient]);
 
@@ -126,6 +164,16 @@ export function useDataPanelState() {
     setSelectedTable(null);
     setTableDetails(null);
     setInspectingTable(null);
+  }, []);
+
+  const resetQueryState = useCallback((toastId = "") => {
+    queryRequestRef.current += 1;
+    setQueryResult(null);
+    setQueryResultMode("query");
+    setRunningRequestId("");
+    if (toastId) {
+      toast.dismiss(toastId);
+    }
   }, []);
 
   const connectAndLoadMetadata = useCallback(async (
@@ -175,7 +223,7 @@ export function useDataPanelState() {
         const firstProfileId = nextProfiles[0]?.id;
         if (firstProfileId) {
           await connectAndLoadMetadata(firstProfileId, "", {
-            refresh: true,
+            refresh: false,
           });
         }
       })
@@ -313,15 +361,21 @@ export function useDataPanelState() {
     const switchingWorkspace = profileId !== activeConnectionId;
     if (switchingWorkspace) {
       const profile = profiles.find((item) => item.id === profileId);
+      resetQueryState(runningRequestId);
       setWorkspaceSwitching({
         profileId,
         name: profile?.name || "Workspace",
       });
+      if (runningRequestId) {
+        void queryService.cancel(runningRequestId).catch(() => {
+          // The stale request guard below keeps old results out of the UI.
+        });
+      }
     }
     setBusy(true);
     try {
       const result = await connectAndLoadMetadata(profileId, password, {
-        refresh: settings?.autoRefreshMetadata ?? true,
+        refresh: !switchingWorkspace && (settings?.autoRefreshMetadata ?? true),
         reconnectKeychain: options.reconnectKeychain,
       });
       const profile = profiles.find((item) => item.id === profileId);
@@ -340,20 +394,26 @@ export function useDataPanelState() {
         setWorkspaceSwitching(null);
       }
     }
-  }, [activeConnectionId, connectAndLoadMetadata, profiles, settings?.autoRefreshMetadata]);
+  }, [activeConnectionId, connectAndLoadMetadata, profiles, resetQueryState, runningRequestId, settings?.autoRefreshMetadata]);
 
   const disconnect = useCallback(async () => {
     if (!activeConnectionId) return;
+    if (runningRequestId) {
+      void queryService.cancel(runningRequestId).catch(() => {
+        // The stale request guard below keeps old results out of the UI.
+      });
+    }
     await connectionService.disconnect(activeConnectionId);
     setActiveConnectionId("");
     setSchemas([]);
     setTablesBySchema({});
     setSelectedTable(null);
     setTableDetails(null);
+    resetQueryState(runningRequestId);
     setConnectionHealth({ connected: false });
     setStatus({ tone: "neutral", text: "Disconnected" });
     notify("neutral", "Disconnected");
-  }, [activeConnectionId]);
+  }, [activeConnectionId, resetQueryState, runningRequestId]);
 
   const refreshMetadata = useCallback(async () => {
     if (!activeConnectionId) return;
@@ -496,13 +556,18 @@ export function useDataPanelState() {
         confirmDestructive
       };
 
+      const queryRequestId = queryRequestRef.current + 1;
+      queryRequestRef.current = queryRequestId;
+      const resultMode = isExplainSQL(sql) ? "explain" : "query";
       setRunningRequestId(requestId);
+      setQueryResult(null);
+      setQueryResultMode(resultMode);
       setStatus({ tone: "neutral", text: "Running query..." });
       notify("loading", "Running query", undefined, requestId);
       const started = performance.now();
-      const resultMode = isExplainSQL(sql) ? "explain" : "query";
       try {
         const result = await queryService.execute(request);
+        if (queryRequestRef.current !== queryRequestId) return null;
         setQueryResult(result);
         setQueryResultMode(resultMode);
         if (result.error === "confirmation_required") {
@@ -537,6 +602,7 @@ export function useDataPanelState() {
         }
         return result;
       } catch (error) {
+        if (queryRequestRef.current !== queryRequestId) return null;
         const message = errorMessage(error, "Query failed");
         setStatus({ tone: "danger", text: message });
         notify("danger", "Query failed", message, requestId);
@@ -556,7 +622,9 @@ export function useDataPanelState() {
         }
         throw error;
       } finally {
-        setRunningRequestId("");
+        if (queryRequestRef.current === queryRequestId) {
+          setRunningRequestId("");
+        }
       }
     },
     [activeConnectionId, recordQueryHistory, settings]
@@ -580,12 +648,17 @@ export function useDataPanelState() {
         confirmDestructive: true
       };
 
+      const queryRequestId = queryRequestRef.current + 1;
+      queryRequestRef.current = queryRequestId;
       setRunningRequestId(requestId);
+      setQueryResult(null);
+      setQueryResultMode("explain");
       setStatus({ tone: "neutral", text: "Explaining query..." });
       notify("loading", "Explaining query", undefined, requestId);
       const started = performance.now();
       try {
         const result = await queryService.explain(request);
+        if (queryRequestRef.current !== queryRequestId) return null;
         setQueryResult(result);
         setQueryResultMode("explain");
         if (result.error) {
@@ -609,6 +682,7 @@ export function useDataPanelState() {
         }
         return result;
       } catch (error) {
+        if (queryRequestRef.current !== queryRequestId) return null;
         const message = errorMessage(error, "Explain failed");
         setStatus({ tone: "danger", text: message });
         notify("danger", "Explain failed", message, requestId);
@@ -628,7 +702,9 @@ export function useDataPanelState() {
         }
         throw error;
       } finally {
-        setRunningRequestId("");
+        if (queryRequestRef.current === queryRequestId) {
+          setRunningRequestId("");
+        }
       }
     },
     [activeConnectionId, recordQueryHistory, settings]
@@ -652,11 +728,14 @@ export function useDataPanelState() {
         confirmDestructive: true,
       };
 
+      const queryRequestId = queryRequestRef.current + 1;
+      queryRequestRef.current = queryRequestId;
       setRunningRequestId(requestId);
       setStatus({ tone: "neutral", text: "Saving changes..." });
       notify("loading", "Saving changes", undefined, requestId);
       try {
         const result = await queryService.execute(request);
+        if (queryRequestRef.current !== queryRequestId) return null;
         if (result.error) {
           throw new Error(result.error);
         }
@@ -664,12 +743,15 @@ export function useDataPanelState() {
         notify("success", "Changes saved", successMessage, requestId);
         return result;
       } catch (error) {
+        if (queryRequestRef.current !== queryRequestId) return null;
         const message = errorMessage(error, "Could not save changes");
         setStatus({ tone: "danger", text: message });
         notify("danger", "Could not save changes", message, requestId);
         throw error;
       } finally {
-        setRunningRequestId("");
+        if (queryRequestRef.current === queryRequestId) {
+          setRunningRequestId("");
+        }
       }
     },
     [activeConnectionId, settings],

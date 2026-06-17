@@ -4,10 +4,72 @@
 
 :root {
   color-scheme: dark;
-  background: #080808;
-  color: #ededee;
+  --color-background: 18 18 18;
+  --color-foreground: 237 237 238;
+  --color-overlay: 18 18 18;
+  --color-surface-950: 18 18 18;
+  --color-surface-900: 21 21 22;
+  --color-surface-850: 26 26 28;
+  --color-surface-800: 31 31 34;
+  --color-surface-700: 39 39 43;
+  --color-line: 36 36 38;
+  --color-muted: 138 138 144;
+  --color-accent: 94 106 210;
+  --color-accent-hover: 112 121 223;
+  --color-accent-foreground: 252 252 253;
+  --color-control: 252 252 253;
+  --color-control-hover: 252 252 253;
+  --color-control-active: 252 252 253;
+  --color-selection: 39 39 43;
+  --color-selection-hover: 26 26 28;
+  --color-selection-foreground: 244 244 245;
+  --color-zinc-50: 252 252 253;
+  --color-zinc-100: 244 244 245;
+  --color-zinc-200: 228 228 231;
+  --color-zinc-300: 212 212 216;
+  --color-zinc-400: 161 161 170;
+  --color-zinc-500: 113 113 122;
+  --color-zinc-600: 82 82 91;
+  --color-zinc-700: 63 63 70;
+  --color-zinc-800: 39 39 42;
+  --color-zinc-900: 24 24 27;
+  background: rgb(var(--color-background));
+  color: rgb(var(--color-foreground));
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --color-background: 243 244 246;
+  --color-foreground: 24 24 27;
+  --color-overlay: 24 24 27;
+  --color-surface-950: 252 252 253;
+  --color-surface-900: 249 250 251;
+  --color-surface-850: 243 244 246;
+  --color-surface-800: 232 235 240;
+  --color-surface-700: 217 222 230;
+  --color-line: 214 219 228;
+  --color-muted: 101 110 126;
+  --color-accent: 82 93 190;
+  --color-accent-hover: 94 106 210;
+  --color-accent-foreground: 252 252 253;
+  --color-control: 24 24 27;
+  --color-control-hover: 24 24 27;
+  --color-control-active: 24 24 27;
+  --color-selection: 238 241 245;
+  --color-selection-hover: 244 246 248;
+  --color-selection-foreground: 24 24 27;
+  --color-zinc-50: 9 9 11;
+  --color-zinc-100: 24 24 27;
+  --color-zinc-200: 39 39 42;
+  --color-zinc-300: 63 63 70;
+  --color-zinc-400: 82 82 91;
+  --color-zinc-500: 113 113 122;
+  --color-zinc-600: 138 138 144;
+  --color-zinc-700: 161 161 170;
+  --color-zinc-800: 212 212 216;
+  --color-zinc-900: 244 244 245;
 }
 
 * {
@@ -25,7 +87,8 @@ body {
   min-width: 1040px;
   min-height: 720px;
   overflow: hidden;
-  background: #080808;
+  background: rgb(var(--color-background));
+  color: rgb(var(--color-foreground));
 }
 
 button,
@@ -39,11 +102,11 @@ input,
 select,
 textarea {
   width: 100%;
-  border: 1px solid #242426;
+  border: 1px solid rgb(var(--color-line));
   border-radius: 8px;
   outline: none;
-  background: #0f0f11;
-  color: #ededee;
+  background: rgb(var(--color-surface-900));
+  color: rgb(var(--color-foreground));
 }
 
 input,
@@ -64,7 +127,7 @@ textarea {
 input:focus,
 select:focus,
 textarea:focus {
-  border-color: #5e6ad2;
+  border-color: rgb(var(--color-accent));
   box-shadow: 0 0 0 2px rgba(94, 106, 210, 0.18);
 }
 
@@ -79,7 +142,7 @@ td {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  border-bottom: 1px solid #202022;
+  border-bottom: 1px solid rgb(var(--color-line));
 }
 
 @keyframes datapanel-chat-cursor-blink {
@@ -166,10 +229,10 @@ td {
   z-index: 1000;
   max-height: 320px;
   overflow: hidden;
-  border: 1px solid #242426;
+  border: 1px solid rgb(var(--color-line));
   border-radius: 10px;
-  background: #1f1f23;
-  color: #ededee;
+  background: rgb(var(--color-surface-700));
+  color: rgb(var(--color-foreground));
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.35);
 }
 
@@ -185,13 +248,13 @@ td {
 }
 
 .cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected] {
-  background-color: #2a2a30;
-  color: #ffffff;
+  background-color: rgb(var(--color-selection));
+  color: rgb(var(--color-selection-foreground));
 }
 
 [cmdk-group-heading] {
   padding: 10px 8px 6px;
-  color: #8a8a93;
+  color: rgb(var(--color-muted));
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0;
@@ -205,7 +268,7 @@ td {
   gap: 8px;
   padding: 7px 8px;
   border-radius: 8px;
-  color: #d8d8dc;
+  color: rgb(var(--color-zinc-200));
   cursor: pointer;
 }
 
@@ -215,8 +278,8 @@ td {
 }
 
 [cmdk-item][data-selected="true"] {
-  background: #2a2a30;
-  color: #ffffff;
+  background: rgb(var(--color-selection));
+  color: rgb(var(--color-selection-foreground));
 }
 
 [data-cursor-mode="default"] :where(button, a, summary, [role="button"], [cmdk-item]) {

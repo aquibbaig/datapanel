@@ -12,6 +12,7 @@ import (
 
 	"datapanel/internal/ai"
 	"datapanel/internal/apperrors"
+	"datapanel/internal/postgres"
 
 	"github.com/google/uuid"
 	_ "modernc.org/sqlite"
@@ -408,6 +409,152 @@ func (s *Service) SaveQueryHistory(input SaveQueryHistoryRequest) (QueryHistoryE
 	return item, nil
 }
 
+func (s *Service) GetQueryWorkspaceDrafts(input GetQueryWorkspaceDraftsRequest) (QueryWorkspaceDraftState, error) {
+	if s == nil || s.db == nil {
+		return QueryWorkspaceDraftState{}, apperrors.New(apperrors.CodeStorage, "app database is not ready")
+	}
+
+	connectionID := normalizeConnectionID(input.ConnectionID)
+	row := s.db.QueryRowContext(
+		context.Background(),
+		`SELECT connection_id, active_workspace_id, workspaces_json, updated_at
+		 FROM query_workspace_drafts
+		 WHERE connection_id = ?`,
+		connectionID,
+	)
+
+	var state QueryWorkspaceDraftState
+	var workspacesJSON string
+	if err := row.Scan(
+		&state.ConnectionID,
+		&state.ActiveWorkspaceID,
+		&workspacesJSON,
+		&state.UpdatedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return QueryWorkspaceDraftState{ConnectionID: connectionID, Workspaces: []QueryWorkspaceDraft{}}, nil
+		}
+		return QueryWorkspaceDraftState{}, apperrors.New(apperrors.CodeStorage, "could not load query workspace drafts")
+	}
+
+	if strings.TrimSpace(workspacesJSON) != "" {
+		if err := json.Unmarshal([]byte(workspacesJSON), &state.Workspaces); err != nil {
+			return QueryWorkspaceDraftState{}, apperrors.New(apperrors.CodeStorage, "query workspace drafts are invalid")
+		}
+	}
+	return normalizeQueryWorkspaceDraftState(state), nil
+}
+
+func (s *Service) SaveQueryWorkspaceDrafts(input SaveQueryWorkspaceDraftsRequest) (QueryWorkspaceDraftState, error) {
+	if s == nil || s.db == nil {
+		return QueryWorkspaceDraftState{}, apperrors.New(apperrors.CodeStorage, "app database is not ready")
+	}
+
+	state := normalizeQueryWorkspaceDraftState(QueryWorkspaceDraftState{
+		ConnectionID:      input.ConnectionID,
+		ActiveWorkspaceID: input.ActiveWorkspaceID,
+		Workspaces:        input.Workspaces,
+		UpdatedAt:         time.Now().UTC().Format(time.RFC3339Nano),
+	})
+	workspacesJSON, err := json.Marshal(state.Workspaces)
+	if err != nil {
+		return QueryWorkspaceDraftState{}, apperrors.New(apperrors.CodeStorage, "could not encode query workspace drafts")
+	}
+
+	_, err = s.db.ExecContext(
+		context.Background(),
+		`INSERT INTO query_workspace_drafts (
+			connection_id, active_workspace_id, workspaces_json, updated_at
+		 ) VALUES (?, ?, ?, ?)
+		 ON CONFLICT(connection_id) DO UPDATE SET
+			active_workspace_id = excluded.active_workspace_id,
+			workspaces_json = excluded.workspaces_json,
+			updated_at = excluded.updated_at`,
+		state.ConnectionID,
+		state.ActiveWorkspaceID,
+		string(workspacesJSON),
+		state.UpdatedAt,
+	)
+	if err != nil {
+		return QueryWorkspaceDraftState{}, apperrors.New(apperrors.CodeStorage, "could not save query workspace drafts")
+	}
+	return state, nil
+}
+
+func (s *Service) GetSchemaSnapshot(input GetSchemaSnapshotRequest) (SchemaMetadataSnapshot, error) {
+	if s == nil || s.db == nil {
+		return SchemaMetadataSnapshot{}, apperrors.New(apperrors.CodeStorage, "app database is not ready")
+	}
+
+	connectionID := normalizeConnectionID(input.ConnectionID)
+	row := s.db.QueryRowContext(
+		context.Background(),
+		`SELECT connection_id, fingerprint, snapshot_json, updated_at
+		 FROM schema_snapshots
+		 WHERE connection_id = ?`,
+		connectionID,
+	)
+
+	var snapshot SchemaMetadataSnapshot
+	var snapshotJSON string
+	if err := row.Scan(
+		&snapshot.ConnectionID,
+		&snapshot.Fingerprint,
+		&snapshotJSON,
+		&snapshot.UpdatedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return emptySchemaSnapshot(connectionID), nil
+		}
+		return SchemaMetadataSnapshot{}, apperrors.New(apperrors.CodeStorage, "could not load schema snapshot")
+	}
+
+	if strings.TrimSpace(snapshotJSON) != "" {
+		if err := json.Unmarshal([]byte(snapshotJSON), &snapshot); err != nil {
+			return SchemaMetadataSnapshot{}, apperrors.New(apperrors.CodeStorage, "schema snapshot is invalid")
+		}
+	}
+	snapshot.ConnectionID = connectionID
+	return normalizeSchemaSnapshot(snapshot), nil
+}
+
+func (s *Service) SaveSchemaSnapshot(input SaveSchemaSnapshotRequest) (SchemaMetadataSnapshot, error) {
+	if s == nil || s.db == nil {
+		return SchemaMetadataSnapshot{}, apperrors.New(apperrors.CodeStorage, "app database is not ready")
+	}
+
+	snapshot := normalizeSchemaSnapshot(SchemaMetadataSnapshot{
+		ConnectionID:   input.ConnectionID,
+		Schemas:        input.Schemas,
+		TablesBySchema: input.TablesBySchema,
+		Fingerprint:    input.Fingerprint,
+		UpdatedAt:      time.Now().UTC().Format(time.RFC3339Nano),
+	})
+	snapshotJSON, err := json.Marshal(snapshot)
+	if err != nil {
+		return SchemaMetadataSnapshot{}, apperrors.New(apperrors.CodeStorage, "could not encode schema snapshot")
+	}
+
+	_, err = s.db.ExecContext(
+		context.Background(),
+		`INSERT INTO schema_snapshots (
+			connection_id, fingerprint, snapshot_json, updated_at
+		 ) VALUES (?, ?, ?, ?)
+		 ON CONFLICT(connection_id) DO UPDATE SET
+			fingerprint = excluded.fingerprint,
+			snapshot_json = excluded.snapshot_json,
+			updated_at = excluded.updated_at`,
+		snapshot.ConnectionID,
+		snapshot.Fingerprint,
+		string(snapshotJSON),
+		snapshot.UpdatedAt,
+	)
+	if err != nil {
+		return SchemaMetadataSnapshot{}, apperrors.New(apperrors.CodeStorage, "could not save schema snapshot")
+	}
+	return snapshot, nil
+}
+
 func (s *Service) migrate(ctx context.Context) error {
 	statements := []string{
 		`PRAGMA journal_mode = WAL`,
@@ -455,6 +602,18 @@ func (s *Service) migrate(ctx context.Context) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_query_history_connection_executed
 		 ON query_history(connection_id, executed_at)`,
+		`CREATE TABLE IF NOT EXISTS query_workspace_drafts (
+			connection_id TEXT PRIMARY KEY,
+			active_workspace_id TEXT NOT NULL DEFAULT '',
+			workspaces_json TEXT NOT NULL DEFAULT '[]',
+			updated_at TEXT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS schema_snapshots (
+			connection_id TEXT PRIMARY KEY,
+			fingerprint TEXT NOT NULL DEFAULT '',
+			snapshot_json TEXT NOT NULL DEFAULT '{}',
+			updated_at TEXT NOT NULL
+		)`,
 	}
 	for _, statement := range statements {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
@@ -502,9 +661,92 @@ func normalizeQueryHistory(input SaveQueryHistoryRequest) (QueryHistoryEntry, er
 	}, nil
 }
 
+func normalizeQueryWorkspaceDraftState(state QueryWorkspaceDraftState) QueryWorkspaceDraftState {
+	state.ConnectionID = normalizeConnectionID(state.ConnectionID)
+	state.ActiveWorkspaceID = strings.TrimSpace(state.ActiveWorkspaceID)
+	state.UpdatedAt = strings.TrimSpace(state.UpdatedAt)
+
+	seen := map[string]bool{}
+	workspaces := make([]QueryWorkspaceDraft, 0, minInt(3, len(state.Workspaces)))
+	for _, workspace := range state.Workspaces {
+		id := strings.TrimSpace(workspace.ID)
+		if id == "" || seen[id] {
+			id = uuid.NewString()
+		}
+		seen[id] = true
+
+		title := strings.TrimSpace(workspace.Title)
+		if title == "" {
+			title = "Untitled query"
+		}
+		if len(title) > 80 {
+			title = title[:80]
+		}
+
+		workspaces = append(workspaces, QueryWorkspaceDraft{
+			ID:    id,
+			Title: title,
+			SQL:   workspace.SQL,
+		})
+		if len(workspaces) >= 3 {
+			break
+		}
+	}
+	state.Workspaces = workspaces
+
+	activeWorkspaceExists := false
+	for _, workspace := range state.Workspaces {
+		if workspace.ID == state.ActiveWorkspaceID {
+			activeWorkspaceExists = true
+			break
+		}
+	}
+	if !activeWorkspaceExists {
+		if len(state.Workspaces) > 0 {
+			state.ActiveWorkspaceID = state.Workspaces[0].ID
+		} else {
+			state.ActiveWorkspaceID = ""
+		}
+	}
+	return state
+}
+
+func emptySchemaSnapshot(connectionID string) SchemaMetadataSnapshot {
+	return SchemaMetadataSnapshot{
+		ConnectionID:   normalizeConnectionID(connectionID),
+		Schemas:        []postgres.SchemaSummary{},
+		TablesBySchema: map[string][]postgres.TableSummary{},
+	}
+}
+
+func normalizeSchemaSnapshot(snapshot SchemaMetadataSnapshot) SchemaMetadataSnapshot {
+	snapshot.ConnectionID = normalizeConnectionID(snapshot.ConnectionID)
+	snapshot.Fingerprint = strings.TrimSpace(snapshot.Fingerprint)
+	snapshot.UpdatedAt = strings.TrimSpace(snapshot.UpdatedAt)
+	if snapshot.Schemas == nil {
+		snapshot.Schemas = []postgres.SchemaSummary{}
+	}
+	if snapshot.TablesBySchema == nil {
+		snapshot.TablesBySchema = map[string][]postgres.TableSummary{}
+	}
+	for schema, tables := range snapshot.TablesBySchema {
+		if tables == nil {
+			snapshot.TablesBySchema[schema] = []postgres.TableSummary{}
+		}
+	}
+	return snapshot
+}
+
 func maxInt(minimum int, value int) int {
 	if value < minimum {
 		return minimum
+	}
+	return value
+}
+
+func minInt(maximum int, value int) int {
+	if value > maximum {
+		return maximum
 	}
 	return value
 }

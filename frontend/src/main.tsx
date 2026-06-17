@@ -4,10 +4,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./app/App";
 import "./styles.css";
 
+const workspaceCacheTimeMs = 24 * 60 * 60 * 1000;
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      gcTime: 30 * 60 * 1000,
+      gcTime: workspaceCacheTimeMs,
       retry: 1,
       staleTime: Infinity,
     },

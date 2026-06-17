@@ -21,14 +21,14 @@ export function WorkspaceSwitchOverlay({
     <div
       aria-live="polite"
       aria-busy="true"
-      className="fixed inset-0 z-[60] overflow-hidden bg-black/55 text-zinc-200 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[60] overflow-hidden bg-overlay/45 text-zinc-200 backdrop-blur-[2px]"
       role="status"
     >
-      <div className="datapanel-workspace-sweep absolute inset-y-0 w-[38%] border-r border-white/[0.08] bg-white/[0.035]" />
-      <div className="absolute left-0 right-0 top-0 h-px bg-white/[0.08]" />
+      <div className="datapanel-workspace-sweep absolute inset-y-0 w-[38%] border-r border-line bg-control/[0.035]" />
+      <div className="absolute left-0 right-0 top-0 h-px bg-line" />
       <div className="datapanel-workspace-progress absolute left-0 top-0 h-px w-1/3 bg-accent" />
       <div className="flex h-full items-center justify-center">
-        <div className="datapanel-workspace-panel flex min-w-[260px] items-center gap-3 rounded-ui border border-white/[0.08] bg-surface-850/95 px-4 py-3 shadow-2xl">
+        <div className="datapanel-workspace-panel flex min-w-[260px] items-center gap-3 rounded-ui border border-line bg-surface-850/95 px-4 py-3 shadow-2xl">
           <Loader2 className="animate-spin text-zinc-100" size={18} />
           <span className="min-w-0">
             <span className="block text-sm font-medium text-zinc-100">

@@ -270,6 +270,30 @@ export namespace appdata {
 	        this.id = source["id"];
 	    }
 	}
+	export class GetQueryWorkspaceDraftsRequest {
+	    connectionId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GetQueryWorkspaceDraftsRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.connectionId = source["connectionId"];
+	    }
+	}
+	export class GetSchemaSnapshotRequest {
+	    connectionId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GetSchemaSnapshotRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.connectionId = source["connectionId"];
+	    }
+	}
 	export class ListAIChatMessagesRequest {
 	    threadId: string;
 	    limit: number;
@@ -339,6 +363,58 @@ export namespace appdata {
 	        this.affectedRows = source["affectedRows"];
 	        this.error = source["error"];
 	    }
+	}
+	export class QueryWorkspaceDraft {
+	    id: string;
+	    title: string;
+	    sql: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new QueryWorkspaceDraft(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.sql = source["sql"];
+	    }
+	}
+	export class QueryWorkspaceDraftState {
+	    connectionId: string;
+	    activeWorkspaceId: string;
+	    workspaces: QueryWorkspaceDraft[];
+	    updatedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new QueryWorkspaceDraftState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.connectionId = source["connectionId"];
+	        this.activeWorkspaceId = source["activeWorkspaceId"];
+	        this.workspaces = this.convertValues(source["workspaces"], QueryWorkspaceDraft);
+	        this.updatedAt = source["updatedAt"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class SaveAIChatMessageRequest {
 	    id: string;
@@ -415,6 +491,114 @@ export namespace appdata {
 	        this.affectedRows = source["affectedRows"];
 	        this.error = source["error"];
 	    }
+	}
+	export class SaveQueryWorkspaceDraftsRequest {
+	    connectionId: string;
+	    activeWorkspaceId: string;
+	    workspaces: QueryWorkspaceDraft[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SaveQueryWorkspaceDraftsRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.connectionId = source["connectionId"];
+	        this.activeWorkspaceId = source["activeWorkspaceId"];
+	        this.workspaces = this.convertValues(source["workspaces"], QueryWorkspaceDraft);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SaveSchemaSnapshotRequest {
+	    connectionId: string;
+	    schemas: postgres.SchemaSummary[];
+	    tablesBySchema: {[key: string]: postgres.TableSummary[]};
+	    fingerprint: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SaveSchemaSnapshotRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.connectionId = source["connectionId"];
+	        this.schemas = this.convertValues(source["schemas"], postgres.SchemaSummary);
+	        this.tablesBySchema = this.convertValues(source["tablesBySchema"], postgres.TableSummary, true);
+	        this.fingerprint = source["fingerprint"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = this.convertValues(a[key], classs);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SchemaMetadataSnapshot {
+	    connectionId: string;
+	    schemas: postgres.SchemaSummary[];
+	    tablesBySchema: {[key: string]: postgres.TableSummary[]};
+	    fingerprint: string;
+	    updatedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SchemaMetadataSnapshot(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.connectionId = source["connectionId"];
+	        this.schemas = this.convertValues(source["schemas"], postgres.SchemaSummary);
+	        this.tablesBySchema = this.convertValues(source["tablesBySchema"], postgres.TableSummary, true);
+	        this.fingerprint = source["fingerprint"];
+	        this.updatedAt = source["updatedAt"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = this.convertValues(a[key], classs);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class UpdateAIChatThreadRequest {
 	    id: string;
@@ -1012,4 +1196,3 @@ export namespace updater {
 	}
 
 }
-

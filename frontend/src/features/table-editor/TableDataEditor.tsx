@@ -461,7 +461,7 @@ export function TableDataEditor({
               </span>
             </div>
             <textarea
-              className="min-h-0 resize-none rounded-ui border-line bg-[#080808] p-2 text-xs text-zinc-300"
+              className="min-h-0 resize-none rounded-ui border-line bg-background p-2 text-xs text-zinc-300"
               readOnly
               value={generatedSQL}
             />
@@ -489,7 +489,7 @@ function CellEditor({
     <div
       className={cn(
         "flex h-7 min-w-[176px] items-center rounded-md border border-transparent bg-transparent transition focus-within:border-accent focus-within:bg-surface-850",
-        changed && "border-accent/40 bg-accent/10 text-white",
+        changed && "border-accent/40 bg-accent/10 text-zinc-100",
         struck && "line-through",
       )}
     >

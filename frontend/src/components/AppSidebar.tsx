@@ -122,7 +122,7 @@ function WorkspaceSelector({
     <div className="flex shrink-0 items-center px-1 py-2">
       <DropdownMenu.Root onOpenChange={(open) => !open && setQuery("")}>
         <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-2 text-left transition">
-          <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.04]">
+          <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-lg border border-line bg-control/[0.04]">
             <img
               alt="DataPanel"
               className="h-full w-full object-cover"
@@ -141,7 +141,7 @@ function WorkspaceSelector({
           </span>
           <DropdownMenu.Trigger asChild>
             <button
-              className="ml-auto grid h-7 w-7 shrink-0 place-items-center rounded-md text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+              className="ml-auto grid h-7 w-7 shrink-0 place-items-center rounded-md text-zinc-500 transition hover:bg-control/[0.03] hover:text-zinc-200"
               title="Switch workspace"
               type="button"
             >
@@ -176,7 +176,7 @@ function WorkspaceSelector({
                 return (
                   <DropdownMenu.Item
                     key={profile.id}
-                    className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 outline-none transition hover:bg-white/[0.06] data-[highlighted]:bg-white/[0.06]"
+                    className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 outline-none transition hover:bg-control/[0.03] data-[highlighted]:bg-control/[0.03]"
                     onSelect={() => void onConnect(profile)}
                   >
                     <Database size={14} className="-mt-5" />
@@ -203,7 +203,7 @@ function WorkspaceSelector({
 
             <DropdownMenu.Separator className="my-2 h-px bg-line" />
             <DropdownMenu.Item
-              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 outline-none transition hover:bg-white/[0.06] data-[highlighted]:bg-white/[0.06]"
+              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 outline-none transition hover:bg-control/[0.03] data-[highlighted]:bg-control/[0.03]"
               onSelect={onAddConnection}
             >
               <Plus size={14} className="text-zinc-500" />
@@ -211,7 +211,7 @@ function WorkspaceSelector({
             </DropdownMenu.Item>
             {activeProfile ? (
               <DropdownMenu.Item
-                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-muted outline-none transition hover:bg-white/[0.06] data-[highlighted]:bg-white/[0.06]"
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-muted outline-none transition hover:bg-control/[0.03] data-[highlighted]:bg-control/[0.03]"
                 onSelect={onEditActive}
               >
                 <Settings size={14} className="text-zinc-500" />

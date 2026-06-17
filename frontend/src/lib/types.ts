@@ -38,6 +38,23 @@ export interface SaveAIChatMessageRequest {
   createdAt: string;
 }
 export type AppQueryHistoryEntry = appdata.QueryHistoryEntry;
+export interface QueryWorkspaceDraftState {
+  connectionId: string;
+  activeWorkspaceId: string;
+  workspaces: Array<{
+    id: string;
+    title: string;
+    sql: string;
+  }>;
+  updatedAt: string;
+}
+export interface SchemaMetadataSnapshot {
+  connectionId: string;
+  schemas: SchemaSummary[];
+  tablesBySchema: Record<string, TableSummary[]>;
+  fingerprint: string;
+  updatedAt: string;
+}
 export interface SaveQueryHistoryRequest {
   id: string;
   connectionId: string;
@@ -49,6 +66,21 @@ export interface SaveQueryHistoryRequest {
   rowCount: number;
   affectedRows: number;
   error?: string;
+}
+export interface SaveQueryWorkspaceDraftsRequest {
+  connectionId: string;
+  activeWorkspaceId: string;
+  workspaces: Array<{
+    id: string;
+    title: string;
+    sql: string;
+  }>;
+}
+export interface SaveSchemaSnapshotRequest {
+  connectionId: string;
+  schemas: SchemaSummary[];
+  tablesBySchema: Record<string, TableSummary[]>;
+  fingerprint: string;
 }
 
 export type ConnectionProfile = connections.ConnectionProfile;

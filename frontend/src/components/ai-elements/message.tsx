@@ -19,7 +19,7 @@ export function Message({
         className={cn(
           "max-w-[92%] min-w-0 rounded-ui border px-3 py-2",
           from === "user"
-            ? "border-[#6f77df]/50 bg-accent/20 text-zinc-100"
+            ? "border-accent/50 bg-accent/20 text-zinc-100"
             : "border-line bg-surface-900 text-zinc-200",
         )}
       >
