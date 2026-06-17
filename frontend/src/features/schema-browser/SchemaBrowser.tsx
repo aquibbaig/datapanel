@@ -45,6 +45,10 @@ export function SchemaBrowser({
   onPrefetchTableDetails,
 }: Props) {
   const [filter, setFilter] = useState("");
+  const [scrollbarState, setScrollbarState] = useState({
+    scrollTop: 0,
+    viewportSize: 0,
+  });
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const filteredSchemas = useMemo(
     () => filterSchemas(schemas, tablesBySchema, filter),
@@ -70,6 +74,10 @@ export function SchemaBrowser({
     overscan: 14,
   });
   const virtualItems = rowVirtualizer.getVirtualItems();
+  const totalRowSize = rowVirtualizer.getTotalSize();
+  const hasSidebarOverflow =
+    scrollbarState.viewportSize > 0 &&
+    totalRowSize > scrollbarState.viewportSize;
   const virtualRowIndexes = virtualItems.map((item) => item.index);
   const virtualRowIndexKey = virtualRowIndexes.join("|");
   const visibleTableRows = useMemo(
@@ -95,6 +103,30 @@ export function SchemaBrowser({
     }
   }, [activeConnectionId, onPrefetchTableDetails, visibleTableKeys, visibleTableRows]);
 
+  useEffect(() => {
+    const scrollElement = scrollRef.current;
+    if (!scrollElement) return undefined;
+
+    const updateScrollbarState = () => {
+      setScrollbarState({
+        scrollTop: scrollElement.scrollTop,
+        viewportSize: scrollElement.clientHeight,
+      });
+    };
+
+    updateScrollbarState();
+    scrollElement.addEventListener("scroll", updateScrollbarState, {
+      passive: true,
+    });
+    const resizeObserver = new ResizeObserver(updateScrollbarState);
+    resizeObserver.observe(scrollElement);
+
+    return () => {
+      scrollElement.removeEventListener("scroll", updateScrollbarState);
+      resizeObserver.disconnect();
+    };
+  }, [totalRowSize]);
+
   return (
     <aside className="flex min-h-0 w-full min-w-0 flex-1 flex-col bg-transparent">
       {/* <div className="flex h-12 items-center justify-between px-3">
@@ -109,8 +141,8 @@ export function SchemaBrowser({
         </Button>
       </div> */}
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 px-3 py-3">
-        <label className="relative block">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 py-3 pl-3">
+        <label className="relative mr-3 block">
           <Search
             className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500"
             size={14}
@@ -125,42 +157,70 @@ export function SchemaBrowser({
         </label>
 
         {!activeConnectionId ? (
-          <div className="flex items-center gap-2 rounded-ui border border-dashed border-line bg-surface-850 p-3 text-sm text-muted">
+          <div className="mr-3 flex items-center gap-2 rounded-ui border border-dashed border-line bg-surface-850 p-3 text-sm text-muted">
             <Database size={14} />
             <p>Choose a workspace above to browse tables.</p>
           </div>
         ) : null}
 
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_12px]">
           <div
-            className="relative w-full"
-            style={{ height: rowVirtualizer.getTotalSize() }}
+            ref={scrollRef}
+            className="datapanel-sidebar-scroll min-h-0 overflow-auto"
           >
-            {virtualItems.map((virtualRow) => {
-              const row = rows[virtualRow.index];
-              return (
-                <div
-                  key={row.key}
-                  className="absolute left-0 top-0 w-full"
-                  style={{
-                    height: virtualRow.size,
-                    transform: `translateY(${virtualRow.start}px)`,
-                  }}
-                >
-                  <BrowserRow
-                    row={row}
-                    selectedForeignKeys={selectedForeignKeys}
-                    inspectingTable={inspectingTable}
-                    selectedTable={selectedTable}
-                    onInspectTable={onInspectTable}
-                  />
-                </div>
-              );
-            })}
+            <div
+              className="relative w-full"
+              style={{ height: totalRowSize }}
+            >
+              {virtualItems.map((virtualRow) => {
+                const row = rows[virtualRow.index];
+                return (
+                  <div
+                    key={row.key}
+                    className="absolute left-0 top-0 w-full"
+                    style={{
+                      height: virtualRow.size,
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                  >
+                    <BrowserRow
+                      row={row}
+                      selectedForeignKeys={selectedForeignKeys}
+                      inspectingTable={inspectingTable}
+                      selectedTable={selectedTable}
+                      onInspectTable={onInspectTable}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            {activeConnectionId && filteredSchemas.length === 0 ? (
+              <p className="text-sm text-muted">No matching tables.</p>
+            ) : null}
           </div>
-          {activeConnectionId && filteredSchemas.length === 0 ? (
-            <p className="text-sm text-muted">No matching tables.</p>
-          ) : null}
+          <div
+            className={cn(
+              "pointer-events-none flex min-h-0 justify-center",
+              hasSidebarOverflow ? "bg-sidebar/70" : "bg-transparent",
+            )}
+          >
+            {hasSidebarOverflow ? (
+              <div
+                className="mt-1 w-1 rounded-full bg-scrollbar-thumb"
+                style={{
+                  height: sidebarScrollbarThumbHeight(
+                    totalRowSize,
+                    scrollbarState.viewportSize,
+                  ),
+                  transform: `translateY(${sidebarScrollbarThumbOffset(
+                    totalRowSize,
+                    scrollbarState.viewportSize,
+                    scrollbarState.scrollTop,
+                  )}px)`,
+                }}
+              />
+            ) : null}
+          </div>
         </div>
       </div>
     </aside>
@@ -177,6 +237,23 @@ type BrowserRow =
     };
 
 const maxPrefetchTablesPerRange = 36;
+
+function sidebarScrollbarThumbHeight(totalSize: number, viewportSize: number) {
+  if (totalSize <= viewportSize || viewportSize <= 0) return 0;
+  return Math.max(32, Math.round((viewportSize / totalSize) * viewportSize));
+}
+
+function sidebarScrollbarThumbOffset(
+  totalSize: number,
+  viewportSize: number,
+  scrollTop: number,
+) {
+  if (totalSize <= viewportSize || viewportSize <= 0) return 0;
+  const thumbHeight = sidebarScrollbarThumbHeight(totalSize, viewportSize);
+  const maxOffset = Math.max(0, viewportSize - thumbHeight - 8);
+  const maxScroll = Math.max(1, totalSize - viewportSize);
+  return Math.round((scrollTop / maxScroll) * maxOffset);
+}
 
 function buildBrowserRows({
   filteredSchemas,

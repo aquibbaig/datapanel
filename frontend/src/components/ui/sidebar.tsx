@@ -18,7 +18,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     <SidebarContext.Provider
       value={{ open, toggle: () => setOpen((current) => !current) }}
     >
-      <div className="flex h-full min-h-0 bg-surface-800 text-zinc-100">
+      <div className="flex h-full min-h-0 bg-sidebar text-zinc-100">
         {children}
       </div>
     </SidebarContext.Provider>
@@ -35,7 +35,7 @@ export function SidebarInset({
   return (
     <main
       className={cn(
-        "m-2 mb-2 grid min-w-0 flex-1 overflow-hidden rounded-xl border border-line bg-surface-950",
+        "my-2 mr-2 grid min-w-0 flex-1 overflow-hidden rounded-xl border border-line bg-surface-950",
         className,
       )}
     >

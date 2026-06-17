@@ -7,6 +7,7 @@
   --color-background: 18 18 18;
   --color-foreground: 237 237 238;
   --color-overlay: 18 18 18;
+  --color-sidebar: 31 31 34;
   --color-surface-950: 18 18 18;
   --color-surface-900: 21 21 22;
   --color-surface-850: 26 26 28;
@@ -23,6 +24,8 @@
   --color-selection: 39 39 43;
   --color-selection-hover: 26 26 28;
   --color-selection-foreground: 244 244 245;
+  --color-scrollbar-thumb: 82 82 91;
+  --color-scrollbar-thumb-hover: 113 113 122;
   --color-zinc-50: 252 252 253;
   --color-zinc-100: 244 244 245;
   --color-zinc-200: 228 228 231;
@@ -44,6 +47,7 @@
   --color-background: 243 244 246;
   --color-foreground: 24 24 27;
   --color-overlay: 24 24 27;
+  --color-sidebar: 244 245 247;
   --color-surface-950: 252 252 253;
   --color-surface-900: 249 250 251;
   --color-surface-850: 243 244 246;
@@ -60,6 +64,8 @@
   --color-selection: 238 241 245;
   --color-selection-hover: 244 246 248;
   --color-selection-foreground: 24 24 27;
+  --color-scrollbar-thumb: 192 198 208;
+  --color-scrollbar-thumb-hover: 164 172 187;
   --color-zinc-50: 9 9 11;
   --color-zinc-100: 24 24 27;
   --color-zinc-200: 39 39 42;
@@ -74,6 +80,40 @@
 
 * {
   box-sizing: border-box;
+  scrollbar-color: rgb(var(--color-scrollbar-thumb)) transparent;
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+  background: transparent;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgb(var(--color-scrollbar-thumb));
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--color-scrollbar-thumb-hover));
+  background-clip: content-box;
+}
+
+.datapanel-sidebar-scroll {
+  scrollbar-width: none;
+}
+
+.datapanel-sidebar-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 html,

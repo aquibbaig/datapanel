@@ -7,6 +7,7 @@ export default {
         background: "rgb(var(--color-background) / <alpha-value>)",
         foreground: "rgb(var(--color-foreground) / <alpha-value>)",
         overlay: "rgb(var(--color-overlay) / <alpha-value>)",
+        sidebar: "rgb(var(--color-sidebar) / <alpha-value>)",
         surface: {
           950: "rgb(var(--color-surface-950) / <alpha-value>)",
           900: "rgb(var(--color-surface-900) / <alpha-value>)",
@@ -30,6 +31,9 @@ export default {
           DEFAULT: "rgb(var(--color-selection) / <alpha-value>)",
           hover: "rgb(var(--color-selection-hover) / <alpha-value>)",
           foreground: "rgb(var(--color-selection-foreground) / <alpha-value>)"
+        },
+        scrollbar: {
+          thumb: "rgb(var(--color-scrollbar-thumb) / <alpha-value>)"
         },
         zinc: {
           50: "rgb(var(--color-zinc-50) / <alpha-value>)",

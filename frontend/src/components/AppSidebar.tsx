@@ -57,7 +57,7 @@ export function AppSidebar({
   return (
     <aside
       className={cn(
-        "h-full shrink-0 overflow-hidden bg-surface-800 transition-[width] duration-150",
+        "h-full shrink-0 overflow-hidden bg-sidebar transition-[width] duration-150",
         sidebar.open ? "w-[320px]" : "w-0",
       )}
     >

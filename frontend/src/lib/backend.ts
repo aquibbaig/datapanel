@@ -75,8 +75,96 @@ const mockQueryHistory: QueryHistoryEntry[] = [];
 const mockQueryWorkspaceDrafts: Record<string, QueryWorkspaceDraftState> = {};
 const mockSchemaSnapshots: Record<string, SchemaMetadataSnapshot> = {};
 
+const mockSchemaNames = [
+  "public",
+  "analytics",
+  "billing",
+  "crm",
+  "product",
+  "audit",
+  "integrations",
+  "support",
+  "growth",
+  "warehouse",
+];
+
+const mockTablesBySchemaSeed: Record<string, string[]> = {
+  public: [
+    "users",
+    "organizations",
+    "memberships",
+    "subscriptions",
+    "daily_revenue",
+    "feature_flags",
+  ],
+  analytics: [
+    "events",
+    "page_views",
+    "funnels",
+    "cohorts",
+    "daily_revenue",
+    "retention_summary",
+  ],
+  billing: [
+    "invoices",
+    "invoice_items",
+    "payment_methods",
+    "plans",
+    "credits",
+    "tax_rates",
+  ],
+};
+
+const mockTableNameParts = [
+  "accounts",
+  "activity",
+  "assignments",
+  "audit_events",
+  "comments",
+  "documents",
+  "exports",
+  "imports",
+  "jobs",
+  "notifications",
+  "preferences",
+  "reports",
+  "sessions",
+  "settings",
+  "tasks",
+  "tokens",
+  "usage",
+  "webhooks",
+];
+
 function isWailsRuntime() {
   return Boolean(window.go);
+}
+
+function mockSchemas(): SchemaSummary[] {
+  return mockSchemaNames.map((name) => ({ name }));
+}
+
+function mockTables(schema: string): TableSummary[] {
+  const seededTables = mockTablesBySchemaSeed[schema] ?? [];
+  const generatedTables = mockTableNameParts.map((part, index) => {
+    const name = seededTables.includes(part) ? `${schema}_${part}` : part;
+    return {
+      schema,
+      name,
+      type: index % 5 === 0 ? "VIEW" : "BASE TABLE",
+      rowEstimate: 180 + index * 137,
+    };
+  });
+
+  return [
+    ...seededTables.map((name, index) => ({
+      schema,
+      name,
+      type: name.includes("daily") || name.includes("summary") ? "VIEW" : "BASE TABLE",
+      rowEstimate: index === 0 ? 1240 : 420 + index * 83,
+    })),
+    ...generatedTables,
+  ];
 }
 
 export const connectionService = {
@@ -428,21 +516,15 @@ export const schemaService = {
     return SchemaBindings.SchemaFingerprint(connectionId);
   },
   async schemas(connectionId: string): Promise<SchemaSummary[]> {
-    if (!isWailsRuntime()) return [{ name: "public" }, { name: "analytics" }];
+    if (!isWailsRuntime()) return mockSchemas();
     return SchemaBindings.ListSchemas(connectionId);
   },
   async refresh(connectionId: string): Promise<SchemaSummary[]> {
-    if (!isWailsRuntime()) return [{ name: "public" }, { name: "analytics" }];
+    if (!isWailsRuntime()) return mockSchemas();
     return SchemaBindings.RefreshMetadata(connectionId);
   },
   async tables(connectionId: string, schema: string): Promise<TableSummary[]> {
-    if (!isWailsRuntime()) {
-      return [
-        { schema, name: "users", type: "BASE TABLE", rowEstimate: 1240 },
-        { schema, name: "subscriptions", type: "BASE TABLE", rowEstimate: 438 },
-        { schema, name: "daily_revenue", type: "VIEW", rowEstimate: 0 }
-      ];
-    }
+    if (!isWailsRuntime()) return mockTables(schema);
     return SchemaBindings.ListTables(connectionId, schema);
   },
   async describe(connectionId: string, schema: string, table: string): Promise<TableDetails> {
