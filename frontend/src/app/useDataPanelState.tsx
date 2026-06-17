@@ -57,6 +57,8 @@ const schemaSnapshotQueryKey = (profileId: string) =>
 const tableDetailsQueryKey = (connectionId: string, schema: string, table: string) =>
   ["tableDetails", connectionId, schema, table] as const;
 
+const maxBackgroundWorkspacePrefetches = 5;
+
 export function useDataPanelState() {
   const queryClient = useQueryClient();
   const [profiles, setProfiles] = useState<ConnectionProfile[]>([]);
@@ -87,59 +89,52 @@ export function useDataPanelState() {
     [activeConnectionId, profiles]
   );
 
-  const loadMetadata = useCallback(async (profileId: string, options: MetadataLoadOptions = {}) => {
+  const readSchemaSnapshotCache = useCallback(async (profileId: string) => {
     const cached = queryClient.getQueryData<SchemaSnapshot>(
       schemaSnapshotQueryKey(profileId),
     );
+    if (cached) return cached;
 
-    if (!options.refresh && cached) {
-      setSchemas(cached.schemas);
-      setTablesBySchema(cached.tablesBySchema);
-      return cached;
+    const persisted = await appDataService
+      .getSchemaSnapshot(profileId)
+      .catch((error: unknown) => {
+        console.warn("Schema snapshot cache load failed", error);
+        return null;
+      });
+    if (persisted && persisted.schemas.length > 0) {
+      const snapshot = {
+        schemas: persisted.schemas,
+        tablesBySchema: persisted.tablesBySchema,
+        fingerprint: persisted.fingerprint,
+      };
+      queryClient.setQueryData(schemaSnapshotQueryKey(profileId), snapshot);
+      return snapshot;
     }
 
-    if (!options.refresh) {
-      const persisted = await appDataService
-        .getSchemaSnapshot(profileId)
-        .catch((error: unknown) => {
-          console.warn("Schema snapshot cache load failed", error);
-          return null;
-        });
-      if (persisted && persisted.schemas.length > 0) {
-        const snapshot = {
-          schemas: persisted.schemas,
-          tablesBySchema: persisted.tablesBySchema,
-          fingerprint: persisted.fingerprint,
-        };
-        setSchemas(snapshot.schemas);
-        setTablesBySchema(snapshot.tablesBySchema);
-        queryClient.setQueryData(schemaSnapshotQueryKey(profileId), snapshot);
-        return snapshot;
-      }
-    }
+    return null;
+  }, [queryClient]);
+
+  const fetchSchemaSnapshot = useCallback(async (profileId: string, options: MetadataLoadOptions = {}) => {
+    const cached = options.refresh ? null : await readSchemaSnapshotCache(profileId);
+    if (cached) return cached;
 
     const fingerprint = await schemaService
       .fingerprint(profileId)
       .then((result) => result.hash)
       .catch(() => "");
 
-    if (!options.refresh && fingerprint && cached?.fingerprint === fingerprint) {
-      setSchemas(cached.schemas);
-      setTablesBySchema(cached.tablesBySchema);
-      return cached;
-    }
-
-    if (cached?.fingerprint && fingerprint && cached.fingerprint !== fingerprint) {
+    const existingSnapshot = queryClient.getQueryData<SchemaSnapshot>(
+      schemaSnapshotQueryKey(profileId),
+    );
+    if (existingSnapshot?.fingerprint && fingerprint && existingSnapshot.fingerprint !== fingerprint) {
       queryClient.removeQueries({ queryKey: ["tableDetails", profileId] });
     }
 
     const nextSchemas = await schemaService.refresh(profileId);
-    setSchemas(nextSchemas);
     const tableEntries = await Promise.all(
       nextSchemas.map(async (schema) => [schema.name, await schemaService.tables(profileId, schema.name)] as const)
     );
     const nextTablesBySchema = Object.fromEntries(tableEntries);
-    setTablesBySchema(nextTablesBySchema);
     const snapshot = {
       schemas: nextSchemas,
       tablesBySchema: nextTablesBySchema,
@@ -157,7 +152,38 @@ export function useDataPanelState() {
         console.warn("Schema snapshot cache save failed", error);
       });
     return snapshot;
-  }, [queryClient]);
+  }, [queryClient, readSchemaSnapshotCache]);
+
+  const loadMetadata = useCallback(async (profileId: string, options: MetadataLoadOptions = {}) => {
+    const snapshot = await fetchSchemaSnapshot(profileId, options);
+    setSchemas(snapshot.schemas);
+    setTablesBySchema(snapshot.tablesBySchema);
+    return snapshot;
+  }, [fetchSchemaSnapshot]);
+
+  const prefetchWorkspaceMetadata = useCallback(async (profilesToPrefetch: ConnectionProfile[]) => {
+    const queuedProfiles = profilesToPrefetch.filter((profile) => profile.id);
+    if (queuedProfiles.length === 0) return;
+
+    await runWithConcurrency(
+      queuedProfiles,
+      maxBackgroundWorkspacePrefetches,
+      async (profile) => {
+        try {
+          const cached = await readSchemaSnapshotCache(profile.id);
+          if (cached) return;
+          await connectionService.connect({
+            profileId: profile.id,
+            password: "",
+            reconnectKeychain: false,
+          });
+          await fetchSchemaSnapshot(profile.id, { refresh: false });
+        } catch (error) {
+          console.warn(`Workspace metadata prefetch failed for ${profile.name}`, error);
+        }
+      },
+    );
+  }, [fetchSchemaSnapshot, readSchemaSnapshotCache]);
 
   const clearSelectedTable = useCallback(() => {
     inspectRequestRef.current += 1;
@@ -225,6 +251,9 @@ export function useDataPanelState() {
           await connectAndLoadMetadata(firstProfileId, "", {
             refresh: false,
           });
+          void prefetchWorkspaceMetadata(
+            nextProfiles.filter((profile) => profile.id !== firstProfileId),
+          );
         }
       })
       .catch((error: unknown) => {
@@ -234,7 +263,7 @@ export function useDataPanelState() {
         notify("danger", "Could not initialize app", message);
       })
       .finally(() => setInitializing(false));
-  }, [connectAndLoadMetadata, loadProfiles]);
+  }, [connectAndLoadMetadata, loadProfiles, prefetchWorkspaceMetadata]);
 
   useEffect(() => {
     if (isLocalDev()) return;
@@ -838,6 +867,23 @@ function querySuccessMessage(rows: number, affectedRows: number, durationMs: num
     return `${affectedRows} ${affectedRows === 1 ? "row" : "rows"} affected in ${durationMs}ms`;
   }
   return `Query completed in ${durationMs}ms`;
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  task: (item: T) => Promise<void>,
+) {
+  let cursor = 0;
+  const workerCount = Math.min(Math.max(1, limit), items.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (cursor < items.length) {
+      const item = items[cursor];
+      cursor += 1;
+      await task(item);
+    }
+  });
+  await Promise.all(workers);
 }
 
 function updateDescription(version: string, assetName: string) {
