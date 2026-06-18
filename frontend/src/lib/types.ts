@@ -5,16 +5,13 @@ export interface AIChatTurn {
   role: "assistant" | "user";
   content: string;
 }
-export interface AIGenerateRequest extends ai.GenerateRequest {
+export interface AIGenerateRequest
+  extends Omit<ai.GenerateRequest, "convertValues" | "conversation"> {
   conversation?: AIChatTurn[];
 }
 export type AIGenerateResponse = ai.GenerateResponse;
-export interface AIPlanRequest {
-  provider: string;
-  model: string;
-  prompt: string;
-  tableContext: string;
-  dialect: string;
+export interface AIPlanRequest
+  extends Omit<ai.PlanRequest, "convertValues" | "conversation"> {
   conversation?: AIChatTurn[];
 }
 export interface AIPlanResponse {
