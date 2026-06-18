@@ -565,6 +565,7 @@ export function AiAssistantPanel({
       content: prompt,
       createdAt: new Date().toISOString(),
     };
+    const conversation = buildConversationHistory(chatMessages);
     setChatMessages((current) => [...current, userMessage]);
     setChatPrompt("");
     setChatBusy(true);
@@ -617,6 +618,7 @@ export function AiAssistantPanel({
               model: selectedModel,
               prompt,
               dialect: activeProfile.driver,
+              conversation,
               tableContext: buildTablePlanningContext(
                 activeProfile,
                 schemaSnapshot.schemas,
@@ -650,6 +652,7 @@ export function AiAssistantPanel({
         dialect: activeProfile?.driver || "postgres",
         responseStyle: settings?.chatResponsePrompt || "",
         schemaContext,
+        conversation,
       });
       const assistantMessage = {
         id: crypto.randomUUID(),
@@ -1246,7 +1249,7 @@ function AIResponseView({
   return (
     <div className="flex min-w-0 justify-start">
       <div className="min-w-0 max-w-[98%]">
-        <div className="grid min-w-0 gap-3 rounded-[18px] bg-overlay/15 px-1 py-2 text-zinc-200">
+        <div className="grid min-w-0 gap-3 text-zinc-200">
           {response.destructiveRisk ? (
             <div className="rounded-ui border border-yellow-500/30 bg-yellow-500/10 p-2 text-xs leading-5 text-yellow-100">
               Review carefully. The model marked this SQL as data-changing or
@@ -1271,7 +1274,7 @@ function AIResponseView({
             </pre>
           ) : null}
         </div>
-        <div className="mt-2 grid max-w-[260px] gap-1.5 pl-1">
+        <div className="mt-2 flex min-w-0 items-center gap-1 pl-1">
           <ChatActionButton label="Copy response" onClick={onCopyAnswer}>
             <Copy size={14} />
           </ChatActionButton>
@@ -1317,8 +1320,9 @@ function ChatActionButton({
 }) {
   return (
     <button
+      aria-label={label}
       className={cn(
-        "flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-45",
+        "grid h-8 w-8 shrink-0 place-items-center rounded-md transition disabled:cursor-not-allowed disabled:opacity-45",
         variant === "primary"
           ? "bg-transparent text-accent hover:text-accent-hover"
           : "bg-transparent text-zinc-400 hover:text-zinc-100",
@@ -1330,15 +1334,7 @@ function ChatActionButton({
       title={label}
       type="button"
     >
-      <span
-        className={cn(
-          "grid h-4 w-4 shrink-0 place-items-center",
-          variant === "primary" ? "text-accent" : "text-zinc-400",
-        )}
-      >
-        {children}
-      </span>
-      <span className="min-w-0 truncate">{label}</span>
+      {children}
     </button>
   );
 }
@@ -1432,6 +1428,29 @@ function openExternalUrl(url: string) {
 
 function getWailsRuntime() {
   return (window as WailsWindow).runtime;
+}
+
+function buildConversationHistory(messages: ChatMessage[]) {
+  return messages
+    .slice(-12)
+    .map((message) => ({
+      role: message.role,
+      content: conversationContent(message),
+    }))
+    .filter((message) => message.content.trim().length > 0);
+}
+
+function conversationContent(message: ChatMessage) {
+  if (!message.response) return message.content;
+
+  const parts = [message.response.answer || message.content];
+  if (message.response.sql) {
+    parts.push(`SQL:\n${message.response.sql}`);
+  }
+  if (message.response.assumptions?.length) {
+    parts.push(`Assumptions:\n${message.response.assumptions.join("\n")}`);
+  }
+  return parts.filter((part) => part.trim().length > 0).join("\n\n");
 }
 
 function summarizeSchema(

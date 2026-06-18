@@ -69,7 +69,7 @@ export function CommandPalette({
       >
         <Command.Input
           autoFocus
-          className="h-12 border-0 border-b border-line bg-surface-900 px-4 text-sm outline-none focus:border-line focus:shadow-none"
+          className="h-12 w-full appearance-none rounded-none border-x-0 border-b border-t-0 border-line bg-surface-900 px-4 text-sm outline-none focus:border-line focus:shadow-none"
           placeholder="Jump to tables or run actions..."
         />
         <Command.List className="max-h-[calc(68vh-48px)] overflow-y-auto p-2">

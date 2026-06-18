@@ -1,7 +1,13 @@
 import type { ai, appdata, connections, postgres, query, settings, updater } from "../../wailsjs/go/models";
 
 export type AICredentialStatus = ai.CredentialStatus;
-export type AIGenerateRequest = ai.GenerateRequest;
+export interface AIChatTurn {
+  role: "assistant" | "user";
+  content: string;
+}
+export interface AIGenerateRequest extends ai.GenerateRequest {
+  conversation?: AIChatTurn[];
+}
 export type AIGenerateResponse = ai.GenerateResponse;
 export interface AIPlanRequest {
   provider: string;
@@ -9,6 +15,7 @@ export interface AIPlanRequest {
   prompt: string;
   tableContext: string;
   dialect: string;
+  conversation?: AIChatTurn[];
 }
 export interface AIPlanResponse {
   needsClarification: boolean;

@@ -33,6 +33,11 @@ type credentialRecord struct {
 
 var providers = []string{"openai", "anthropic", "custom"}
 
+const (
+	maxConversationTurns        = 12
+	maxConversationContentRunes = 2500
+)
+
 func NewService(secrets SecretStore, storage string) *Service {
 	if strings.TrimSpace(storage) == "" {
 		storage = "keychain"
@@ -141,13 +146,7 @@ func (s *Service) GenerateSQL(input GenerateRequest) (GenerateResponse, error) {
 	}
 
 	system := systemPrompt(input.Dialect, input.ResponseStyle)
-	user := strings.Join([]string{
-		"Database schema context:",
-		strings.TrimSpace(input.SchemaContext),
-		"",
-		"User request:",
-		prompt,
-	}, "\n")
+	user := generateUserMessage(input, prompt)
 
 	switch provider {
 	case "openai":
@@ -179,13 +178,7 @@ func (s *Service) PlanSQL(input PlanRequest) (PlanResponse, error) {
 	}
 
 	system := planPrompt(input.Dialect)
-	user := strings.Join([]string{
-		"Available database tables:",
-		strings.TrimSpace(input.TableContext),
-		"",
-		"User request:",
-		prompt,
-	}, "\n")
+	user := planUserMessage(input, prompt)
 
 	switch provider {
 	case "openai":
@@ -421,6 +414,85 @@ func keyHint(token string) string {
 		return "stored"
 	}
 	return "...." + trimmed[len(trimmed)-4:]
+}
+
+func generateUserMessage(input GenerateRequest, prompt string) string {
+	lines := []string{
+		"Database schema context:",
+		strings.TrimSpace(input.SchemaContext),
+		"",
+	}
+	appendConversationContext(&lines, input.Conversation)
+	lines = append(lines, "Current user request:", prompt)
+	return strings.Join(lines, "\n")
+}
+
+func planUserMessage(input PlanRequest, prompt string) string {
+	lines := []string{
+		"Available database tables:",
+		strings.TrimSpace(input.TableContext),
+		"",
+	}
+	appendConversationContext(&lines, input.Conversation)
+	lines = append(lines, "Current user request:", prompt)
+	return strings.Join(lines, "\n")
+}
+
+func appendConversationContext(lines *[]string, turns []ChatTurn) {
+	conversation := normalizeConversation(turns)
+	if len(conversation) == 0 {
+		return
+	}
+
+	*lines = append(*lines,
+		"Recent conversation, oldest to newest:",
+		formatConversation(conversation),
+		"",
+		"Use the recent conversation only to resolve follow-up references in the current request.",
+		"",
+	)
+}
+
+func formatConversation(turns []ChatTurn) string {
+	lines := make([]string, 0, len(turns)*2)
+	for _, turn := range turns {
+		label := "User"
+		if turn.Role == "assistant" {
+			label = "Assistant"
+		}
+		lines = append(lines, label+":", turn.Content)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func normalizeConversation(turns []ChatTurn) []ChatTurn {
+	cleaned := make([]ChatTurn, 0, min(len(turns), maxConversationTurns))
+	for _, turn := range turns {
+		role := strings.ToLower(strings.TrimSpace(turn.Role))
+		if role != "user" && role != "assistant" {
+			continue
+		}
+		content := truncateRunes(strings.TrimSpace(turn.Content), maxConversationContentRunes)
+		if content == "" {
+			continue
+		}
+		cleaned = append(cleaned, ChatTurn{Role: role, Content: content})
+	}
+	if len(cleaned) > maxConversationTurns {
+		cleaned = cleaned[len(cleaned)-maxConversationTurns:]
+	}
+	return cleaned
+}
+
+func truncateRunes(value string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit]) + "..."
 }
 
 func systemPrompt(dialect string, responseStyle string) string {

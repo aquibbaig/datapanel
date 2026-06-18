@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"datapanel/internal/connections"
@@ -59,6 +60,66 @@ func TestDeleteCredentialClearsStatus(t *testing.T) {
 	}
 	if status.Connected {
 		t.Fatalf("expected disconnected status")
+	}
+}
+
+func TestPlanUserMessageIncludesConversationContext(t *testing.T) {
+	message := planUserMessage(PlanRequest{
+		TableContext: "public.subscribers",
+		Conversation: []ChatTurn{
+			{Role: "user", Content: "Can you get me a list of subscribers max 100"},
+			{Role: "assistant", Content: "SQL:\nSELECT * FROM public.subscribers LIMIT 100;"},
+			{Role: "system", Content: "ignored"},
+		},
+	}, "max 500")
+
+	for _, expected := range []string{
+		"Available database tables:\npublic.subscribers",
+		"Recent conversation, oldest to newest:",
+		"User:\nCan you get me a list of subscribers max 100",
+		"Assistant:\nSQL:\nSELECT * FROM public.subscribers LIMIT 100;",
+		"Current user request:\nmax 500",
+	} {
+		if !strings.Contains(message, expected) {
+			t.Fatalf("expected plan message to contain %q, got:\n%s", expected, message)
+		}
+	}
+	if strings.Contains(message, "ignored") {
+		t.Fatalf("expected invalid conversation roles to be omitted, got:\n%s", message)
+	}
+}
+
+func TestGenerateUserMessageIncludesPriorAssistantSQL(t *testing.T) {
+	message := generateUserMessage(GenerateRequest{
+		SchemaContext: "CREATE TABLE public.subscribers (id bigint);",
+		Conversation: []ChatTurn{
+			{Role: "assistant", Content: "SQL:\nSELECT * FROM public.subscribers LIMIT 100;"},
+		},
+	}, "make it max 500")
+
+	for _, expected := range []string{
+		"Database schema context:\nCREATE TABLE public.subscribers (id bigint);",
+		"Assistant:\nSQL:\nSELECT * FROM public.subscribers LIMIT 100;",
+		"Current user request:\nmake it max 500",
+	} {
+		if !strings.Contains(message, expected) {
+			t.Fatalf("expected generate message to contain %q, got:\n%s", expected, message)
+		}
+	}
+}
+
+func TestNormalizeConversationKeepsRecentBoundedTurns(t *testing.T) {
+	turns := make([]ChatTurn, 0, maxConversationTurns+2)
+	for i := 0; i < maxConversationTurns+2; i++ {
+		turns = append(turns, ChatTurn{Role: "user", Content: "turn " + string(rune('a'+i))})
+	}
+
+	normalized := normalizeConversation(turns)
+	if len(normalized) != maxConversationTurns {
+		t.Fatalf("expected %d turns, got %d", maxConversationTurns, len(normalized))
+	}
+	if normalized[0].Content != "turn c" {
+		t.Fatalf("expected oldest retained turn to be turn c, got %q", normalized[0].Content)
 	}
 }
 

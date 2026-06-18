@@ -15,21 +15,28 @@ type CredentialStatus struct {
 	Storage   string `json:"storage"`
 }
 
+type ChatTurn struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
 type GenerateRequest struct {
-	Provider      string `json:"provider"`
-	Model         string `json:"model"`
-	Prompt        string `json:"prompt"`
-	SchemaContext string `json:"schemaContext"`
-	Dialect       string `json:"dialect"`
-	ResponseStyle string `json:"responseStyle"`
+	Provider      string     `json:"provider"`
+	Model         string     `json:"model"`
+	Prompt        string     `json:"prompt"`
+	SchemaContext string     `json:"schemaContext"`
+	Dialect       string     `json:"dialect"`
+	ResponseStyle string     `json:"responseStyle"`
+	Conversation  []ChatTurn `json:"conversation,omitempty"`
 }
 
 type PlanRequest struct {
-	Provider     string `json:"provider"`
-	Model        string `json:"model"`
-	Prompt       string `json:"prompt"`
-	TableContext string `json:"tableContext"`
-	Dialect      string `json:"dialect"`
+	Provider     string     `json:"provider"`
+	Model        string     `json:"model"`
+	Prompt       string     `json:"prompt"`
+	TableContext string     `json:"tableContext"`
+	Dialect      string     `json:"dialect"`
+	Conversation []ChatTurn `json:"conversation,omitempty"`
 }
 
 type PlanTable struct {
