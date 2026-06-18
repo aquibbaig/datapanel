@@ -32,6 +32,7 @@ import type {
   TestConnectionRequest,
   UpdateCheckResult,
 } from "./types";
+import { ai } from "../../wailsjs/go/models";
 import * as AIBindings from "../../wailsjs/go/ai/Service";
 import * as AppDataBindings from "../../wailsjs/go/appdata/Service";
 import * as ConnectionBindings from "../../wailsjs/go/connections/Service";
@@ -244,7 +245,7 @@ export const aiCredentialService = {
         assumptions: ["Preview mode does not call an AI provider."]
       };
     }
-    return AIBindings.GenerateSQL(input);
+    return AIBindings.GenerateSQL(ai.GenerateRequest.createFrom(input));
   },
   async plan(input: AIPlanRequest): Promise<AIPlanResponse> {
     if (!isWailsRuntime()) {
@@ -262,7 +263,7 @@ export const aiCredentialService = {
         assumptions: ["Preview mode does not call an AI provider."]
       };
     }
-    return AIBindings.PlanSQL(input);
+    return AIBindings.PlanSQL(ai.PlanRequest.createFrom(input));
   }
 };
 
