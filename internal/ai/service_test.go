@@ -75,9 +75,11 @@ func TestPlanUserMessageIncludesConversationContext(t *testing.T) {
 
 	for _, expected := range []string{
 		"Available database tables:\npublic.subscribers",
-		"Recent conversation, oldest to newest:",
-		"User:\nCan you get me a list of subscribers max 100",
-		"Assistant:\nSQL:\nSELECT * FROM public.subscribers LIMIT 100;",
+		"Recent conversation JSON, oldest to newest:",
+		`"role": "user"`,
+		`"content": "Can you get me a list of subscribers max 100"`,
+		`"role": "assistant"`,
+		`"content": "SQL:\nSELECT * FROM public.subscribers LIMIT 100;"`,
 		"Current user request:\nmax 500",
 	} {
 		if !strings.Contains(message, expected) {
@@ -99,7 +101,9 @@ func TestGenerateUserMessageIncludesPriorAssistantSQL(t *testing.T) {
 
 	for _, expected := range []string{
 		"Database schema context:\nCREATE TABLE public.subscribers (id bigint);",
-		"Assistant:\nSQL:\nSELECT * FROM public.subscribers LIMIT 100;",
+		"Recent conversation JSON, oldest to newest:",
+		`"role": "assistant"`,
+		`"content": "SQL:\nSELECT * FROM public.subscribers LIMIT 100;"`,
 		"Current user request:\nmake it max 500",
 	} {
 		if !strings.Contains(message, expected) {

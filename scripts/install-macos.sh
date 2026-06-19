@@ -13,7 +13,7 @@ Usage: install-macos.sh [--no-quarantine]
 Installs DataPanel with Homebrew Cask.
 
 Options:
-  --no-quarantine  Ask Homebrew not to quarantine the app download.
+  --no-quarantine  Clear macOS quarantine after installing the app.
   -h, --help       Show this help.
 EOF
 }
@@ -57,7 +57,18 @@ fi
 
 echo "Installing DataPanel..."
 if [ "$no_quarantine" = "1" ]; then
-  brew install --cask --no-quarantine "$cask_name"
+  if brew install --help 2>/dev/null | grep -q -- "--no-quarantine"; then
+    brew install --cask --no-quarantine "$cask_name"
+  else
+    brew install --cask "$cask_name"
+  fi
+
+  echo "Clearing quarantine..."
+  for app_path in "/Applications/DataPanel.app" "$HOME/Applications/DataPanel.app"; do
+    if [ -d "$app_path" ]; then
+      xattr -dr com.apple.quarantine "$app_path" >/dev/null 2>&1 || true
+    fi
+  done
 else
   brew install --cask "$cask_name"
 fi

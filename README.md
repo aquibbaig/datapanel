@@ -68,7 +68,7 @@ Install the latest macOS build with Homebrew:
 curl -fsSL https://raw.githubusercontent.com/aquibbaig/datapanel/main/scripts/install-macos.sh | sh
 ```
 
-Technical users can also install without quarantine:
+Technical users can also install and clear quarantine automatically:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/aquibbaig/datapanel/main/scripts/install-macos.sh | sh -s -- --no-quarantine
