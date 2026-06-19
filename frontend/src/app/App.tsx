@@ -141,6 +141,8 @@ export function App() {
   const [queryWorkspaceTitleDraft, setQueryWorkspaceTitleDraft] = useState("");
   const [editingProfile, setEditingProfile] =
     useState<ConnectionProfile | null>(null);
+  const [deletingProfile, setDeletingProfile] =
+    useState<ConnectionProfile | null>(null);
   const [editableResultTable, setEditableResultTable] =
     useState<TableSummary | null>(null);
   const [editableResultTableDetails, setEditableResultTableDetails] =
@@ -263,6 +265,20 @@ export function App() {
   function openEditConnection(profile: ConnectionProfile | null) {
     setEditingProfile(profile);
     setConnectionModalOpen(true);
+  }
+
+  async function confirmDeleteConnection() {
+    if (!deletingProfile) return;
+    const profile = deletingProfile;
+    setDeletingProfile(null);
+    await model.deleteConnection(profile).catch(() => {
+      // The shared delete path already surfaces the error toast/status.
+    });
+  }
+
+  async function setTheme(theme: "light" | "dark" | "system") {
+    if (!model.settings) return;
+    await model.updateSettings({ ...model.settings, theme });
   }
 
   async function connectProfile(profile: ConnectionProfile) {
@@ -521,14 +537,17 @@ export function App() {
       />
       <CommandPalette
         activeProfile={model.activeProfile}
+        currentTheme={model.settings?.theme || "system"}
         open={commandOpen}
         tablesBySchema={model.tablesBySchema}
         onAddConnection={openNewConnection}
         onClose={() => setCommandOpen(false)}
         onEditConnection={() => openEditConnection(model.activeProfile)}
+        onOpenAI={() => openRightPanel("ai")}
         onOpenHistory={() => openRightPanel("history")}
         onOpenSettings={() => setSettingsOpen(true)}
         onRefreshMetadata={() => void model.refreshMetadata()}
+        onSetTheme={(theme) => void setTheme(theme)}
         onSelectTable={(table) => void selectTableForEditing(table)}
         onShowResults={() => setBottomView("results")}
       />
@@ -536,6 +555,7 @@ export function App() {
         <AppSidebar
           activeConnectionId={model.activeConnectionId}
           activeProfile={model.activeProfile}
+          switchingWorkspaceName={model.workspaceSwitching?.name}
           profiles={model.profiles}
           inspectingTable={model.inspectingTable}
           schemas={model.schemas}
@@ -744,6 +764,8 @@ export function App() {
                   )}
                 </section>
               </div>
+            ) : model.workspaceSwitching ? (
+              <div className="min-h-0 min-w-0 flex-1 bg-surface-900" />
             ) : (
               <EmptyWorkspace onCreateConnection={openNewConnection} />
             )}
@@ -838,10 +860,54 @@ export function App() {
             busy={model.busy}
             initialProfile={editingProfile}
             onConnect={model.connect}
+            onDelete={(profile) => {
+              setConnectionModalOpen(false);
+              setEditingProfile(null);
+              setDeletingProfile(profile);
+            }}
             onSave={model.saveConnection}
             onTest={model.testConnection}
             onDone={() => setConnectionModalOpen(false)}
           />
+        </Modal>
+
+        <Modal
+          title="Delete Workspace"
+          open={Boolean(deletingProfile)}
+          onClose={() => setDeletingProfile(null)}
+        >
+          <div className="grid gap-4">
+            <div className="grid gap-2 text-sm leading-6 text-zinc-300">
+              <p>
+                Delete{" "}
+                <span className="font-medium text-zinc-100">
+                  {deletingProfile?.name}
+                </span>
+                ?
+              </p>
+              <p className="text-muted">
+                This removes the saved connection profile and any stored
+                password for it. The database itself is not modified.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                disabled={model.busy}
+                type="button"
+                onClick={() => setDeletingProfile(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                disabled={model.busy}
+                type="button"
+                variant="danger"
+                onClick={() => void confirmDeleteConnection()}
+              >
+                Delete workspace
+              </Button>
+            </div>
+          </div>
         </Modal>
 
         <Modal

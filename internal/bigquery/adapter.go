@@ -306,8 +306,14 @@ func newClient(ctx context.Context, profile connections.ConnectionProfile, passw
 	}
 
 	opts := []option.ClientOption{}
+	endpoint := strings.TrimSpace(profile.Endpoint)
+	if endpoint != "" {
+		opts = append(opts, option.WithEndpoint(endpoint))
+	}
 	if credentialsJSON := strings.TrimSpace(password); credentialsJSON != "" {
 		opts = append(opts, option.WithCredentialsJSON([]byte(credentialsJSON)))
+	} else if endpoint != "" {
+		opts = append(opts, option.WithoutAuthentication())
 	}
 	client, err := gcbigquery.NewClient(ctx, projectID, opts...)
 	if err != nil {

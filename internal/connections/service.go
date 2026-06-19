@@ -99,7 +99,7 @@ func (s *Service) Connect(input ConnectRequest) (ConnectionStatus, error) {
 	}
 
 	password := input.Password
-	if password == "" {
+	if password == "" && requiresSavedSecret(profile) {
 		if input.ReconnectKeychain {
 			if err := s.secrets.RequestAccess(context.Background()); err != nil {
 				return ConnectionStatus{}, err
@@ -118,6 +118,10 @@ func (s *Service) Connect(input ConnectRequest) (ConnectionStatus, error) {
 	}
 
 	return ConnectionStatus{ProfileID: profile.ID, Connected: true, Message: "Connected"}, nil
+}
+
+func requiresSavedSecret(profile ConnectionProfile) bool {
+	return profile.Driver != "bigquery"
 }
 
 func (s *Service) Disconnect(profileID string) error {
@@ -142,6 +146,7 @@ func profileFromSaveInput(input SaveConnectionRequest) (ConnectionProfile, error
 		Port:      port,
 		Database:  strings.TrimSpace(input.Database),
 		Username:  strings.TrimSpace(input.Username),
+		Endpoint:  normalizeEndpoint(input.Endpoint),
 		SSLMode:   normalizeSSLMode(input.SSLMode),
 		Color:     normalizeColor(input.Color),
 		CreatedAt: now,
@@ -159,6 +164,7 @@ func profileFromTestInput(input TestConnectionRequest) (ConnectionProfile, error
 		Port:     input.Port,
 		Database: input.Database,
 		Username: input.Username,
+		Endpoint: input.Endpoint,
 		SSLMode:  input.SSLMode,
 		Color:    input.Color,
 	}
@@ -170,7 +176,7 @@ func validateProfile(profile ConnectionProfile) error {
 		return apperrors.New(apperrors.CodeValidation, "database driver must be postgres, mysql, or bigquery")
 	}
 	if strings.TrimSpace(profile.Name) == "" {
-		return apperrors.New(apperrors.CodeValidation, "connection name is required")
+		return apperrors.New(apperrors.CodeValidation, "No name entered")
 	}
 	if strings.TrimSpace(profile.Host) == "" {
 		if profile.Driver == "bigquery" {
@@ -207,6 +213,10 @@ func normalizeHost(value string) string {
 		return strings.TrimSuffix(strings.TrimPrefix(host, "["), "]")
 	}
 	return host
+}
+
+func normalizeEndpoint(value string) string {
+	return strings.TrimRight(strings.TrimSpace(value), "/")
 }
 
 func splitHostPort(host string, fallbackPort int) (string, int) {

@@ -22,6 +22,7 @@ import { useSidebar } from "./ui/sidebar";
 interface Props {
   activeConnectionId: string;
   activeProfile: ConnectionProfile | null;
+  switchingWorkspaceName?: string;
   profiles: ConnectionProfile[];
   schemas: SchemaSummary[];
   inspectingTable: TableSummary | null;
@@ -39,6 +40,7 @@ interface Props {
 export function AppSidebar({
   activeConnectionId,
   activeProfile,
+  switchingWorkspaceName,
   profiles,
   schemas,
   inspectingTable,
@@ -66,6 +68,7 @@ export function AppSidebar({
           <WorkspaceSelector
             activeConnectionId={activeConnectionId}
             activeProfile={activeProfile}
+            switchingWorkspaceName={switchingWorkspaceName}
             profiles={profiles}
             onAddConnection={onAddConnection}
             onConnect={onConnect}
@@ -91,6 +94,7 @@ export function AppSidebar({
 function WorkspaceSelector({
   activeConnectionId,
   activeProfile,
+  switchingWorkspaceName,
   profiles,
   onAddConnection,
   onConnect,
@@ -98,12 +102,21 @@ function WorkspaceSelector({
 }: {
   activeConnectionId: string;
   activeProfile: ConnectionProfile | null;
+  switchingWorkspaceName?: string;
   profiles: ConnectionProfile[];
   onAddConnection(): void;
   onConnect(profile: ConnectionProfile): Promise<void>;
   onEditActive(): void;
 }) {
   const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const displayName =
+    activeProfile?.name || switchingWorkspaceName || "No workspace";
+  const displayDetail = activeProfile
+    ? `${driverLabel(activeProfile.driver)} · ${activeProfile.database || activeProfile.host}`
+    : switchingWorkspaceName
+      ? "Switching workspace"
+      : "Select a connection";
   const normalizedQuery = query.trim().toLowerCase();
   const filteredProfiles = profiles.filter((profile) =>
     [
@@ -120,7 +133,13 @@ function WorkspaceSelector({
 
   return (
     <div className="flex shrink-0 items-center px-1 py-2">
-      <DropdownMenu.Root onOpenChange={(open) => !open && setQuery("")}>
+      <DropdownMenu.Root
+        open={open}
+        onOpenChange={(nextOpen) => {
+          setOpen(nextOpen);
+          if (!nextOpen) setQuery("");
+        }}
+      >
         <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-2 text-left transition">
           <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-lg border border-line bg-control/[0.04]">
             <img
@@ -131,12 +150,10 @@ function WorkspaceSelector({
           </span>
           <span className="min-w-0">
             <span className="block truncate text-sm font-semibold text-zinc-100">
-              {activeProfile ? activeProfile.name : "No workspace"}
+              {displayName}
             </span>
             <span className="block truncate text-[11px] text-muted">
-              {activeProfile
-                ? `${driverLabel(activeProfile.driver)} · ${activeProfile.database || activeProfile.host}`
-                : "Select a connection"}
+              {displayDetail}
             </span>
           </span>
           <DropdownMenu.Trigger asChild>
@@ -179,7 +196,7 @@ function WorkspaceSelector({
                     className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 outline-none transition hover:bg-control/[0.03] data-[highlighted]:bg-control/[0.03]"
                     onSelect={() => void onConnect(profile)}
                   >
-                    <Database size={14} className="-mt-5" />
+                    <Database size={14} className="-mt-5 shrink-0" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium text-zinc-100">
                         {profile.name}

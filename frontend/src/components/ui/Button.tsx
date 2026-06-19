@@ -17,7 +17,8 @@ const variants: Record<Variant, string> = {
     "border-line bg-control/[0.04] text-zinc-200 hover:bg-control/[0.07]",
   ghost:
     "border-transparent bg-transparent text-zinc-500 hover:bg-control/[0.06] hover:text-zinc-200",
-  danger: "border-red-400/40 bg-red-500/15 text-red-100 hover:bg-red-500/25",
+  danger:
+    "border-red-600 bg-red-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14)] hover:border-red-500 hover:bg-red-500 hover:text-white",
 };
 
 const sizes: Record<Size, string> = {

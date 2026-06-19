@@ -1,4 +1,4 @@
-import { Database, Link2, PlugZap, Save } from "lucide-react";
+import { Database, Link2, PlugZap, Save, Trash2 } from "lucide-react";
 import { ClipboardEvent, FormEvent, useEffect, useId, useState } from "react";
 import { Button } from "../../components/ui/Button";
 import type { ConnectionProfile, SaveConnectionRequest, TestConnectionRequest } from "../../lib/types";
@@ -7,6 +7,7 @@ interface Props {
   busy: boolean;
   initialProfile: ConnectionProfile | null;
   onConnect(profileId: string, password?: string): Promise<unknown>;
+  onDelete?(profile: ConnectionProfile): void;
   onSave(input: SaveConnectionRequest): Promise<ConnectionProfile>;
   onTest(input: TestConnectionRequest): Promise<unknown>;
   onDone(): void;
@@ -20,6 +21,7 @@ const emptyForm: SaveConnectionRequest = {
   port: 5432,
   database: "",
   username: "",
+  endpoint: "",
   password: "",
   sslMode: "prefer",
   color: "#5E6AD2"
@@ -31,12 +33,24 @@ const defaultPorts: Record<string, number> = {
   bigquery: 0
 };
 
+function emptyFormForDriver(driver: string): SaveConnectionRequest {
+  const normalizedDriver =
+    driver === "mysql" || driver === "bigquery" ? driver : "postgres";
+  return {
+    ...emptyForm,
+    driver: normalizedDriver,
+    host: normalizedDriver === "bigquery" ? "" : "localhost",
+    port: defaultPorts[normalizedDriver],
+  };
+}
+
 interface ParsedConnectionURL {
   driver: string;
   host: string;
   port: number;
   database: string;
   username: string;
+  endpoint: string;
   password: string;
   sslMode: string;
   name: string;
@@ -46,6 +60,7 @@ export function ConnectionPanel({
   busy,
   initialProfile,
   onConnect,
+  onDelete,
   onSave,
   onTest,
   onDone,
@@ -53,13 +68,15 @@ export function ConnectionPanel({
   const [form, setForm] = useState<SaveConnectionRequest>(emptyForm);
   const [connectionUrl, setConnectionUrl] = useState("");
   const [urlError, setUrlError] = useState("");
+  const [formError, setFormError] = useState("");
   const connectionUrlInputId = useId();
 
   useEffect(() => {
     setConnectionUrl("");
     setUrlError("");
+    setFormError("");
     if (!initialProfile) {
-      setForm(emptyForm);
+      setForm(emptyFormForDriver("postgres"));
       return;
     }
     setForm({
@@ -70,6 +87,7 @@ export function ConnectionPanel({
       port: initialProfile.port,
       database: initialProfile.database,
       username: initialProfile.username,
+      endpoint: initialProfile.endpoint,
       password: "",
       sslMode: initialProfile.sslMode,
       color: initialProfile.color
@@ -77,6 +95,13 @@ export function ConnectionPanel({
   }, [initialProfile]);
 
   function updateDriver(driver: string) {
+    setUrlError("");
+    setFormError("");
+    if (!initialProfile) {
+      setConnectionUrl("");
+      setForm(emptyFormForDriver(driver));
+      return;
+    }
     setForm((current) => {
       const previousDefaultPort = defaultPorts[current.driver || "postgres"];
       const nextPort =
@@ -104,10 +129,12 @@ export function ConnectionPanel({
       port: parsed.port,
       database: parsed.database,
       username: parsed.username,
+      endpoint: parsed.endpoint,
       password: parsed.password,
       sslMode: parsed.sslMode,
     }));
     setUrlError("");
+    setFormError("");
     return true;
   }
 
@@ -122,13 +149,24 @@ export function ConnectionPanel({
 
   async function handleSave(event: FormEvent) {
     event.preventDefault();
+    if (!validateForm()) return;
     const profile = await onSave(form);
     await onConnect(profile.id, form.password);
     onDone();
   }
 
   async function handleTest() {
+    if (!validateForm()) return;
     await onTest({ ...form, profileId: form.id || "" });
+  }
+
+  function validateForm() {
+    if (form.name.trim()) {
+      setFormError("");
+      return true;
+    }
+    setFormError("No name entered");
+    return false;
   }
 
   return (
@@ -172,13 +210,23 @@ export function ConnectionPanel({
           <select value={form.driver || "postgres"} onChange={(event) => updateDriver(event.target.value)}>
             <option value="postgres">Postgres</option>
             <option value="mysql">MySQL</option>
-            {/* <option value="bigquery">BigQuery</option> */}
+            <option value="bigquery">BigQuery</option>
           </select>
         </label>
         <label className="grid gap-2">
           <span className="text-xs text-muted">Name</span>
-          <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Production" />
+          <input
+            value={form.name}
+            onChange={(event) => {
+              setForm({ ...form, name: event.target.value });
+              if (formError) setFormError("");
+            }}
+            placeholder="Production"
+          />
         </label>
+        {formError ? (
+          <p className="-mt-1 text-xs leading-5 text-red-300">{formError}</p>
+        ) : null}
         <div className={form.driver === "bigquery" ? "grid gap-2" : "grid grid-cols-[minmax(0,1fr)_96px] gap-2"}>
           <label className="grid gap-2">
             <span className="text-xs text-muted">{form.driver === "bigquery" ? "Project ID" : "Host"}</span>
@@ -199,6 +247,16 @@ export function ConnectionPanel({
           <span className="text-xs text-muted">{form.driver === "bigquery" ? "Location" : "Username"}</span>
           <input value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} />
         </label>
+        {form.driver === "bigquery" ? (
+          <label className="grid gap-2">
+            <span className="text-xs text-muted">API endpoint</span>
+            <input
+              value={form.endpoint}
+              onChange={(event) => setForm({ ...form, endpoint: event.target.value })}
+              placeholder="https://bigquery.googleapis.com or http://localhost:9050"
+            />
+          </label>
+        ) : null}
         <div className={form.driver === "bigquery" ? "grid grid-cols-[minmax(0,1fr)_96px] gap-2" : "grid gap-2"}>
           <label className="grid gap-2">
             <span className="text-xs text-muted">{form.driver === "bigquery" ? "Credentials JSON" : "Password"}</span>
@@ -236,21 +294,34 @@ export function ConnectionPanel({
         ) : null}
       </div>
 
-      <div className="flex justify-end gap-2">
-        <Button type="button" disabled={busy} onClick={handleTest}>
-          <PlugZap size={14} />
-          Test
-        </Button>
-        {initialProfile ? (
-          <Button type="button" disabled={busy} onClick={() => void onConnect(initialProfile.id, form.password)}>
-            <Database size={14} />
-            Connect
+      <div className={initialProfile && onDelete ? "flex justify-between gap-2" : "flex justify-end gap-2"}>
+        {initialProfile && onDelete ? (
+          <Button
+            type="button"
+            variant="danger"
+            disabled={busy}
+            onClick={() => onDelete(initialProfile)}
+          >
+            <Trash2 size={14} />
+            Delete workspace
           </Button>
         ) : null}
-        <Button type="submit" variant="primary" disabled={busy}>
-          <Save size={14} />
-          Save & Connect
-        </Button>
+        <div className="flex justify-end gap-2">
+          <Button type="button" disabled={busy} onClick={handleTest}>
+            <PlugZap size={14} />
+            Test
+          </Button>
+          {initialProfile ? (
+            <Button type="button" disabled={busy} onClick={() => void onConnect(initialProfile.id, form.password)}>
+              <Database size={14} />
+              Connect
+            </Button>
+          ) : null}
+          <Button type="submit" variant="primary" disabled={busy}>
+            <Save size={14} />
+            Save & Connect
+          </Button>
+        </div>
       </div>
     </form>
   );
@@ -284,6 +355,7 @@ function parseConnectionURL(value: string): ParsedConnectionURL | null {
     port,
     database: driver === "bigquery" ? bigQueryDataset : database,
     username: driver === "bigquery" ? parsed.searchParams.get("location") || "" : username,
+    endpoint: driver === "bigquery" ? parsed.searchParams.get("endpoint") || "" : "",
     password: decodeURIComponent(parsed.password),
     sslMode: parseSSLMode(parsed.searchParams),
     name: defaultConnectionName(driver, parsed.hostname, driver === "bigquery" ? bigQueryDataset : database),

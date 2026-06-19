@@ -480,6 +480,63 @@ export function useDataPanelState() {
     notify("neutral", "Disconnected");
   }, [activeConnectionId, resetQueryState, runningRequestId]);
 
+  const deleteConnection = useCallback(async (profile: ConnectionProfile) => {
+    if (!profile.id) return;
+    const deletingActive = profile.id === activeConnectionId;
+    if (deletingActive && runningRequestId) {
+      void queryService.cancel(runningRequestId).catch(() => {
+        // The stale request guard below keeps old results out of the UI.
+      });
+    }
+
+    setBusy(true);
+    try {
+      await connectionService.remove(profile.id);
+      const nextProfiles = await loadProfiles();
+      const fallbackProfile = deletingActive
+        ? nextProfiles[0] ?? null
+        : null;
+
+      if (deletingActive) {
+        resetQueryState(runningRequestId);
+        setSchemas([]);
+        setTablesBySchema({});
+        setSelectedTable(null);
+        setTableDetails(null);
+        setConnectionHealth({ connected: false });
+        if (fallbackProfile) {
+          setWorkspaceSwitching({
+            profileId: fallbackProfile.id,
+            name: fallbackProfile.name || "Workspace",
+          });
+          await connectAndLoadMetadata(fallbackProfile.id, "", {
+            refresh: false,
+          });
+        } else {
+          setActiveConnectionId("");
+          setStatus({ tone: "neutral", text: "No workspace selected" });
+        }
+      }
+
+      setStatus({ tone: "success", text: `${profile.name} deleted` });
+      notify("success", "Workspace deleted", profile.name);
+    } catch (error) {
+      const message = errorMessage(error, "Could not delete workspace");
+      setStatus({ tone: "danger", text: message });
+      notify("danger", "Could not delete workspace", message);
+      throw error;
+    } finally {
+      setBusy(false);
+      setWorkspaceSwitching(null);
+    }
+  }, [
+    activeConnectionId,
+    connectAndLoadMetadata,
+    loadProfiles,
+    resetQueryState,
+    runningRequestId,
+  ]);
+
   const refreshMetadata = useCallback(async () => {
     if (!activeConnectionId) return;
     setBusy(true);
@@ -860,6 +917,7 @@ export function useDataPanelState() {
     initializing,
     workspaceSwitching,
     saveConnection,
+    deleteConnection,
     testConnection,
     connect,
     disconnect,

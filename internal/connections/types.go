@@ -8,6 +8,7 @@ type ConnectionProfile struct {
 	Port      int    `json:"port"`
 	Database  string `json:"database"`
 	Username  string `json:"username"`
+	Endpoint  string `json:"endpoint"`
 	SSLMode   string `json:"sslMode"`
 	Color     string `json:"color"`
 	CreatedAt string `json:"createdAt"`
@@ -22,6 +23,7 @@ type SaveConnectionRequest struct {
 	Port     int    `json:"port"`
 	Database string `json:"database"`
 	Username string `json:"username"`
+	Endpoint string `json:"endpoint"`
 	Password string `json:"password"`
 	SSLMode  string `json:"sslMode"`
 	Color    string `json:"color"`
@@ -35,6 +37,7 @@ type TestConnectionRequest struct {
 	Port      int    `json:"port"`
 	Database  string `json:"database"`
 	Username  string `json:"username"`
+	Endpoint  string `json:"endpoint"`
 	Password  string `json:"password"`
 	SSLMode   string `json:"sslMode"`
 	Color     string `json:"color"`

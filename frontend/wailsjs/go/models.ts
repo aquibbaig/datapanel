@@ -1,5 +1,19 @@
 export namespace ai {
 	
+	export class ChatTurn {
+	    role: string;
+	    content: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ChatTurn(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.role = source["role"];
+	        this.content = source["content"];
+	    }
+	}
 	export class CredentialStatus {
 	    provider: string;
 	    connected: boolean;
@@ -29,6 +43,7 @@ export namespace ai {
 	    schemaContext: string;
 	    dialect: string;
 	    responseStyle: string;
+	    conversation?: ChatTurn[];
 	
 	    static createFrom(source: any = {}) {
 	        return new GenerateRequest(source);
@@ -42,6 +57,41 @@ export namespace ai {
 	        this.schemaContext = source["schemaContext"];
 	        this.dialect = source["dialect"];
 	        this.responseStyle = source["responseStyle"];
+	        this.conversation = this.convertValues(source["conversation"], ChatTurn);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class TokenUsage {
+	    promptTokens: number;
+	    completionTokens: number;
+	    totalTokens: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new TokenUsage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.promptTokens = source["promptTokens"];
+	        this.completionTokens = source["completionTokens"];
+	        this.totalTokens = source["totalTokens"];
 	    }
 	}
 	export class GenerateResponse {
@@ -61,8 +111,26 @@ export namespace ai {
 	        this.sql = source["sql"];
 	        this.destructiveRisk = source["destructiveRisk"];
 	        this.assumptions = source["assumptions"];
-	        this.tokenUsage = source["tokenUsage"];
+	        this.tokenUsage = this.convertValues(source["tokenUsage"], TokenUsage);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class PlanRequest {
 	    provider: string;
@@ -70,6 +138,7 @@ export namespace ai {
 	    prompt: string;
 	    tableContext: string;
 	    dialect: string;
+	    conversation?: ChatTurn[];
 	
 	    static createFrom(source: any = {}) {
 	        return new PlanRequest(source);
@@ -82,7 +151,26 @@ export namespace ai {
 	        this.prompt = source["prompt"];
 	        this.tableContext = source["tableContext"];
 	        this.dialect = source["dialect"];
+	        this.conversation = this.convertValues(source["conversation"], ChatTurn);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class PlanTable {
 	    schema: string;
@@ -139,22 +227,6 @@ export namespace ai {
 		    }
 		    return a;
 		}
-	}
-	export class TokenUsage {
-	    promptTokens: number;
-	    completionTokens: number;
-	    totalTokens: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new TokenUsage(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.promptTokens = source["promptTokens"];
-	        this.completionTokens = source["completionTokens"];
-	        this.totalTokens = source["totalTokens"];
-	    }
 	}
 	
 	export class SaveCredentialRequest {
@@ -251,10 +323,28 @@ export namespace appdata {
 	        this.promptTokens = source["promptTokens"];
 	        this.completionTokens = source["completionTokens"];
 	        this.totalTokens = source["totalTokens"];
-	        this.tokenUsage = source["tokenUsage"];
+	        this.tokenUsage = this.convertValues(source["tokenUsage"], ai.TokenUsage);
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class ClearAIChatMessagesRequest {
 	    threadId: string;
@@ -557,7 +647,7 @@ export namespace appdata {
 	export class SaveSchemaSnapshotRequest {
 	    connectionId: string;
 	    schemas: postgres.SchemaSummary[];
-	    tablesBySchema: {[key: string]: postgres.TableSummary[]};
+	    tablesBySchema: Record<string, Array<postgres.TableSummary>>;
 	    fingerprint: string;
 	
 	    static createFrom(source: any = {}) {
@@ -568,7 +658,7 @@ export namespace appdata {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.connectionId = source["connectionId"];
 	        this.schemas = this.convertValues(source["schemas"], postgres.SchemaSummary);
-	        this.tablesBySchema = this.convertValues(source["tablesBySchema"], postgres.TableSummary, true);
+	        this.tablesBySchema = this.convertValues(source["tablesBySchema"], Array<postgres.TableSummary>, true);
 	        this.fingerprint = source["fingerprint"];
 	    }
 	
@@ -581,7 +671,7 @@ export namespace appdata {
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
 		            for (const key of Object.keys(a)) {
-		                a[key] = this.convertValues(a[key], classs);
+		                a[key] = new classs(a[key]);
 		            }
 		            return a;
 		        }
@@ -593,7 +683,7 @@ export namespace appdata {
 	export class SchemaMetadataSnapshot {
 	    connectionId: string;
 	    schemas: postgres.SchemaSummary[];
-	    tablesBySchema: {[key: string]: postgres.TableSummary[]};
+	    tablesBySchema: Record<string, Array<postgres.TableSummary>>;
 	    fingerprint: string;
 	    updatedAt: string;
 	
@@ -605,7 +695,7 @@ export namespace appdata {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.connectionId = source["connectionId"];
 	        this.schemas = this.convertValues(source["schemas"], postgres.SchemaSummary);
-	        this.tablesBySchema = this.convertValues(source["tablesBySchema"], postgres.TableSummary, true);
+	        this.tablesBySchema = this.convertValues(source["tablesBySchema"], Array<postgres.TableSummary>, true);
 	        this.fingerprint = source["fingerprint"];
 	        this.updatedAt = source["updatedAt"];
 	    }
@@ -619,7 +709,7 @@ export namespace appdata {
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
 		            for (const key of Object.keys(a)) {
-		                a[key] = this.convertValues(a[key], classs);
+		                a[key] = new classs(a[key]);
 		            }
 		            return a;
 		        }
@@ -675,6 +765,7 @@ export namespace connections {
 	    port: number;
 	    database: string;
 	    username: string;
+	    endpoint: string;
 	    sslMode: string;
 	    color: string;
 	    createdAt: string;
@@ -693,6 +784,7 @@ export namespace connections {
 	        this.port = source["port"];
 	        this.database = source["database"];
 	        this.username = source["username"];
+	        this.endpoint = source["endpoint"];
 	        this.sslMode = source["sslMode"];
 	        this.color = source["color"];
 	        this.createdAt = source["createdAt"];
@@ -723,6 +815,7 @@ export namespace connections {
 	    port: number;
 	    database: string;
 	    username: string;
+	    endpoint: string;
 	    password: string;
 	    sslMode: string;
 	    color: string;
@@ -740,6 +833,7 @@ export namespace connections {
 	        this.port = source["port"];
 	        this.database = source["database"];
 	        this.username = source["username"];
+	        this.endpoint = source["endpoint"];
 	        this.password = source["password"];
 	        this.sslMode = source["sslMode"];
 	        this.color = source["color"];
@@ -753,6 +847,7 @@ export namespace connections {
 	    port: number;
 	    database: string;
 	    username: string;
+	    endpoint: string;
 	    password: string;
 	    sslMode: string;
 	    color: string;
@@ -770,6 +865,7 @@ export namespace connections {
 	        this.port = source["port"];
 	        this.database = source["database"];
 	        this.username = source["username"];
+	        this.endpoint = source["endpoint"];
 	        this.password = source["password"];
 	        this.sslMode = source["sslMode"];
 	        this.color = source["color"];
@@ -1228,3 +1324,4 @@ export namespace updater {
 	}
 
 }
+

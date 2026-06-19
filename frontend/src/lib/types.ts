@@ -9,7 +9,10 @@ export interface AIGenerateRequest
   extends Omit<ai.GenerateRequest, "convertValues" | "conversation"> {
   conversation?: AIChatTurn[];
 }
-export type AIGenerateResponse = ai.GenerateResponse;
+export interface AIGenerateResponse
+  extends Omit<ai.GenerateResponse, "convertValues"> {
+  tokenUsage: ai.TokenUsage;
+}
 export interface AIPlanRequest
   extends Omit<ai.PlanRequest, "convertValues" | "conversation"> {
   conversation?: AIChatTurn[];
@@ -27,8 +30,14 @@ export interface AIPlanResponse {
   tokenUsage: ai.TokenUsage;
 }
 export type SaveAICredentialRequest = ai.SaveCredentialRequest;
-export type AIChatThread = appdata.AIChatThread;
-export type AIChatMessage = appdata.AIChatMessage;
+export interface AIChatThread
+  extends Omit<appdata.AIChatThread, "convertValues"> {
+  tokenUsage: ai.TokenUsage;
+}
+export interface AIChatMessage
+  extends Omit<appdata.AIChatMessage, "convertValues" | "response"> {
+  response?: AIGenerateResponse;
+}
 export type CreateAIChatThreadRequest = appdata.CreateAIChatThreadRequest;
 export type UpdateAIChatThreadRequest = appdata.UpdateAIChatThreadRequest;
 export interface SaveAIChatMessageRequest {

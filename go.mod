@@ -5,6 +5,7 @@ go 1.24.0
 toolchain go1.24.4
 
 require (
+	cloud.google.com/go v0.121.6
 	cloud.google.com/go/bigquery v1.70.0
 	github.com/99designs/keyring v1.2.2
 	github.com/go-sql-driver/mysql v1.10.0
@@ -16,7 +17,6 @@ require (
 )
 
 require (
-	cloud.google.com/go v0.121.6 // indirect
 	cloud.google.com/go/auth v0.16.4 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect

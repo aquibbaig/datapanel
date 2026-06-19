@@ -50,6 +50,7 @@ const mockProfiles: ConnectionProfile[] = [
     port: 5432,
     database: "app",
     username: "postgres",
+    endpoint: "",
     sslMode: "prefer",
     color: "#5E6AD2",
     createdAt: new Date().toISOString(),

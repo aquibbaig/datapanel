@@ -1,27 +1,36 @@
 import { Command } from "cmdk";
 import {
+  Bot,
   Clock3,
   Database,
   FileQuestion,
+  Monitor,
+  Moon,
   PanelBottom,
   Plus,
   RefreshCw,
   Settings,
+  Sun,
   Table2,
 } from "lucide-react";
 import { useMemo } from "react";
 import type { ConnectionProfile, TableSummary } from "../lib/types";
 
+type ThemeMode = "light" | "dark" | "system";
+
 interface Props {
   open: boolean;
   activeProfile: ConnectionProfile | null;
+  currentTheme: string;
   tablesBySchema: Record<string, TableSummary[]>;
   onClose(): void;
   onAddConnection(): void;
   onEditConnection(): void;
+  onOpenAI(): void;
   onOpenHistory(): void;
   onOpenSettings(): void;
   onRefreshMetadata(): void;
+  onSetTheme(theme: ThemeMode): void;
   onShowResults(): void;
   onSelectTable(table: TableSummary): void;
 }
@@ -29,13 +38,16 @@ interface Props {
 export function CommandPalette({
   open,
   activeProfile,
+  currentTheme,
   tablesBySchema,
   onClose,
   onAddConnection,
   onEditConnection,
+  onOpenAI,
   onOpenHistory,
   onOpenSettings,
   onRefreshMetadata,
+  onSetTheme,
   onShowResults,
   onSelectTable,
 }: Props) {
@@ -49,8 +61,10 @@ export function CommandPalette({
 
   if (!open) return null;
 
-  function run(action: () => void) {
-    action();
+  function run(action: () => void | Promise<void>) {
+    void Promise.resolve(action()).catch((error) => {
+      console.warn("Command failed", error);
+    });
     onClose();
   }
 
@@ -78,6 +92,13 @@ export function CommandPalette({
           </Command.Empty>
 
           <Command.Group heading="Actions">
+            <Command.Item
+              value="open ai panel assistant chat"
+              onSelect={() => run(onOpenAI)}
+            >
+              <Bot size={14} />
+              <span>Open AI panel</span>
+            </Command.Item>
             <Command.Item
               value="refresh metadata reload schemas tables"
               disabled={!activeProfile}
@@ -118,6 +139,22 @@ export function CommandPalette({
             </Command.Item>
           </Command.Group>
 
+          <Command.Group heading="Theme">
+            {themeCommands.map((item) => (
+              <Command.Item
+                key={item.value}
+                value={`theme ${item.value} appearance ${item.label}`}
+                onSelect={() => run(() => onSetTheme(item.value))}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+                {(currentTheme || "system") === item.value ? (
+                  <span className="ml-auto text-xs text-muted">Current</span>
+                ) : null}
+              </Command.Item>
+            ))}
+          </Command.Group>
+
           <Command.Group heading="Tables">
             {tables.map((table) => (
               <Command.Item
@@ -137,3 +174,13 @@ export function CommandPalette({
     </div>
   );
 }
+
+const themeCommands: Array<{
+  value: ThemeMode;
+  label: string;
+  icon: JSX.Element;
+}> = [
+  { value: "light", label: "Light theme", icon: <Sun size={14} /> },
+  { value: "dark", label: "Dark theme", icon: <Moon size={14} /> },
+  { value: "system", label: "System theme", icon: <Monitor size={14} /> },
+];
