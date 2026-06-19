@@ -38,6 +38,7 @@ interface QueryToastOptions {
   successTitle?: string;
   recordHistory?: boolean;
   historyMode?: "query" | "explain";
+  historySQL?: string;
 }
 
 interface MetadataLoadOptions {
@@ -611,6 +612,7 @@ export function useDataPanelState() {
       }
 
       const requestId = crypto.randomUUID();
+      const historySQL = toastOptions.historySQL || sql;
       const request: QueryRequest = {
         requestId,
         connectionId: activeConnectionId,
@@ -654,7 +656,7 @@ export function useDataPanelState() {
             recordQueryHistory({
               id: requestId,
               connectionId: activeConnectionId,
-              sql,
+              sql: historySQL,
               mode: toastOptions.historyMode || "query",
               durationMs: result.durationMs,
               executedAt: new Date().toISOString(),
@@ -674,7 +676,7 @@ export function useDataPanelState() {
           recordQueryHistory({
             id: requestId,
             connectionId: activeConnectionId,
-            sql,
+            sql: historySQL,
             mode: toastOptions.historyMode || "query",
             durationMs: Math.max(0, Math.round(performance.now() - started)),
             executedAt: new Date().toISOString(),

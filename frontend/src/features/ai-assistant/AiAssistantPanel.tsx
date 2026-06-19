@@ -1174,7 +1174,7 @@ function ChatThreadBar({
               <span className="min-w-0 truncate">{thread.title}</span>
               {thread.totalTokens > 0 ? (
                 <span className="shrink-0 text-[10px] font-medium text-zinc-500">
-                  {formatTokenCount(thread.totalTokens)} tok
+                  {formatTokenCount(thread.totalTokens)}
                 </span>
               ) : null}
             </button>

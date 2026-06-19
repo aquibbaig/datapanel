@@ -373,6 +373,7 @@ export function App() {
     }
 
     const result = await model.runQuery(sqlToRun, confirmDestructive, {
+      historySQL: sql,
       historyMode: "query",
       recordHistory: true,
     });
