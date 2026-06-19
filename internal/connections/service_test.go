@@ -94,3 +94,30 @@ func TestProfileFromSaveInputAcceptsMySQLDriver(t *testing.T) {
 		t.Fatalf("expected mysql driver, got %q", profile.Driver)
 	}
 }
+
+func TestProfileFromSaveInputAcceptsBigQueryDriver(t *testing.T) {
+	profile, err := profileFromSaveInput(SaveConnectionRequest{
+		Driver: "bigquery",
+		Name:   "Analytics Warehouse",
+		Host:   "acme-data",
+	})
+	if err != nil {
+		t.Fatalf("expected valid profile: %v", err)
+	}
+	if profile.Driver != "bigquery" {
+		t.Fatalf("expected bigquery driver, got %q", profile.Driver)
+	}
+	if profile.Host != "acme-data" {
+		t.Fatalf("expected project id in host, got %q", profile.Host)
+	}
+}
+
+func TestProfileFromSaveInputRequiresBigQueryProjectID(t *testing.T) {
+	_, err := profileFromSaveInput(SaveConnectionRequest{
+		Driver: "bigquery",
+		Name:   "Analytics Warehouse",
+	})
+	if err == nil {
+		t.Fatal("expected project id validation error")
+	}
+}

@@ -166,22 +166,25 @@ func profileFromTestInput(input TestConnectionRequest) (ConnectionProfile, error
 }
 
 func validateProfile(profile ConnectionProfile) error {
-	if profile.Driver != "postgres" && profile.Driver != "mysql" {
-		return apperrors.New(apperrors.CodeValidation, "database driver must be postgres or mysql")
+	if profile.Driver != "postgres" && profile.Driver != "mysql" && profile.Driver != "bigquery" {
+		return apperrors.New(apperrors.CodeValidation, "database driver must be postgres, mysql, or bigquery")
 	}
 	if strings.TrimSpace(profile.Name) == "" {
 		return apperrors.New(apperrors.CodeValidation, "connection name is required")
 	}
 	if strings.TrimSpace(profile.Host) == "" {
+		if profile.Driver == "bigquery" {
+			return apperrors.New(apperrors.CodeValidation, "project id is required")
+		}
 		return apperrors.New(apperrors.CodeValidation, "host is required")
 	}
-	if profile.Port <= 0 || profile.Port > 65535 {
+	if profile.Driver != "bigquery" && (profile.Port <= 0 || profile.Port > 65535) {
 		return apperrors.New(apperrors.CodeValidation, "port must be between 1 and 65535")
 	}
-	if strings.TrimSpace(profile.Database) == "" {
+	if profile.Driver != "bigquery" && strings.TrimSpace(profile.Database) == "" {
 		return apperrors.New(apperrors.CodeValidation, "database is required")
 	}
-	if strings.TrimSpace(profile.Username) == "" {
+	if profile.Driver != "bigquery" && strings.TrimSpace(profile.Username) == "" {
 		return apperrors.New(apperrors.CodeValidation, "username is required")
 	}
 	return nil
@@ -191,6 +194,8 @@ func normalizeDriver(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "mysql":
 		return "mysql"
+	case "bigquery":
+		return "bigquery"
 	default:
 		return "postgres"
 	}

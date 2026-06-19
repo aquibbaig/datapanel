@@ -565,8 +565,11 @@ func normalizeTokenUsage(usage TokenUsage) TokenUsage {
 
 func systemPrompt(dialect string, responseStyle string) string {
 	normalizedDialect := "Postgres"
-	if strings.EqualFold(strings.TrimSpace(dialect), "mysql") {
+	switch strings.ToLower(strings.TrimSpace(dialect)) {
+	case "mysql":
 		normalizedDialect = "MySQL"
+	case "bigquery":
+		normalizedDialect = "BigQuery"
 	}
 	lines := []string{
 		"You are DataPanel's database assistant.",
@@ -590,8 +593,11 @@ func systemPrompt(dialect string, responseStyle string) string {
 
 func planPrompt(dialect string) string {
 	normalizedDialect := "Postgres"
-	if strings.EqualFold(strings.TrimSpace(dialect), "mysql") {
+	switch strings.ToLower(strings.TrimSpace(dialect)) {
+	case "mysql":
 		normalizedDialect = "MySQL"
+	case "bigquery":
+		normalizedDialect = "BigQuery"
 	}
 	return strings.Join([]string{
 		"You are DataPanel's table-resolution planner.",

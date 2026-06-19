@@ -321,15 +321,19 @@ func qualifiedDDLName(dialect string, schema string, table string) string {
 
 func quoteDDLIdentifier(dialect string, identifier string) string {
 	quote := `"`
-	if strings.EqualFold(strings.TrimSpace(dialect), "mysql") {
+	switch strings.ToLower(strings.TrimSpace(dialect)) {
+	case "mysql", "bigquery":
 		quote = "`"
 	}
 	return quote + strings.ReplaceAll(identifier, quote, quote+quote) + quote
 }
 
 func schemaContextDialect(dialect string) string {
-	if strings.EqualFold(strings.TrimSpace(dialect), "mysql") {
+	switch strings.ToLower(strings.TrimSpace(dialect)) {
+	case "mysql":
 		return "mysql"
+	case "bigquery":
+		return "bigquery"
 	}
 	return "postgres"
 }

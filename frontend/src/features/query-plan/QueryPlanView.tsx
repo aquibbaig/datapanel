@@ -772,6 +772,7 @@ function emptyPlan(driver: string): ParsedPlan {
 function driverLabel(driver: string) {
   if (driver === "postgres" || driver === "postgresql") return "Postgres";
   if (driver === "mysql") return "MySQL";
+  if (driver === "bigquery") return "BigQuery";
   return driver || "Unknown driver";
 }
 

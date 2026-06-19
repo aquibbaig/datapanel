@@ -320,7 +320,7 @@ export function App() {
   async function selectTableForEditing(
     table: Parameters<typeof model.inspectTable>[0],
   ) {
-    const driver = model.activeProfile?.driver === "mysql" ? "mysql" : "postgres";
+    const driver = normalizeDriver(model.activeProfile?.driver);
     const detailsPromise = model.inspectTable(table, { force: true }).catch(() => null);
     const selectList =
       driver === "postgres" && isPostgresBaseTable(table.type)
@@ -352,7 +352,7 @@ export function App() {
       sql,
       model.tablesBySchema,
     );
-    const driver = model.activeProfile?.driver === "mysql" ? "mysql" : "postgres";
+    const driver = normalizeDriver(model.activeProfile?.driver);
     let editableTable: TableSummary | null = null;
     let editableDetailsPromise: Promise<TableDetails | null> | null = null;
     let sqlToRun = sql;
@@ -1013,15 +1013,23 @@ function isPostgresBaseTable(tableType: string) {
 }
 
 function qualifiedName(
-  driver: "postgres" | "mysql",
+  driver: SQLDriver,
   schema: string,
   table: string,
 ) {
   return `${quoteIdentifier(driver, schema)}.${quoteIdentifier(driver, table)}`;
 }
 
-function quoteIdentifier(driver: "postgres" | "mysql", identifier: string) {
-  if (driver === "mysql") {
+type SQLDriver = "postgres" | "mysql" | "bigquery";
+
+function normalizeDriver(driver: string | undefined): SQLDriver {
+  if (driver === "mysql") return "mysql";
+  if (driver === "bigquery") return "bigquery";
+  return "postgres";
+}
+
+function quoteIdentifier(driver: SQLDriver, identifier: string) {
+  if (driver === "mysql" || driver === "bigquery") {
     return `\`${identifier.split("`").join("``")}\``;
   }
   return `"${identifier.split('"').join('""')}"`;
@@ -1043,7 +1051,7 @@ function connectionTooltip(model: ReturnType<typeof useDataPanelState>) {
   return (
     <div className="flex flex-col gap-2">
       <b className="font-medium text-zinc-100">
-        {profile.driver === "mysql" ? "MySQL" : "Postgres"} / {profile.database}
+        {driverLabel(profile.driver)} / {profile.database || profile.host}
       </b>
       <div className="flex flex-col gap-1">
         <span>
@@ -1065,11 +1073,17 @@ function connectionTooltip(model: ReturnType<typeof useDataPanelState>) {
           <span>Connected {relativeTime(health.connectedAt)}</span>
         ) : null}
         <span className="truncate text-muted">
-          {profile.host}:{profile.port}
+          {profile.driver === "bigquery" ? profile.host : `${profile.host}:${profile.port}`}
         </span>
       </div>
     </div>
   );
+}
+
+function driverLabel(driver: string) {
+  if (driver === "mysql") return "MySQL";
+  if (driver === "bigquery") return "BigQuery";
+  return "Postgres";
 }
 
 function currentKeychainAccessHint(

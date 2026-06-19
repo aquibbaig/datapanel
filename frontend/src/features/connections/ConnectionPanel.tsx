@@ -27,7 +27,8 @@ const emptyForm: SaveConnectionRequest = {
 
 const defaultPorts: Record<string, number> = {
   postgres: 5432,
-  mysql: 3306
+  mysql: 3306,
+  bigquery: 0
 };
 
 interface ParsedConnectionURL {
@@ -79,7 +80,9 @@ export function ConnectionPanel({
     setForm((current) => {
       const previousDefaultPort = defaultPorts[current.driver || "postgres"];
       const nextPort =
-        !current.port || current.port === previousDefaultPort
+        driver === "bigquery"
+          ? 0
+          : !current.port || current.port === previousDefaultPort
           ? defaultPorts[driver]
           : current.port;
       return { ...current, driver, port: nextPort };
@@ -89,7 +92,7 @@ export function ConnectionPanel({
   function importConnectionURL(value: string) {
     const parsed = parseConnectionURL(value);
     if (!parsed) {
-      setUrlError("Enter a Postgres or MySQL connection URL.");
+      setUrlError("Enter a Postgres, MySQL, or BigQuery connection URL.");
       return false;
     }
 
@@ -150,7 +153,7 @@ export function ConnectionPanel({
                   setUrlError("");
                 }}
                 onPaste={handleConnectionURLPaste}
-                placeholder="postgresql://user:password@localhost:5432/app"
+                placeholder="Enter connection URL..."
               />
             </div>
             {urlError ? (
@@ -169,55 +172,68 @@ export function ConnectionPanel({
           <select value={form.driver || "postgres"} onChange={(event) => updateDriver(event.target.value)}>
             <option value="postgres">Postgres</option>
             <option value="mysql">MySQL</option>
+            <option value="bigquery">BigQuery</option>
           </select>
         </label>
         <label className="grid gap-2">
           <span className="text-xs text-muted">Name</span>
           <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Production" />
         </label>
-        <div className="grid grid-cols-[minmax(0,1fr)_96px] gap-2">
+        <div className={form.driver === "bigquery" ? "grid gap-2" : "grid grid-cols-[minmax(0,1fr)_96px] gap-2"}>
           <label className="grid gap-2">
-            <span className="text-xs text-muted">Host</span>
+            <span className="text-xs text-muted">{form.driver === "bigquery" ? "Project ID" : "Host"}</span>
             <input value={form.host} onChange={(event) => setForm({ ...form, host: event.target.value })} />
           </label>
-          <label className="grid gap-2">
-            <span className="text-xs text-muted">Port</span>
-            <input type="number" value={form.port} onChange={(event) => setForm({ ...form, port: Number(event.target.value) })} />
-          </label>
+          {form.driver !== "bigquery" ? (
+            <label className="grid gap-2">
+              <span className="text-xs text-muted">Port</span>
+              <input type="number" value={form.port} onChange={(event) => setForm({ ...form, port: Number(event.target.value) })} />
+            </label>
+          ) : null}
         </div>
         <label className="grid gap-2">
-          <span className="text-xs text-muted">Database</span>
+          <span className="text-xs text-muted">{form.driver === "bigquery" ? "Default dataset" : "Database"}</span>
           <input value={form.database} onChange={(event) => setForm({ ...form, database: event.target.value })} />
         </label>
         <label className="grid gap-2">
-          <span className="text-xs text-muted">Username</span>
+          <span className="text-xs text-muted">{form.driver === "bigquery" ? "Location" : "Username"}</span>
           <input value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} />
         </label>
-        <label className="grid gap-2">
-          <span className="text-xs text-muted">Password</span>
-          <input
-            type="password"
-            value={form.password}
-            onChange={(event) => setForm({ ...form, password: event.target.value })}
-            placeholder={initialProfile ? "Saved in keychain" : ""}
-          />
-        </label>
-        <div className="grid grid-cols-[minmax(0,1fr)_96px] gap-2">
+        <div className={form.driver === "bigquery" ? "grid grid-cols-[minmax(0,1fr)_96px] gap-2" : "grid gap-2"}>
           <label className="grid gap-2">
-            <span className="text-xs text-muted">SSL</span>
-            <select value={form.sslMode} onChange={(event) => setForm({ ...form, sslMode: event.target.value })}>
-              <option value="prefer">prefer</option>
-              <option value="disable">disable</option>
-              <option value="require">require</option>
-              <option value="verify-ca">verify-ca</option>
-              <option value="verify-full">verify-full</option>
-            </select>
+            <span className="text-xs text-muted">{form.driver === "bigquery" ? "Credentials JSON" : "Password"}</span>
+            <input
+              type="password"
+              value={form.password}
+              onChange={(event) => setForm({ ...form, password: event.target.value })}
+              placeholder={form.driver === "bigquery" ? "Application Default Credentials" : initialProfile ? "Saved in keychain" : ""}
+            />
           </label>
-          <label className="grid gap-2">
-            <span className="text-xs text-muted">Color</span>
-            <input type="color" value={form.color} onChange={(event) => setForm({ ...form, color: event.target.value })} />
-          </label>
+          {form.driver === "bigquery" ? (
+            <label className="grid gap-2">
+              <span className="text-xs text-muted">Color</span>
+              <input type="color" value={form.color} onChange={(event) => setForm({ ...form, color: event.target.value })} />
+            </label>
+          ) : null}
         </div>
+        {form.driver !== "bigquery" ? (
+          <div className="grid grid-cols-[minmax(0,1fr)_96px] gap-2">
+            <label className="grid gap-2">
+              <span className="text-xs text-muted">SSL</span>
+              <select value={form.sslMode} onChange={(event) => setForm({ ...form, sslMode: event.target.value })}>
+                <option value="prefer">prefer</option>
+                <option value="disable">disable</option>
+                <option value="require">require</option>
+                <option value="verify-ca">verify-ca</option>
+                <option value="verify-full">verify-full</option>
+              </select>
+            </label>
+            <label className="grid gap-2">
+              <span className="text-xs text-muted">Color</span>
+              <input type="color" value={form.color} onChange={(event) => setForm({ ...form, color: event.target.value })} />
+            </label>
+          </div>
+        ) : null}
       </div>
 
       <div className="flex justify-end gap-2">
@@ -255,21 +271,22 @@ function parseConnectionURL(value: string): ParsedConnectionURL | null {
   if (!driver || !parsed.hostname) return null;
 
   const port = parsed.port ? Number(parsed.port) : defaultPorts[driver];
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) return null;
+  if (driver !== "bigquery" && (!Number.isInteger(port) || port <= 0 || port > 65535)) return null;
 
   const database = decodeURIComponent(parsed.pathname.replace(/^\/+/, "").split("/")[0] || "");
+  const bigQueryDataset = database || parsed.searchParams.get("dataset") || "";
   const username = decodeURIComponent(parsed.username);
-  if (!database || !username) return null;
+  if (driver !== "bigquery" && (!database || !username)) return null;
 
   return {
     driver,
     host: parsed.hostname,
     port,
-    database,
-    username,
+    database: driver === "bigquery" ? bigQueryDataset : database,
+    username: driver === "bigquery" ? parsed.searchParams.get("location") || "" : username,
     password: decodeURIComponent(parsed.password),
     sslMode: parseSSLMode(parsed.searchParams),
-    name: defaultConnectionName(driver, parsed.hostname, database),
+    name: defaultConnectionName(driver, parsed.hostname, driver === "bigquery" ? bigQueryDataset : database),
   };
 }
 
@@ -282,6 +299,9 @@ function normalizeConnectionURL(value: string) {
   if (trimmed.toLowerCase().startsWith("jdbc:mysql://")) {
     return `mysql://${trimmed.slice("jdbc:mysql://".length)}`;
   }
+  if (trimmed.toLowerCase().startsWith("bigquery://")) {
+    return trimmed;
+  }
   return trimmed;
 }
 
@@ -292,6 +312,8 @@ function parseDriver(protocol: string) {
       return "postgres";
     case "mysql":
       return "mysql";
+    case "bigquery":
+      return "bigquery";
     default:
       return "";
   }
@@ -317,6 +339,9 @@ function parseSSLMode(params: URLSearchParams) {
 }
 
 function defaultConnectionName(driver: string, host: string, database: string) {
+  if (driver === "bigquery") {
+    return database ? `BigQuery ${database} @ ${host}` : `BigQuery @ ${host}`;
+  }
   const label = driver === "mysql" ? "MySQL" : "Postgres";
   return `${label} ${database} @ ${host}`;
 }

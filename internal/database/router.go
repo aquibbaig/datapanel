@@ -159,6 +159,8 @@ func normalizeDriver(driver string) string {
 	switch strings.ToLower(strings.TrimSpace(driver)) {
 	case "mysql":
 		return "mysql"
+	case "bigquery":
+		return "bigquery"
 	default:
 		return "postgres"
 	}

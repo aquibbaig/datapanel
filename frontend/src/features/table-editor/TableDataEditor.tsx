@@ -63,7 +63,7 @@ export function TableDataEditor({
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState("");
 
-  const driver = activeProfile?.driver === "mysql" ? "mysql" : "postgres";
+  const driver = normalizeDriver(activeProfile?.driver);
   const primaryColumns = useMemo(
     () => (tableDetails?.columns || []).filter((column) => column.isPrimary),
     [tableDetails],
@@ -561,7 +561,7 @@ function buildMutationSQL({
   columnDetails: Map<string, ColumnSummary>;
   columnIndexes: Map<string, number>;
   deletedRows: DeletedMap;
-  driver: "postgres" | "mysql";
+  driver: SQLDriver;
   primaryColumns: ColumnSummary[];
   result: QueryResult;
   selectedTable: TableSummary;
@@ -627,7 +627,7 @@ function whereClause(
   row: unknown[],
   primaryColumns: ColumnSummary[],
   columnIndexes: Map<string, number>,
-  driver: "postgres" | "mysql",
+  driver: SQLDriver,
 ) {
   return primaryColumns
     .map((column) => {
@@ -697,15 +697,23 @@ function isBooleanType(dataType: string) {
 }
 
 function qualifiedName(
-  driver: "postgres" | "mysql",
+  driver: SQLDriver,
   schema: string,
   table: string,
 ) {
   return `${quoteIdentifier(driver, schema)}.${quoteIdentifier(driver, table)}`;
 }
 
-function quoteIdentifier(driver: "postgres" | "mysql", identifier: string) {
-  if (driver === "mysql") {
+type SQLDriver = "postgres" | "mysql" | "bigquery";
+
+function normalizeDriver(driver: string | undefined): SQLDriver {
+  if (driver === "mysql") return "mysql";
+  if (driver === "bigquery") return "bigquery";
+  return "postgres";
+}
+
+function quoteIdentifier(driver: SQLDriver, identifier: string) {
+  if (driver === "mysql" || driver === "bigquery") {
     return `\`${identifier.split("`").join("``")}\``;
   }
   return `"${identifier.split('"').join('""')}"`;

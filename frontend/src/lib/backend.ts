@@ -241,9 +241,10 @@ export const aiCredentialService = {
   },
   async generate(input: AIGenerateRequest): Promise<AIGenerateResponse> {
     if (!isWailsRuntime()) {
+      const quote = input.dialect === "mysql" || input.dialect === "bigquery" ? "`" : "\"";
       return {
         answer: "Preview generated SQL. Connect a packaged app build to run this through your provider.",
-        sql: `select *\nfrom ${input.dialect === "mysql" ? "`your_table`" : "\"your_table\""}\nlimit 50;`,
+        sql: `select *\nfrom ${quote}your_table${quote}\nlimit 50;`,
         destructiveRisk: false,
         assumptions: ["Preview mode does not call an AI provider."],
         tokenUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }

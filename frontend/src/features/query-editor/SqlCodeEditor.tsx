@@ -307,7 +307,10 @@ function buildSchemaCompletions(
   schemas: SchemaSummary[],
   tablesBySchema: Record<string, TableSummary[]>,
 ): CompletionOption[] {
-  const quote = activeProfile?.driver === "mysql" ? quoteMySQL : quotePostgres;
+  const quote =
+    activeProfile?.driver === "mysql" || activeProfile?.driver === "bigquery"
+      ? quoteBacktick
+      : quotePostgres;
   const options: CompletionOption[] = [];
 
   for (const schema of schemas) {
@@ -367,7 +370,7 @@ function quotePostgres(identifier: string) {
   return `"${identifier.split('"').join('""')}"`;
 }
 
-function quoteMySQL(identifier: string) {
+function quoteBacktick(identifier: string) {
   if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(identifier)) return identifier;
   return `\`${identifier.split("`").join("``")}\``;
 }

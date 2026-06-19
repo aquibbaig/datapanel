@@ -8,6 +8,7 @@ import (
 	"datapanel/internal/ai"
 	appcore "datapanel/internal/app"
 	"datapanel/internal/appdata"
+	"datapanel/internal/bigquery"
 	"datapanel/internal/connections"
 	"datapanel/internal/database"
 	"datapanel/internal/mysql"
@@ -51,9 +52,11 @@ func main() {
 
 	postgresAdapter := postgres.NewAdapter()
 	mysqlAdapter := mysql.NewAdapter()
+	bigQueryAdapter := bigquery.NewAdapter()
 	databaseRouter := database.NewRouter(map[string]database.Adapter{
 		"postgres": postgresAdapter,
 		"mysql":    mysqlAdapter,
+		"bigquery": bigQueryAdapter,
 	})
 	connectionService := connections.NewService(profileStore, secretStore, databaseRouter)
 	aiService := ai.NewService(secretStore, secretStorage)

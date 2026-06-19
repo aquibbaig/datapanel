@@ -135,7 +135,7 @@ function WorkspaceSelector({
             </span>
             <span className="block truncate text-[11px] text-muted">
               {activeProfile
-                ? `${activeProfile.driver === "mysql" ? "MySQL" : "Postgres"} · ${activeProfile.database}`
+                ? `${driverLabel(activeProfile.driver)} · ${activeProfile.database || activeProfile.host}`
                 : "Select a connection"}
             </span>
           </span>
@@ -223,4 +223,10 @@ function WorkspaceSelector({
       </DropdownMenu.Root>
     </div>
   );
+}
+
+function driverLabel(driver: string) {
+  if (driver === "mysql") return "MySQL";
+  if (driver === "bigquery") return "BigQuery";
+  return "Postgres";
 }
