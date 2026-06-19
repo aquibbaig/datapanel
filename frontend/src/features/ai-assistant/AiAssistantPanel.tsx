@@ -131,7 +131,7 @@ const providers: ProviderLogin[] = [
 ];
 
 const modelsByProvider: Record<ProviderId, string[]> = {
-  openai: ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini"],
+  openai: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"],
   anthropic: [
     "claude-3-5-haiku-latest",
     "claude-3-5-sonnet-latest",
@@ -141,9 +141,10 @@ const modelsByProvider: Record<ProviderId, string[]> = {
 };
 
 const contextWindowByModel: Record<string, string> = {
-  "gpt-4.1-mini": "1M ctx",
-  "gpt-4.1": "1M ctx",
-  "gpt-4o-mini": "128k ctx",
+  "gpt-5.5": "1M ctx",
+  "gpt-5.4": "1M ctx",
+  "gpt-5.4-mini": "400k ctx",
+  "gpt-5.4-nano": "ctx varies",
   "claude-3-5-haiku-latest": "200k ctx",
   "claude-3-5-sonnet-latest": "200k ctx",
   "claude-3-opus-latest": "200k ctx",
@@ -151,14 +152,25 @@ const contextWindowByModel: Record<string, string> = {
 };
 
 const contextUsageByModel: Record<string, number> = {
-  "gpt-4.1-mini": 0.18,
-  "gpt-4.1": 0.18,
-  "gpt-4o-mini": 0.34,
+  "gpt-5.5": 0.18,
+  "gpt-5.4": 0.2,
+  "gpt-5.4-mini": 0.24,
+  "gpt-5.4-nano": 0.32,
   "claude-3-5-haiku-latest": 0.24,
   "claude-3-5-sonnet-latest": 0.24,
   "claude-3-opus-latest": 0.24,
   "openai-compatible": 0.42,
 };
+
+function defaultModelForProvider(provider: ProviderId) {
+  return modelsByProvider[provider][0];
+}
+
+function normalizeModelForProvider(provider: ProviderId, model: string) {
+  return modelsByProvider[provider].includes(model)
+    ? model
+    : defaultModelForProvider(provider);
+}
 
 const chatSQLHighlighter = createHighlighterCore({
   langs: [import("@shikijs/langs/sql")],
@@ -207,7 +219,7 @@ export function AiAssistantPanel({
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatBusy, setChatBusy] = useState(false);
   const [selectedModel, setSelectedModel] = useState(
-    modelsByProvider.openai[0],
+    defaultModelForProvider("openai"),
   );
 
   const selected =
@@ -317,7 +329,7 @@ export function AiAssistantPanel({
     if (!activeThread) return;
     const provider = normalizeProviderId(activeThread.provider);
     setSelectedProvider(provider);
-    setSelectedModel(activeThread.model || modelsByProvider[provider][0]);
+    setSelectedModel(normalizeModelForProvider(provider, activeThread.model));
   }, [activeThread?.id]);
 
   async function loadCredentialStatuses() {
@@ -344,7 +356,7 @@ export function AiAssistantPanel({
           connectionId: connectionScopeId,
           title: "Chat",
           provider,
-          model: modelsByProvider[provider][0],
+          model: defaultModelForProvider(provider),
         });
         threads = [thread];
       }
@@ -386,9 +398,7 @@ export function AiAssistantPanel({
     )
       ? selected.id
       : connectedProviders[0]?.id || "openai";
-    const model = modelsByProvider[provider].includes(selectedModel)
-      ? selectedModel
-      : modelsByProvider[provider][0];
+    const model = normalizeModelForProvider(provider, selectedModel);
 
     try {
       const thread = await appDataService.createThread({
@@ -466,7 +476,7 @@ export function AiAssistantPanel({
           connectionId: connectionScopeId,
           title: "Side chat",
           provider,
-          model: modelsByProvider[provider][0],
+          model: defaultModelForProvider(provider),
         });
         remaining = [replacement];
         nextActiveThreadId = replacement.id;
@@ -572,13 +582,17 @@ export function AiAssistantPanel({
   async function askAI() {
     const prompt = chatPrompt.trim();
     if (!prompt || !chatReady) return;
+    const requestModel = normalizeModelForProvider(selected.id, selectedModel);
+    if (requestModel !== selectedModel) {
+      setSelectedModel(requestModel);
+    }
     let thread = activeThread;
     if (!thread) {
       thread = await appDataService.createThread({
         connectionId: connectionScopeId,
         title: "New chat",
         provider: selected.id,
-        model: selectedModel,
+        model: requestModel,
       });
       setChatThreads((current) => [thread as AIChatThread, ...current]);
       setActiveThreadId(thread.id);
@@ -600,7 +614,7 @@ export function AiAssistantPanel({
         threadId: thread.id,
         connectionId: connectionScopeId,
         provider: selected.id,
-        model: selectedModel,
+        model: requestModel,
         role: userMessage.role,
         content: userMessage.content,
         createdAt: userMessage.createdAt,
@@ -641,7 +655,7 @@ export function AiAssistantPanel({
             }
           : await aiCredentialService.plan({
               provider: selected.id,
-              model: selectedModel,
+              model: requestModel,
               prompt,
               dialect: activeProfile.driver,
               conversation,
@@ -674,7 +688,7 @@ export function AiAssistantPanel({
       ).context;
       const response = await aiCredentialService.generate({
         provider: selected.id,
-        model: selectedModel,
+        model: requestModel,
         prompt,
         dialect: activeProfile?.driver || "postgres",
         responseStyle: settings?.chatResponsePrompt || "",
@@ -698,7 +712,7 @@ export function AiAssistantPanel({
         threadId: thread.id,
         connectionId: connectionScopeId,
         provider: selected.id,
-        model: selectedModel,
+        model: requestModel,
         role: assistantMessage.role,
         content: assistantMessage.content,
         response,
@@ -732,7 +746,7 @@ export function AiAssistantPanel({
       threadId,
       connectionId: connectionScopeId,
       provider: selected.id,
-      model: selectedModel,
+      model: normalizeModelForProvider(selected.id, selectedModel),
       role: assistantMessage.role,
       content: assistantMessage.content,
       response,
@@ -891,9 +905,9 @@ export function AiAssistantPanel({
                         onChange={(event) =>
                           void updateActiveThreadSettings(
                             event.target.value as ProviderId,
-                            modelsByProvider[
-                              event.target.value as ProviderId
-                            ][0],
+                            defaultModelForProvider(
+                              event.target.value as ProviderId,
+                            ),
                           )
                         }
                         title="AI provider"

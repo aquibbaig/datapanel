@@ -457,7 +457,7 @@ func normalizeModel(provider string, model string) string {
 	if provider == "anthropic" {
 		return "claude-3-5-haiku-latest"
 	}
-	return "gpt-4.1-mini"
+	return "gpt-5.5"
 }
 
 func credentialKey(provider string) string {

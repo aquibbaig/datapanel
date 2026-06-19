@@ -172,7 +172,7 @@ export function ConnectionPanel({
           <select value={form.driver || "postgres"} onChange={(event) => updateDriver(event.target.value)}>
             <option value="postgres">Postgres</option>
             <option value="mysql">MySQL</option>
-            <option value="bigquery">BigQuery</option>
+            {/* <option value="bigquery">BigQuery</option> */}
           </select>
         </label>
         <label className="grid gap-2">

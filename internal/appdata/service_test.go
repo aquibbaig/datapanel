@@ -19,7 +19,7 @@ func TestAIChatMessagesRoundTrip(t *testing.T) {
 		ConnectionID: "profile-1",
 		Title:        "Orders",
 		Provider:     "openai",
-		Model:        "gpt-4.1-mini",
+		Model:        "gpt-5.5",
 	})
 	if err != nil {
 		t.Fatalf("CreateAIChatThread returned error: %v", err)
@@ -29,7 +29,7 @@ func TestAIChatMessagesRoundTrip(t *testing.T) {
 		ThreadID:     thread.ID,
 		ConnectionID: "profile-1",
 		Provider:     "openai",
-		Model:        "gpt-4.1-mini",
+		Model:        "gpt-5.5",
 		Role:         "user",
 		Content:      "show recent orders",
 	})
@@ -44,7 +44,7 @@ func TestAIChatMessagesRoundTrip(t *testing.T) {
 		ThreadID:     thread.ID,
 		ConnectionID: "profile-1",
 		Provider:     "openai",
-		Model:        "gpt-4.1-mini",
+		Model:        "gpt-5.5",
 		Role:         "assistant",
 		Content:      "Here is a query.",
 		Response: &ai.GenerateResponse{
@@ -66,7 +66,7 @@ func TestAIChatMessagesRoundTrip(t *testing.T) {
 		ThreadID:     thread.ID,
 		ConnectionID: "profile-1",
 		Provider:     "openai",
-		Model:        "gpt-4.1-mini",
+		Model:        "gpt-5.5",
 		Role:         "assistant",
 		Content:      "Here is a query with extra notes.",
 		Response: &ai.GenerateResponse{

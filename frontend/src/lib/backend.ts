@@ -295,7 +295,7 @@ export const appDataService = {
         connectionId: input.connectionId || "global",
         title: input.title || "New chat",
         provider: input.provider || "openai",
-        model: input.model || "gpt-4.1-mini",
+        model: input.model || "gpt-5.5",
         promptTokens: 0,
         completionTokens: 0,
         totalTokens: 0,
