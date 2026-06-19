@@ -49,6 +49,7 @@ export namespace ai {
 	    sql: string;
 	    destructiveRisk: boolean;
 	    assumptions: string[];
+	    tokenUsage: TokenUsage;
 	
 	    static createFrom(source: any = {}) {
 	        return new GenerateResponse(source);
@@ -60,6 +61,7 @@ export namespace ai {
 	        this.sql = source["sql"];
 	        this.destructiveRisk = source["destructiveRisk"];
 	        this.assumptions = source["assumptions"];
+	        this.tokenUsage = source["tokenUsage"];
 	    }
 	}
 	export class PlanRequest {
@@ -105,6 +107,7 @@ export namespace ai {
 	    question: string;
 	    tables: PlanTable[];
 	    assumptions: string[];
+	    tokenUsage: TokenUsage;
 	
 	    static createFrom(source: any = {}) {
 	        return new PlanResponse(source);
@@ -116,6 +119,7 @@ export namespace ai {
 	        this.question = source["question"];
 	        this.tables = this.convertValues(source["tables"], PlanTable);
 	        this.assumptions = source["assumptions"];
+	        this.tokenUsage = this.convertValues(source["tokenUsage"], TokenUsage);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -135,6 +139,22 @@ export namespace ai {
 		    }
 		    return a;
 		}
+	}
+	export class TokenUsage {
+	    promptTokens: number;
+	    completionTokens: number;
+	    totalTokens: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new TokenUsage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.promptTokens = source["promptTokens"];
+	        this.completionTokens = source["completionTokens"];
+	        this.totalTokens = source["totalTokens"];
+	    }
 	}
 	
 	export class SaveCredentialRequest {
@@ -210,6 +230,10 @@ export namespace appdata {
 	    title: string;
 	    provider: string;
 	    model: string;
+	    promptTokens: number;
+	    completionTokens: number;
+	    totalTokens: number;
+	    tokenUsage: ai.TokenUsage;
 	    createdAt: string;
 	    updatedAt: string;
 	
@@ -224,6 +248,10 @@ export namespace appdata {
 	        this.title = source["title"];
 	        this.provider = source["provider"];
 	        this.model = source["model"];
+	        this.promptTokens = source["promptTokens"];
+	        this.completionTokens = source["completionTokens"];
+	        this.totalTokens = source["totalTokens"];
+	        this.tokenUsage = source["tokenUsage"];
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];
 	    }

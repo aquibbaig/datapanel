@@ -6,13 +6,17 @@ import (
 )
 
 type AIChatThread struct {
-	ID           string `json:"id"`
-	ConnectionID string `json:"connectionId"`
-	Title        string `json:"title"`
-	Provider     string `json:"provider"`
-	Model        string `json:"model"`
-	CreatedAt    string `json:"createdAt"`
-	UpdatedAt    string `json:"updatedAt"`
+	ID               string        `json:"id"`
+	ConnectionID     string        `json:"connectionId"`
+	Title            string        `json:"title"`
+	Provider         string        `json:"provider"`
+	Model            string        `json:"model"`
+	PromptTokens     int           `json:"promptTokens"`
+	CompletionTokens int           `json:"completionTokens"`
+	TotalTokens      int           `json:"totalTokens"`
+	TokenUsage       ai.TokenUsage `json:"tokenUsage"`
+	CreatedAt        string        `json:"createdAt"`
+	UpdatedAt        string        `json:"updatedAt"`
 }
 
 type AIChatMessage struct {

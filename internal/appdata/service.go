@@ -58,7 +58,7 @@ func (s *Service) ListAIChatThreads(input ListAIChatThreadsRequest) ([]AIChatThr
 
 	rows, err := s.db.QueryContext(
 		context.Background(),
-		`SELECT id, connection_id, title, provider, model, created_at, updated_at
+		`SELECT id, connection_id, title, provider, model, prompt_tokens, completion_tokens, total_tokens, created_at, updated_at
 		 FROM ai_chat_threads
 		 WHERE connection_id = ?
 		 ORDER BY updated_at DESC, rowid DESC`,
@@ -78,10 +78,18 @@ func (s *Service) ListAIChatThreads(input ListAIChatThreadsRequest) ([]AIChatThr
 			&thread.Title,
 			&thread.Provider,
 			&thread.Model,
+			&thread.PromptTokens,
+			&thread.CompletionTokens,
+			&thread.TotalTokens,
 			&thread.CreatedAt,
 			&thread.UpdatedAt,
 		); err != nil {
 			return nil, apperrors.New(apperrors.CodeStorage, "could not read AI chat thread")
+		}
+		thread.TokenUsage = ai.TokenUsage{
+			PromptTokens:     thread.PromptTokens,
+			CompletionTokens: thread.CompletionTokens,
+			TotalTokens:      thread.TotalTokens,
 		}
 		threads = append(threads, thread)
 	}
@@ -152,7 +160,7 @@ func (s *Service) UpdateAIChatThread(input UpdateAIChatThreadRequest) (AIChatThr
 		`UPDATE ai_chat_threads
 		 SET title = ?, provider = ?, model = ?, updated_at = ?
 		 WHERE id = ?
-		 RETURNING id, connection_id, title, provider, model, created_at, updated_at`,
+		 RETURNING id, connection_id, title, provider, model, prompt_tokens, completion_tokens, total_tokens, created_at, updated_at`,
 		title,
 		provider,
 		model,
@@ -167,10 +175,18 @@ func (s *Service) UpdateAIChatThread(input UpdateAIChatThreadRequest) (AIChatThr
 		&thread.Title,
 		&thread.Provider,
 		&thread.Model,
+		&thread.PromptTokens,
+		&thread.CompletionTokens,
+		&thread.TotalTokens,
 		&thread.CreatedAt,
 		&thread.UpdatedAt,
 	); err != nil {
 		return AIChatThread{}, apperrors.New(apperrors.CodeStorage, "could not update AI chat thread")
+	}
+	thread.TokenUsage = ai.TokenUsage{
+		PromptTokens:     thread.PromptTokens,
+		CompletionTokens: thread.CompletionTokens,
+		TotalTokens:      thread.TotalTokens,
 	}
 	return thread, nil
 }
@@ -242,8 +258,24 @@ func (s *Service) SaveAIChatMessage(input SaveAIChatMessageRequest) (AIChatMessa
 		return AIChatMessage{}, err
 	}
 
-	_, err = s.db.ExecContext(
-		context.Background(),
+	ctx := context.Background()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return AIChatMessage{}, apperrors.New(apperrors.CodeStorage, "could not save AI chat message")
+	}
+	defer tx.Rollback()
+
+	var existingResponseJSON string
+	if err := tx.QueryRowContext(
+		ctx,
+		`SELECT response_json FROM ai_chat_messages WHERE id = ?`,
+		message.ID,
+	).Scan(&existingResponseJSON); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return AIChatMessage{}, apperrors.New(apperrors.CodeStorage, "could not save AI chat message")
+	}
+
+	if _, err = tx.ExecContext(
+		ctx,
 		`INSERT INTO ai_chat_messages (
 			id, thread_id, connection_id, provider, model, role, content, response_json, created_at
 		 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -265,16 +297,43 @@ func (s *Service) SaveAIChatMessage(input SaveAIChatMessageRequest) (AIChatMessa
 		message.Content,
 		responseJSON,
 		message.CreatedAt,
-	)
-	if err != nil {
+	); err != nil {
 		return AIChatMessage{}, apperrors.New(apperrors.CodeStorage, "could not save AI chat message")
 	}
-	_, _ = s.db.ExecContext(
-		context.Background(),
+
+	tokenDelta := subtractTokenUsage(
+		tokenUsageFromGenerateResponse(message.Response),
+		tokenUsageFromResponseJSON(existingResponseJSON),
+	)
+	_, err = tx.ExecContext(
+		ctx,
 		`UPDATE ai_chat_threads SET updated_at = ? WHERE id = ?`,
 		message.CreatedAt,
 		message.ThreadID,
 	)
+	if err != nil {
+		return AIChatMessage{}, apperrors.New(apperrors.CodeStorage, "could not save AI chat message")
+	}
+	if hasTokenUsage(tokenDelta) {
+		_, err = tx.ExecContext(
+			ctx,
+			`UPDATE ai_chat_threads
+			 SET prompt_tokens = max(0, prompt_tokens + ?),
+				 completion_tokens = max(0, completion_tokens + ?),
+				 total_tokens = max(0, total_tokens + ?)
+			 WHERE id = ?`,
+			tokenDelta.PromptTokens,
+			tokenDelta.CompletionTokens,
+			tokenDelta.TotalTokens,
+			message.ThreadID,
+		)
+		if err != nil {
+			return AIChatMessage{}, apperrors.New(apperrors.CodeStorage, "could not save AI chat message")
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return AIChatMessage{}, apperrors.New(apperrors.CodeStorage, "could not save AI chat message")
+	}
 	return message, nil
 }
 
@@ -290,6 +349,13 @@ func (s *Service) ClearAIChatMessages(input ClearAIChatMessagesRequest) error {
 	if err != nil {
 		return apperrors.New(apperrors.CodeStorage, "could not clear AI chat messages")
 	}
+	_, _ = s.db.ExecContext(
+		context.Background(),
+		`UPDATE ai_chat_threads
+		 SET prompt_tokens = 0, completion_tokens = 0, total_tokens = 0
+		 WHERE id = ?`,
+		strings.TrimSpace(input.ThreadID),
+	)
 	return nil
 }
 
@@ -565,6 +631,9 @@ func (s *Service) migrate(ctx context.Context) error {
 			title TEXT NOT NULL,
 			provider TEXT NOT NULL,
 			model TEXT NOT NULL,
+			prompt_tokens INTEGER NOT NULL DEFAULT 0,
+			completion_tokens INTEGER NOT NULL DEFAULT 0,
+			total_tokens INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		)`,
@@ -580,6 +649,9 @@ func (s *Service) migrate(ctx context.Context) error {
 			created_at TEXT NOT NULL,
 			FOREIGN KEY(thread_id) REFERENCES ai_chat_threads(id) ON DELETE CASCADE
 		)`,
+		`ALTER TABLE ai_chat_threads ADD COLUMN prompt_tokens INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE ai_chat_threads ADD COLUMN completion_tokens INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE ai_chat_threads ADD COLUMN total_tokens INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE ai_chat_messages ADD COLUMN thread_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE ai_chat_messages ADD COLUMN model TEXT NOT NULL DEFAULT ''`,
 		`CREATE INDEX IF NOT EXISTS idx_ai_chat_threads_connection_updated
@@ -789,6 +861,52 @@ func scanAIChatMessage(scanner chatMessageScanner) (AIChatMessage, error) {
 		}
 	}
 	return message, nil
+}
+
+func tokenUsageFromGenerateResponse(response *ai.GenerateResponse) ai.TokenUsage {
+	if response == nil {
+		return ai.TokenUsage{}
+	}
+	return normalizeTokenUsage(response.TokenUsage)
+}
+
+func tokenUsageFromResponseJSON(responseJSON string) ai.TokenUsage {
+	if strings.TrimSpace(responseJSON) == "" {
+		return ai.TokenUsage{}
+	}
+	var response ai.GenerateResponse
+	if err := json.Unmarshal([]byte(responseJSON), &response); err != nil {
+		return ai.TokenUsage{}
+	}
+	return normalizeTokenUsage(response.TokenUsage)
+}
+
+func normalizeTokenUsage(usage ai.TokenUsage) ai.TokenUsage {
+	if usage.PromptTokens < 0 {
+		usage.PromptTokens = 0
+	}
+	if usage.CompletionTokens < 0 {
+		usage.CompletionTokens = 0
+	}
+	if usage.TotalTokens < 0 {
+		usage.TotalTokens = 0
+	}
+	if usage.TotalTokens == 0 {
+		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+	}
+	return usage
+}
+
+func subtractTokenUsage(next ai.TokenUsage, previous ai.TokenUsage) ai.TokenUsage {
+	return ai.TokenUsage{
+		PromptTokens:     next.PromptTokens - previous.PromptTokens,
+		CompletionTokens: next.CompletionTokens - previous.CompletionTokens,
+		TotalTokens:      next.TotalTokens - previous.TotalTokens,
+	}
+}
+
+func hasTokenUsage(usage ai.TokenUsage) bool {
+	return usage.PromptTokens != 0 || usage.CompletionTokens != 0 || usage.TotalTokens != 0
 }
 
 func normalizeSaveMessage(input SaveAIChatMessageRequest) (AIChatMessage, string, error) {

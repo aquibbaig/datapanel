@@ -207,6 +207,7 @@ func (s *Service) generateOpenAI(token string, model string, system string, user
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
+		Usage *openAIUsage `json:"usage"`
 		Error *struct {
 			Message string `json:"message"`
 		} `json:"error"`
@@ -222,7 +223,12 @@ func (s *Service) generateOpenAI(token string, model string, system string, user
 	if len(parsed.Choices) == 0 {
 		return GenerateResponse{}, apperrors.New(apperrors.CodeValidation, "AI provider returned no response")
 	}
-	return parseGenerateResponse(parsed.Choices[0].Message.Content)
+	result, err := parseGenerateResponse(parsed.Choices[0].Message.Content)
+	if err != nil {
+		return GenerateResponse{}, err
+	}
+	result.TokenUsage = parsed.Usage.tokenUsage()
+	return result, nil
 }
 
 func (s *Service) planOpenAI(token string, model string, system string, user string) (PlanResponse, error) {
@@ -242,6 +248,7 @@ func (s *Service) planOpenAI(token string, model string, system string, user str
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
+		Usage *openAIUsage `json:"usage"`
 		Error *struct {
 			Message string `json:"message"`
 		} `json:"error"`
@@ -257,7 +264,12 @@ func (s *Service) planOpenAI(token string, model string, system string, user str
 	if len(parsed.Choices) == 0 {
 		return PlanResponse{}, apperrors.New(apperrors.CodeValidation, "AI provider returned no response")
 	}
-	return parsePlanResponse(parsed.Choices[0].Message.Content)
+	result, err := parsePlanResponse(parsed.Choices[0].Message.Content)
+	if err != nil {
+		return PlanResponse{}, err
+	}
+	result.TokenUsage = parsed.Usage.tokenUsage()
+	return result, nil
 }
 
 func (s *Service) generateAnthropic(token string, model string, system string, user string) (GenerateResponse, error) {
@@ -276,6 +288,7 @@ func (s *Service) generateAnthropic(token string, model string, system string, u
 			Type string `json:"type"`
 			Text string `json:"text"`
 		} `json:"content"`
+		Usage *anthropicUsage `json:"usage"`
 		Error *struct {
 			Message string `json:"message"`
 		} `json:"error"`
@@ -291,7 +304,12 @@ func (s *Service) generateAnthropic(token string, model string, system string, u
 	}
 	for _, block := range parsed.Content {
 		if block.Type == "text" && strings.TrimSpace(block.Text) != "" {
-			return parseGenerateResponse(block.Text)
+			result, err := parseGenerateResponse(block.Text)
+			if err != nil {
+				return GenerateResponse{}, err
+			}
+			result.TokenUsage = parsed.Usage.tokenUsage()
+			return result, nil
 		}
 	}
 	return GenerateResponse{}, apperrors.New(apperrors.CodeValidation, "AI provider returned no response")
@@ -313,6 +331,7 @@ func (s *Service) planAnthropic(token string, model string, system string, user 
 			Type string `json:"type"`
 			Text string `json:"text"`
 		} `json:"content"`
+		Usage *anthropicUsage `json:"usage"`
 		Error *struct {
 			Message string `json:"message"`
 		} `json:"error"`
@@ -328,10 +347,47 @@ func (s *Service) planAnthropic(token string, model string, system string, user 
 	}
 	for _, block := range parsed.Content {
 		if block.Type == "text" && strings.TrimSpace(block.Text) != "" {
-			return parsePlanResponse(block.Text)
+			result, err := parsePlanResponse(block.Text)
+			if err != nil {
+				return PlanResponse{}, err
+			}
+			result.TokenUsage = parsed.Usage.tokenUsage()
+			return result, nil
 		}
 	}
 	return PlanResponse{}, apperrors.New(apperrors.CodeValidation, "AI provider returned no response")
+}
+
+type openAIUsage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}
+
+func (usage *openAIUsage) tokenUsage() TokenUsage {
+	if usage == nil {
+		return TokenUsage{}
+	}
+	return normalizeTokenUsage(TokenUsage{
+		PromptTokens:     usage.PromptTokens,
+		CompletionTokens: usage.CompletionTokens,
+		TotalTokens:      usage.TotalTokens,
+	})
+}
+
+type anthropicUsage struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+}
+
+func (usage *anthropicUsage) tokenUsage() TokenUsage {
+	if usage == nil {
+		return TokenUsage{}
+	}
+	return normalizeTokenUsage(TokenUsage{
+		PromptTokens:     usage.InputTokens,
+		CompletionTokens: usage.OutputTokens,
+	})
 }
 
 func (s *Service) postJSON(endpoint string, headers map[string]string, payload any, out any) error {
@@ -489,6 +545,22 @@ func truncateRunes(value string, limit int) string {
 		return value
 	}
 	return string(runes[:limit]) + "..."
+}
+
+func normalizeTokenUsage(usage TokenUsage) TokenUsage {
+	if usage.PromptTokens < 0 {
+		usage.PromptTokens = 0
+	}
+	if usage.CompletionTokens < 0 {
+		usage.CompletionTokens = 0
+	}
+	if usage.TotalTokens < 0 {
+		usage.TotalTokens = 0
+	}
+	if usage.TotalTokens == 0 {
+		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+	}
+	return usage
 }
 
 func systemPrompt(dialect string, responseStyle string) string {

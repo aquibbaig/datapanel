@@ -242,7 +242,8 @@ export const aiCredentialService = {
         answer: "Preview generated SQL. Connect a packaged app build to run this through your provider.",
         sql: `select *\nfrom ${input.dialect === "mysql" ? "`your_table`" : "\"your_table\""}\nlimit 50;`,
         destructiveRisk: false,
-        assumptions: ["Preview mode does not call an AI provider."]
+        assumptions: ["Preview mode does not call an AI provider."],
+        tokenUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
       };
     }
     return AIBindings.GenerateSQL(ai.GenerateRequest.createFrom(input));
@@ -260,7 +261,8 @@ export const aiCredentialService = {
             reason: "Preview mode uses the demo users table."
           }
         ],
-        assumptions: ["Preview mode does not call an AI provider."]
+        assumptions: ["Preview mode does not call an AI provider."],
+        tokenUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
       };
     }
     return AIBindings.PlanSQL(ai.PlanRequest.createFrom(input));
@@ -290,6 +292,10 @@ export const appDataService = {
         title: input.title || "New chat",
         provider: input.provider || "openai",
         model: input.model || "gpt-4.1-mini",
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+        tokenUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
         createdAt: now,
         updatedAt: now
       };
@@ -338,7 +344,19 @@ export const appDataService = {
       } as AIChatMessage;
       mockAIMessages.push(message);
       const thread = mockAIThreads.find((item) => item.id === input.threadId);
-      if (thread) thread.updatedAt = message.createdAt;
+      if (thread) {
+        thread.updatedAt = message.createdAt;
+        if (input.response?.tokenUsage) {
+          thread.promptTokens += input.response.tokenUsage.promptTokens || 0;
+          thread.completionTokens += input.response.tokenUsage.completionTokens || 0;
+          thread.totalTokens += input.response.tokenUsage.totalTokens || 0;
+          thread.tokenUsage = {
+            promptTokens: thread.promptTokens,
+            completionTokens: thread.completionTokens,
+            totalTokens: thread.totalTokens
+          };
+        }
+      }
       return message;
     }
     return AppDataBindings.SaveAIChatMessage(input as Parameters<typeof AppDataBindings.SaveAIChatMessage>[0]);

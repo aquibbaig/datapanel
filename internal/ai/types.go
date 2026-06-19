@@ -51,11 +51,19 @@ type PlanResponse struct {
 	Question           string      `json:"question"`
 	Tables             []PlanTable `json:"tables"`
 	Assumptions        []string    `json:"assumptions"`
+	TokenUsage         TokenUsage  `json:"tokenUsage"`
 }
 
 type GenerateResponse struct {
-	Answer          string   `json:"answer"`
-	SQL             string   `json:"sql"`
-	DestructiveRisk bool     `json:"destructiveRisk"`
-	Assumptions     []string `json:"assumptions"`
+	Answer          string     `json:"answer"`
+	SQL             string     `json:"sql"`
+	DestructiveRisk bool       `json:"destructiveRisk"`
+	Assumptions     []string   `json:"assumptions"`
+	TokenUsage      TokenUsage `json:"tokenUsage"`
+}
+
+type TokenUsage struct {
+	PromptTokens     int `json:"promptTokens"`
+	CompletionTokens int `json:"completionTokens"`
+	TotalTokens      int `json:"totalTokens"`
 }

@@ -17,7 +17,15 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
+import { createHighlighterCore } from "shiki/core";
+import { createOnigurumaEngine } from "shiki/engine/oniguruma";
 import { toast } from "sonner";
 import { BrowserOpenURL, EventsOn } from "../../../wailsjs/runtime/runtime";
 import {
@@ -84,6 +92,8 @@ interface ChatMessage {
   createdAt?: string;
 }
 
+type TokenUsage = AIGenerateResponse["tokenUsage"];
+
 type RuntimeBridge = {
   BrowserOpenURL?: (url: string) => void;
   EventsOn?: (
@@ -149,6 +159,21 @@ const contextUsageByModel: Record<string, number> = {
   "claude-3-opus-latest": 0.24,
   "openai-compatible": 0.42,
 };
+
+const chatSQLHighlighter = createHighlighterCore({
+  langs: [import("@shikijs/langs/sql")],
+  themes: [
+    import("@shikijs/themes/github-dark-high-contrast"),
+    import("@shikijs/themes/github-light"),
+  ],
+  engine: createOnigurumaEngine(import("shiki/wasm")),
+});
+
+interface HighlightedSQLToken {
+  color?: string;
+  content: string;
+  fontStyle?: number;
+}
 
 export function AiAssistantPanel({
   activeProfile,
@@ -612,6 +637,7 @@ export function AiAssistantPanel({
                 confidence: 1,
                 reason: "The request references this table name.",
               })),
+              tokenUsage: zeroTokenUsage(),
             }
           : await aiCredentialService.plan({
               provider: selected.id,
@@ -629,6 +655,7 @@ export function AiAssistantPanel({
         const response = clarificationResponse(
           tablePlan.question || "Which table should I use for this request?",
           tablePlan.assumptions,
+          tablePlan.tokenUsage,
         );
         await saveAssistantResponse(thread.id, response);
         return;
@@ -654,6 +681,10 @@ export function AiAssistantPanel({
         schemaContext,
         conversation,
       });
+      response.tokenUsage = addTokenUsage(
+        tablePlan.tokenUsage,
+        response.tokenUsage,
+      );
       const assistantMessage = {
         id: crypto.randomUUID(),
         role: "assistant" as const,
@@ -673,6 +704,7 @@ export function AiAssistantPanel({
         response,
         createdAt: assistantMessage.createdAt,
       });
+      applyThreadTokenUsage(thread.id, response.tokenUsage, assistantMessage.createdAt);
       if (response.sql) onLoadSQL(response.sql);
     } catch (error) {
       toast("AI request failed", {
@@ -706,6 +738,29 @@ export function AiAssistantPanel({
       response,
       createdAt: assistantMessage.createdAt,
     });
+    applyThreadTokenUsage(threadId, response.tokenUsage, assistantMessage.createdAt);
+  }
+
+  function applyThreadTokenUsage(
+    threadId: string,
+    usage: TokenUsage,
+    updatedAt?: string,
+  ) {
+    if (!hasTokenUsage(usage) && !updatedAt) return;
+    setChatThreads((current) =>
+      current.map((thread) => {
+        if (thread.id !== threadId) return thread;
+        const nextUsage = addTokenUsage(thread.tokenUsage, usage);
+        return {
+          ...thread,
+          promptTokens: nextUsage.promptTokens,
+          completionTokens: nextUsage.completionTokens,
+          totalTokens: nextUsage.totalTokens,
+          tokenUsage: nextUsage,
+          updatedAt: updatedAt || thread.updatedAt,
+        };
+      }),
+    );
   }
 
   async function executeGeneratedSQL(sql: string) {
@@ -1110,13 +1165,18 @@ function ChatThreadBar({
             key={thread.id}
           >
             <button
-              className="min-w-0 flex-1 truncate py-1.5 pl-3 pr-1 text-left"
-              title="Double-click to rename"
+              className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 pl-3 pr-1 text-left"
+              title={threadTitleTooltip(thread)}
               type="button"
               onClick={() => onSelectThread(thread.id)}
               onDoubleClick={() => onRenameStart(thread)}
             >
-              {thread.title}
+              <span className="min-w-0 truncate">{thread.title}</span>
+              {thread.totalTokens > 0 ? (
+                <span className="shrink-0 text-[10px] font-medium text-zinc-500">
+                  {formatTokenCount(thread.totalTokens)} tok
+                </span>
+              ) : null}
             </button>
             <button
               className="mr-1 grid h-6 w-6 shrink-0 place-items-center rounded-full text-zinc-500 opacity-0 transition hover:bg-surface-700 hover:text-zinc-100 group-hover:opacity-100 focus:opacity-100"
@@ -1269,9 +1329,7 @@ function AIResponseView({
             </div>
           ) : null}
           {response.sql ? (
-            <pre className="max-h-56 max-w-full overflow-auto rounded-ui border border-line bg-surface-900/80 p-3 font-mono text-[11px] leading-5 text-zinc-200">
-              {response.sql}
-            </pre>
+            <SQLCodeBlock onCopySQL={onCopySQL} sql={response.sql} />
           ) : null}
         </div>
         <div className="mt-2 flex min-w-0 items-center gap-1 pl-1">
@@ -1280,9 +1338,6 @@ function AIResponseView({
           </ChatActionButton>
           {response.sql ? (
             <>
-              <ChatActionButton label="Copy SQL" onClick={onCopySQL}>
-                <Clipboard size={14} />
-              </ChatActionButton>
               <ChatActionButton
                 label="Load query into editor"
                 onClick={onLoadSQL}
@@ -1301,6 +1356,78 @@ function AIResponseView({
           ) : null}
         </div>
       </div>
+    </div>
+  );
+}
+
+function SQLCodeBlock({
+  onCopySQL,
+  sql,
+}: {
+  onCopySQL(): void;
+  sql: string;
+}) {
+  const shikiTheme = currentShikiTheme();
+  const [highlightedLines, setHighlightedLines] = useState<
+    HighlightedSQLToken[][]
+  >([]);
+
+  useEffect(() => {
+    let active = true;
+
+    void chatSQLHighlighter
+      .then((highlighter) => {
+        const highlighted = highlighter.codeToTokens(sql, {
+          lang: "sql",
+          theme: shikiTheme,
+        });
+        if (!active) return;
+        setHighlightedLines(
+          highlighted.tokens.map((line) =>
+            line.map((token) => ({
+              color: token.color,
+              content: token.content,
+              fontStyle: token.fontStyle,
+            })),
+          ),
+        );
+      })
+      .catch(() => {
+        if (active) setHighlightedLines([[{ content: sql }]]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [shikiTheme, sql]);
+
+  return (
+    <div className="relative max-w-full overflow-hidden rounded-ui border border-line bg-surface-900/80">
+      <button
+        aria-label="Copy SQL"
+        className="absolute right-1.5 top-1.5 z-10 grid h-7 w-7 place-items-center rounded-md bg-surface-850/95 text-zinc-400 shadow-sm transition hover:bg-surface-800 hover:text-zinc-100"
+        onClick={onCopySQL}
+        title="Copy SQL"
+        type="button"
+      >
+        <Copy size={13} />
+      </button>
+      <pre className="max-h-56 max-w-full overflow-x-hidden overflow-y-auto whitespace-pre-wrap break-words p-3 pr-10 font-mono text-[11px] leading-5 text-zinc-200 [overflow-wrap:anywhere]">
+        <code>
+          {highlightedLines.length > 0
+            ? highlightedLines.map((line, lineIndex) => (
+                <span key={lineIndex}>
+                  {line.map((token, tokenIndex) => (
+                    <span key={tokenIndex} style={shikiTokenStyle(token)}>
+                      {token.content}
+                    </span>
+                  ))}
+                  {lineIndex < highlightedLines.length - 1 ? "\n" : null}
+                </span>
+              ))
+            : sql}
+        </code>
+      </pre>
     </div>
   );
 }
@@ -1418,6 +1545,50 @@ function buildReturnUrl(provider: ProviderId) {
   return `datapanel://ai-callback?provider=${provider}&status=manual`;
 }
 
+function zeroTokenUsage(): TokenUsage {
+  return { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+}
+
+function normalizeTokenUsage(usage?: TokenUsage | null): TokenUsage {
+  const promptTokens = Math.max(0, usage?.promptTokens || 0);
+  const completionTokens = Math.max(0, usage?.completionTokens || 0);
+  const totalTokens = Math.max(
+    0,
+    usage?.totalTokens || promptTokens + completionTokens,
+  );
+  return { promptTokens, completionTokens, totalTokens };
+}
+
+function addTokenUsage(
+  left?: TokenUsage | null,
+  right?: TokenUsage | null,
+): TokenUsage {
+  const normalizedLeft = normalizeTokenUsage(left);
+  const normalizedRight = normalizeTokenUsage(right);
+  return {
+    promptTokens:
+      normalizedLeft.promptTokens + normalizedRight.promptTokens,
+    completionTokens:
+      normalizedLeft.completionTokens + normalizedRight.completionTokens,
+    totalTokens: normalizedLeft.totalTokens + normalizedRight.totalTokens,
+  };
+}
+
+function hasTokenUsage(usage?: TokenUsage | null) {
+  return normalizeTokenUsage(usage).totalTokens > 0;
+}
+
+function formatTokenCount(tokens: number) {
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}m`;
+  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}k`;
+  return String(Math.max(0, tokens));
+}
+
+function threadTitleTooltip(thread: AIChatThread) {
+  if (thread.totalTokens <= 0) return "Double-click to rename";
+  return `Double-click to rename. Tokens used: ${thread.totalTokens} total (${thread.promptTokens} prompt, ${thread.completionTokens} completion).`;
+}
+
 function openExternalUrl(url: string) {
   if (getWailsRuntime()?.BrowserOpenURL) {
     BrowserOpenURL(url);
@@ -1428,6 +1599,23 @@ function openExternalUrl(url: string) {
 
 function getWailsRuntime() {
   return (window as WailsWindow).runtime;
+}
+
+function currentShikiTheme() {
+  if (typeof document === "undefined") return "github-dark-high-contrast";
+  return document.documentElement.dataset.theme === "light"
+    ? "github-light"
+    : "github-dark-high-contrast";
+}
+
+function shikiTokenStyle(token: HighlightedSQLToken): CSSProperties {
+  const fontStyle = token.fontStyle ?? 0;
+  return {
+    color: token.color,
+    fontStyle: fontStyle & 1 ? "italic" : undefined,
+    fontWeight: fontStyle & 2 ? 700 : undefined,
+    textDecoration: fontStyle & 4 ? "underline" : undefined,
+  };
 }
 
 function buildConversationHistory(messages: ChatMessage[]) {
@@ -1572,11 +1760,13 @@ function uniqueTables(tables: TableSummary[]) {
 function clarificationResponse(
   answer: string,
   assumptions: string[] = [],
+  tokenUsage: TokenUsage = zeroTokenUsage(),
 ): AIGenerateResponse {
   return {
     answer,
     sql: "",
     destructiveRisk: false,
     assumptions,
+    tokenUsage: normalizeTokenUsage(tokenUsage),
   };
 }

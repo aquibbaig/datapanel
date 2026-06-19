@@ -24,6 +24,7 @@ export interface AIPlanResponse {
     reason: string;
   }>;
   assumptions: string[];
+  tokenUsage: ai.TokenUsage;
 }
 export type SaveAICredentialRequest = ai.SaveCredentialRequest;
 export type AIChatThread = appdata.AIChatThread;
