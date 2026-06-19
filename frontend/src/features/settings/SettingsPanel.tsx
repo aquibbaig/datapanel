@@ -27,12 +27,11 @@ export function SettingsPanel({ settings, onUpdate }: Props) {
     return <p className="text-sm text-muted">Loading settings...</p>;
   }
 
-  async function saveSettings() {
-    if (!draft || !dirty) return;
+  async function saveDraft(nextDraft: AppSettings) {
     setSaving(true);
     setSaveError("");
     try {
-      await onUpdate(draft);
+      await onUpdate(nextDraft);
     } catch (error) {
       setSaveError(
         error instanceof Error ? error.message : "Could not save settings",
@@ -40,6 +39,18 @@ export function SettingsPanel({ settings, onUpdate }: Props) {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function saveSettings() {
+    if (!draft || !dirty) return;
+    await saveDraft(draft);
+  }
+
+  function updateTelemetryEnabled(telemetryEnabled: boolean) {
+    if (!draft) return;
+    const nextDraft = { ...draft, telemetryEnabled };
+    setDraft(nextDraft);
+    void saveDraft(nextDraft);
   }
 
   return (
@@ -116,6 +127,23 @@ export function SettingsPanel({ settings, onUpdate }: Props) {
               }
             />
             <span>Refresh metadata after connect</span>
+          </label>
+          <label className="grid grid-cols-[18px_minmax(0,1fr)] items-start gap-2 text-sm text-zinc-300">
+            <input
+              className="mt-0.5"
+              type="checkbox"
+              checked={draft.telemetryEnabled}
+              disabled={saving}
+              onChange={(event) =>
+                updateTelemetryEnabled(event.target.checked)
+              }
+            />
+            <span className="grid gap-1">
+              <span>Share anonymous diagnostics</span>
+              <span className="text-xs leading-5 text-muted">
+                Sends install counts and crash reports without database content.
+              </span>
+            </span>
           </label>
           <div className="grid gap-2">
             <span className="text-xs text-muted">Cursor style</span>

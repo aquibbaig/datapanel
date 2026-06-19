@@ -116,7 +116,11 @@ export type QueryResult = Omit<query.QueryResult, "convertValues">;
 export type QueryHistoryItem = query.QueryHistoryItem;
 export type SQLAnalysis = query.SQLAnalysis;
 
-export type AppSettings = settings.AppSettings;
+export interface AppSettings extends settings.AppSettings {
+  telemetryEnabled: boolean;
+  telemetryInstallId: string;
+  telemetryFirstLaunchReportedAt: string;
+}
 export type ReleaseState = updater.ReleaseState;
 export type UpdateCheckResult = updater.UpdateCheckResult;
 export type InstallUpdateRequest = updater.InstallUpdateRequest;

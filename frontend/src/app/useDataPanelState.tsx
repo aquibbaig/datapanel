@@ -4,6 +4,12 @@ import { AlertTriangle, Check, Download, ExternalLink, Info, Loader2, XCircle } 
 import { toast } from "sonner";
 import { BrowserOpenURL } from "../../wailsjs/runtime/runtime";
 import { aiCredentialService, appDataService, connectionService, queryService, schemaService, settingsService, updateService } from "../lib/backend";
+import {
+  configureTelemetry,
+  shouldReportTelemetryFirstLaunch,
+  trackAppOpened,
+  trackTelemetryFirstLaunch,
+} from "../lib/telemetry";
 import type {
   AppSettings,
   ConnectionHealth,
@@ -58,6 +64,35 @@ const tableDetailsQueryKey = (connectionId: string, schema: string, table: strin
   ["tableDetails", connectionId, schema, table] as const;
 
 const maxBackgroundWorkspacePrefetches = 5;
+
+async function applyTelemetrySettings(
+  nextSettings: AppSettings,
+  options: { trackAppOpen: boolean },
+) {
+  await configureTelemetry(nextSettings);
+  let appliedSettings = nextSettings;
+
+  if (shouldReportTelemetryFirstLaunch(appliedSettings)) {
+    const eventQueued = await trackTelemetryFirstLaunch(appliedSettings);
+    if (eventQueued) {
+      try {
+        appliedSettings = await settingsService.update({
+          ...appliedSettings,
+          telemetryFirstLaunchReportedAt: new Date().toISOString(),
+        });
+        await configureTelemetry(appliedSettings);
+      } catch (error) {
+        console.warn("Could not mark telemetry first launch as reported", error);
+      }
+    }
+  }
+
+  if (options.trackAppOpen) {
+    await trackAppOpened(appliedSettings);
+  }
+
+  return appliedSettings;
+}
 
 export function useDataPanelState() {
   const queryClient = useQueryClient();
@@ -237,10 +272,15 @@ export function useDataPanelState() {
   useEffect(() => {
     void Promise.all([
       loadProfiles(),
-      settingsService.get().then((nextSettings) => {
-        setSettings(nextSettings);
-        return nextSettings;
-      }),
+      settingsService
+        .get()
+        .then((nextSettings) =>
+          applyTelemetrySettings(nextSettings, { trackAppOpen: true }),
+        )
+        .then((nextSettings) => {
+          setSettings(nextSettings);
+          return nextSettings;
+        }),
       aiCredentialService.list().catch((error: unknown) => {
         console.warn("AI credential warmup failed", error);
       }),
@@ -795,7 +835,10 @@ export function useDataPanelState() {
 
   const updateSettings = useCallback(async (nextSettings: AppSettings) => {
     const saved = await settingsService.update(nextSettings);
-    setSettings(saved);
+    const appliedSettings = await applyTelemetrySettings(saved, {
+      trackAppOpen: false,
+    });
+    setSettings(appliedSettings);
     setStatus({ tone: "success", text: "Settings updated" });
     notify("success", "Settings updated");
   }, []);

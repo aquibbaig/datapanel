@@ -66,7 +66,10 @@ const defaultSettings: AppSettings = {
   inspectorWidth: 360,
   autoRefreshMetadata: true,
   chatResponsePrompt: "",
-  cursorMode: "default"
+  cursorMode: "default",
+  telemetryEnabled: false,
+  telemetryInstallId: "",
+  telemetryFirstLaunchReportedAt: "",
 };
 
 const mockAICredentials: Record<string, AICredentialStatus> = {};
@@ -637,15 +640,40 @@ function normalizeQueryResult(result: QueryResult): QueryResult {
   };
 }
 
+function normalizeSettings(settings: AppSettings): AppSettings {
+  return {
+    ...defaultSettings,
+    ...settings,
+    telemetryEnabled: Boolean(settings.telemetryEnabled),
+    telemetryInstallId: settings.telemetryInstallId || "",
+    telemetryFirstLaunchReportedAt:
+      settings.telemetryFirstLaunchReportedAt || "",
+  };
+}
+
 export const settingsService = {
   async get(): Promise<AppSettings> {
-    if (!isWailsRuntime()) return defaultSettings;
-    return SettingsBindings.GetSettings();
+    if (!isWailsRuntime()) return normalizeSettings(defaultSettings);
+    return normalizeSettings((await SettingsBindings.GetSettings()) as AppSettings);
   },
   async update(input: AppSettings): Promise<AppSettings> {
-    if (!isWailsRuntime()) Object.assign(defaultSettings, input);
-    if (!isWailsRuntime()) return defaultSettings;
-    return SettingsBindings.UpdateSettings(input);
+    if (!isWailsRuntime()) {
+      const telemetryInstallId =
+        defaultSettings.telemetryInstallId ||
+        (input.telemetryEnabled ? crypto.randomUUID() : "");
+      const telemetryFirstLaunchReportedAt =
+        defaultSettings.telemetryFirstLaunchReportedAt ||
+        input.telemetryFirstLaunchReportedAt ||
+        "";
+      Object.assign(defaultSettings, input, {
+        telemetryInstallId,
+        telemetryFirstLaunchReportedAt,
+      });
+      return normalizeSettings(defaultSettings);
+    }
+    return normalizeSettings(
+      (await SettingsBindings.UpdateSettings(input)) as AppSettings,
+    );
   }
 };
 

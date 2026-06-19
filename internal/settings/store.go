@@ -86,5 +86,7 @@ func normalize(settings AppSettings) AppSettings {
 		settings.CursorMode = defaults.CursorMode
 	}
 	settings.ChatResponsePrompt = strings.TrimSpace(settings.ChatResponsePrompt)
+	settings.TelemetryInstallID = strings.TrimSpace(settings.TelemetryInstallID)
+	settings.TelemetryFirstLaunchReportedAt = strings.TrimSpace(settings.TelemetryFirstLaunchReportedAt)
 	return settings
 }

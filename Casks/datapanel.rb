@@ -10,6 +10,68 @@ cask "datapanel" do
 
   app "DataPanel.app"
 
+  uninstall_postflight do
+    begin
+      require "json"
+      require "net/http"
+      require "time"
+      require "uri"
+
+      settings_path = File.expand_path("~/Library/Application Support/datapanel/settings.json")
+      settings = File.file?(settings_path) ? JSON.parse(File.read(settings_path)) : {}
+      telemetry_install_id = settings["telemetryInstallId"].to_s.strip
+
+      if settings["telemetryEnabled"] == true && !telemetry_install_id.empty?
+        posthog_token = "phc_wGsopSafUkaBkGME8r5u8k5TAc5VSjXsb3pf3oxqm4cd"
+        posthog_host = "https://us.i.posthog.com"
+        uri = URI("#{posthog_host}/i/v0/e/")
+        request = Net::HTTP::Post.new(uri)
+        request["Content-Type"] = "application/json"
+        request.body = {
+          api_key: posthog_token,
+          event: "datapanel_uninstalled",
+          distinct_id: telemetry_install_id,
+          properties: {
+            "$process_person_profile": false,
+            app: "datapanel",
+            telemetry_install_id: telemetry_install_id,
+            source: "homebrew_cask_uninstall",
+          },
+          timestamp: Time.now.utc.iso8601,
+        }.to_json
+
+        http_client = Net::HTTP.new(uri.host, uri.port)
+        http_client.use_ssl = uri.scheme == "https"
+        http_client.open_timeout = 2
+        http_client.read_timeout = 2
+        http_client.start do |http|
+          http.request(request)
+        end
+      end
+    rescue StandardError
+      nil
+    end
+
+    begin
+      require "uri"
+
+      issue_url = "https://github.com/aquibbaig/datapanel/issues/new?" + URI.encode_www_form(
+        title: "Uninstall feedback",
+        labels: "feedback",
+        body: <<~EOS,
+          I uninstalled DataPanel and wanted to share feedback.
+
+          What made you uninstall?
+
+          What would have made DataPanel worth keeping?
+        EOS
+      )
+      system_command "/usr/bin/open", args: [issue_url], must_succeed: false
+    rescue StandardError
+      nil
+    end
+  end
+
   caveats <<~EOS
     DataPanel is currently unsigned. If macOS blocks it on first launch, open
     System Settings > Privacy & Security and choose Open Anyway for DataPanel.
