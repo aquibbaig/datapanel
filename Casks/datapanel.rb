@@ -53,6 +53,14 @@ cask "datapanel" do
     end
 
     begin
+      require "fileutils"
+
+      FileUtils.rm_rf(File.expand_path("~/Library/Caches/datapanel/telemetry"))
+    rescue StandardError
+      nil
+    end
+
+    begin
       require "uri"
 
       issue_url = "https://github.com/aquibbaig/datapanel/issues/new?" + URI.encode_www_form(

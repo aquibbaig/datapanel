@@ -33,7 +33,7 @@ func main() {
 	}
 
 	settingsStore := settings.NewFileStore(paths.SettingsPath)
-	settingsService := settings.NewService(settingsStore)
+	settingsService := settings.NewService(settingsStore, paths.CacheDir)
 	appDataService, err := appdata.NewService(paths.AppDatabasePath)
 	if err != nil {
 		log.Fatal(err)

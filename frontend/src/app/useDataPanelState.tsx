@@ -6,7 +6,6 @@ import { BrowserOpenURL } from "../../wailsjs/runtime/runtime";
 import { aiCredentialService, appDataService, connectionService, queryService, schemaService, settingsService, updateService } from "../lib/backend";
 import {
   configureTelemetry,
-  shouldReportTelemetryFirstLaunch,
   trackAppOpened,
   trackTelemetryFirstLaunch,
 } from "../lib/telemetry";
@@ -72,15 +71,11 @@ async function applyTelemetrySettings(
   await configureTelemetry(nextSettings);
   let appliedSettings = nextSettings;
 
-  if (shouldReportTelemetryFirstLaunch(appliedSettings)) {
+  if (await settingsService.shouldReportTelemetryFirstLaunch()) {
     const eventQueued = await trackTelemetryFirstLaunch(appliedSettings);
     if (eventQueued) {
       try {
-        appliedSettings = await settingsService.update({
-          ...appliedSettings,
-          telemetryFirstLaunchReportedAt: new Date().toISOString(),
-        });
-        await configureTelemetry(appliedSettings);
+        await settingsService.markTelemetryFirstLaunchReported();
       } catch (error) {
         console.warn("Could not mark telemetry first launch as reported", error);
       }

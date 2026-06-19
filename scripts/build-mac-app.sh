@@ -37,7 +37,7 @@ origin_repo="$(printf '%s' "$origin_slug" | cut -d/ -f2)"
 github_owner="${DATAPANEL_GITHUB_OWNER:-${origin_owner:-aquibbaig}}"
 github_repo="${DATAPANEL_GITHUB_REPO:-${origin_repo:-datapanel}}"
 ldflags="-X datapanel/internal/updater.CurrentVersion=$release_version -X datapanel/internal/updater.CurrentReleaseHash=$release_hash -X datapanel/internal/updater.GitHubOwner=$github_owner -X datapanel/internal/updater.GitHubRepo=$github_repo"
-wails build -ldflags "$ldflags"
+wails build -clean -skipbindings -m -nosyncgomod -ldflags "$ldflags"
 
 if [[ ! -d "$APP_PATH" ]]; then
   echo "Build finished, but $APP_PATH was not found." >&2

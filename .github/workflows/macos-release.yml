@@ -15,18 +15,18 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "1.24.4"
           cache: true
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -36,7 +36,7 @@ jobs:
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 
-      - name: Build Datapanel.app
+      - name: Build DataPanel.app
         env:
           DATAPANEL_RELEASE_HASH: ${{ github.sha }}
           DATAPANEL_GITHUB_OWNER: ${{ github.repository_owner }}
@@ -49,17 +49,19 @@ jobs:
           set -euo pipefail
           mkdir -p build/dist
           short_sha="${GITHUB_SHA::7}"
-          zip_path="build/dist/Datapanel-macOS.zip"
-          ditto -c -k --keepParent build/bin/datapanel.app "$zip_path"
+          app_path="build/bin/DataPanel.app"
+          zip_path="build/dist/DataPanel-macOS.zip"
+          test -d "$app_path"
+          ditto -c -k --keepParent "$app_path" "$zip_path"
           shasum -a 256 "$zip_path" > "${zip_path}.sha256"
           echo "zip_path=$zip_path" >> "$GITHUB_OUTPUT"
           echo "checksum_path=${zip_path}.sha256" >> "$GITHUB_OUTPUT"
           echo "tag=macos-${short_sha}" >> "$GITHUB_OUTPUT"
 
       - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: Datapanel-macOS
+          name: DataPanel-macOS
           path: |
             ${{ steps.package.outputs.zip_path }}
             ${{ steps.package.outputs.checksum_path }}
@@ -75,5 +77,5 @@ jobs:
           set -euo pipefail
           gh release create "$TAG_NAME" "$ZIP_PATH" "$CHECKSUM_PATH" \
             --target "$GITHUB_SHA" \
-            --title "Datapanel macOS ${GITHUB_SHA::7}" \
+            --title "DataPanel macOS ${GITHUB_SHA::7}" \
             --notes "Automated macOS app build from main at ${GITHUB_SHA}."

@@ -17,6 +17,7 @@ type PoolCloser interface {
 
 type Paths struct {
 	ConfigDir       string `json:"configDir"`
+	CacheDir        string `json:"cacheDir"`
 	AppDatabasePath string `json:"appDatabasePath"`
 	ConnectionsPath string `json:"connectionsPath"`
 	SettingsPath    string `json:"settingsPath"`
@@ -50,10 +51,16 @@ func NewPaths(appName string) (Paths, error) {
 	if err != nil {
 		return Paths{}, err
 	}
+	cacheRoot, err := os.UserCacheDir()
+	if err != nil {
+		return Paths{}, err
+	}
 
 	configDir := filepath.Join(configRoot, appName)
+	cacheDir := filepath.Join(cacheRoot, appName)
 	return Paths{
 		ConfigDir:       configDir,
+		CacheDir:        cacheDir,
 		AppDatabasePath: filepath.Join(configDir, "datapanel.sqlite3"),
 		ConnectionsPath: filepath.Join(configDir, "connections.json"),
 		SettingsPath:    filepath.Join(configDir, "settings.json"),

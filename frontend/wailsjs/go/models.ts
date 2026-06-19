@@ -1119,6 +1119,8 @@ export namespace settings {
 	    autoRefreshMetadata: boolean;
 	    chatResponsePrompt: string;
 	    cursorMode: string;
+	    telemetryEnabled: boolean;
+	    telemetryInstallId: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppSettings(source);
@@ -1135,6 +1137,8 @@ export namespace settings {
 	        this.autoRefreshMetadata = source["autoRefreshMetadata"];
 	        this.chatResponsePrompt = source["chatResponsePrompt"];
 	        this.cursorMode = source["cursorMode"];
+	        this.telemetryEnabled = source["telemetryEnabled"];
+	        this.telemetryInstallId = source["telemetryInstallId"];
 	    }
 	}
 

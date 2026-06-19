@@ -4,4 +4,8 @@ import {settings} from '../models';
 
 export function GetSettings():Promise<settings.AppSettings>;
 
+export function MarkTelemetryFirstLaunchReported():Promise<void>;
+
+export function ShouldReportTelemetryFirstLaunch():Promise<boolean>;
+
 export function UpdateSettings(arg1:settings.AppSettings):Promise<settings.AppSettings>;

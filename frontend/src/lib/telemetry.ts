@@ -74,13 +74,6 @@ async function enabledPostHogClient() {
   }
 }
 
-export function shouldReportTelemetryFirstLaunch(settings: AppSettings | null) {
-  return (
-    isTelemetryEnabled(settings) &&
-    settings.telemetryFirstLaunchReportedAt.trim() === ""
-  );
-}
-
 export async function trackTelemetryFirstLaunch(settings = telemetrySettings) {
   return capture("datapanel_install_first_launch", baseProperties(settings));
 }

@@ -69,8 +69,8 @@ const defaultSettings: AppSettings = {
   cursorMode: "default",
   telemetryEnabled: false,
   telemetryInstallId: "",
-  telemetryFirstLaunchReportedAt: "",
 };
+const mockTelemetryFirstLaunchReportedIds = new Set<string>();
 
 const mockAICredentials: Record<string, AICredentialStatus> = {};
 const mockAIThreads: AIChatThread[] = [];
@@ -646,8 +646,6 @@ function normalizeSettings(settings: AppSettings): AppSettings {
     ...settings,
     telemetryEnabled: Boolean(settings.telemetryEnabled),
     telemetryInstallId: settings.telemetryInstallId || "",
-    telemetryFirstLaunchReportedAt:
-      settings.telemetryFirstLaunchReportedAt || "",
   };
 }
 
@@ -661,20 +659,36 @@ export const settingsService = {
       const telemetryInstallId =
         defaultSettings.telemetryInstallId ||
         (input.telemetryEnabled ? crypto.randomUUID() : "");
-      const telemetryFirstLaunchReportedAt =
-        defaultSettings.telemetryFirstLaunchReportedAt ||
-        input.telemetryFirstLaunchReportedAt ||
-        "";
       Object.assign(defaultSettings, input, {
         telemetryInstallId,
-        telemetryFirstLaunchReportedAt,
       });
       return normalizeSettings(defaultSettings);
     }
     return normalizeSettings(
       (await SettingsBindings.UpdateSettings(input)) as AppSettings,
     );
-  }
+  },
+  async shouldReportTelemetryFirstLaunch(): Promise<boolean> {
+    if (!isWailsRuntime()) {
+      const settings = normalizeSettings(defaultSettings);
+      return Boolean(
+        settings.telemetryEnabled &&
+          settings.telemetryInstallId &&
+          !mockTelemetryFirstLaunchReportedIds.has(settings.telemetryInstallId),
+      );
+    }
+    return SettingsBindings.ShouldReportTelemetryFirstLaunch();
+  },
+  async markTelemetryFirstLaunchReported(): Promise<void> {
+    if (!isWailsRuntime()) {
+      const settings = normalizeSettings(defaultSettings);
+      if (settings.telemetryInstallId) {
+        mockTelemetryFirstLaunchReportedIds.add(settings.telemetryInstallId);
+      }
+      return;
+    }
+    return SettingsBindings.MarkTelemetryFirstLaunchReported();
+  },
 };
 
 export const updateService = {

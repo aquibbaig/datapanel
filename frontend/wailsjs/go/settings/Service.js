@@ -6,6 +6,14 @@ export function GetSettings() {
   return window['go']['settings']['Service']['GetSettings']();
 }
 
+export function MarkTelemetryFirstLaunchReported() {
+  return window['go']['settings']['Service']['MarkTelemetryFirstLaunchReported']();
+}
+
+export function ShouldReportTelemetryFirstLaunch() {
+  return window['go']['settings']['Service']['ShouldReportTelemetryFirstLaunch']();
+}
+
 export function UpdateSettings(arg1) {
   return window['go']['settings']['Service']['UpdateSettings'](arg1);
 }

@@ -119,7 +119,6 @@ export type SQLAnalysis = query.SQLAnalysis;
 export interface AppSettings extends settings.AppSettings {
   telemetryEnabled: boolean;
   telemetryInstallId: string;
-  telemetryFirstLaunchReportedAt: string;
 }
 export type ReleaseState = updater.ReleaseState;
 export type UpdateCheckResult = updater.UpdateCheckResult;
