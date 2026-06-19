@@ -1,5 +1,5 @@
-import { Database, PlugZap, Save } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
+import { Database, Link2, PlugZap, Save } from "lucide-react";
+import { ClipboardEvent, FormEvent, useEffect, useId, useState } from "react";
 import { Button } from "../../components/ui/Button";
 import type { ConnectionProfile, SaveConnectionRequest, TestConnectionRequest } from "../../lib/types";
 
@@ -30,6 +30,17 @@ const defaultPorts: Record<string, number> = {
   mysql: 3306
 };
 
+interface ParsedConnectionURL {
+  driver: string;
+  host: string;
+  port: number;
+  database: string;
+  username: string;
+  password: string;
+  sslMode: string;
+  name: string;
+}
+
 export function ConnectionPanel({
   busy,
   initialProfile,
@@ -39,8 +50,13 @@ export function ConnectionPanel({
   onDone,
 }: Props) {
   const [form, setForm] = useState<SaveConnectionRequest>(emptyForm);
+  const [connectionUrl, setConnectionUrl] = useState("");
+  const [urlError, setUrlError] = useState("");
+  const connectionUrlInputId = useId();
 
   useEffect(() => {
+    setConnectionUrl("");
+    setUrlError("");
     if (!initialProfile) {
       setForm(emptyForm);
       return;
@@ -70,6 +86,37 @@ export function ConnectionPanel({
     });
   }
 
+  function importConnectionURL(value: string) {
+    const parsed = parseConnectionURL(value);
+    if (!parsed) {
+      setUrlError("Enter a Postgres or MySQL connection URL.");
+      return false;
+    }
+
+    setForm((current) => ({
+      ...current,
+      driver: parsed.driver,
+      name: parsed.name,
+      host: parsed.host,
+      port: parsed.port,
+      database: parsed.database,
+      username: parsed.username,
+      password: parsed.password,
+      sslMode: parsed.sslMode,
+    }));
+    setUrlError("");
+    return true;
+  }
+
+  function handleConnectionURLPaste(event: ClipboardEvent<HTMLInputElement>) {
+    const pastedURL = event.clipboardData.getData("text").trim();
+    if (!pastedURL) return;
+
+    event.preventDefault();
+    setConnectionUrl(pastedURL);
+    importConnectionURL(pastedURL);
+  }
+
   async function handleSave(event: FormEvent) {
     event.preventDefault();
     const profile = await onSave(form);
@@ -84,6 +131,39 @@ export function ConnectionPanel({
   return (
     <form className="flex flex-col gap-4" onSubmit={handleSave}>
       <div className="grid gap-2">
+        {!initialProfile ? (
+          <div className="grid gap-2">
+            <label className="text-xs text-muted" htmlFor={connectionUrlInputId}>
+              Import from URL
+            </label>
+            <div className="relative min-w-0">
+              <Link2
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500"
+                size={14}
+              />
+              <input
+                id={connectionUrlInputId}
+                className="pl-8"
+                value={connectionUrl}
+                onChange={(event) => {
+                  setConnectionUrl(event.target.value);
+                  setUrlError("");
+                }}
+                onPaste={handleConnectionURLPaste}
+                placeholder="postgresql://user:password@localhost:5432/app"
+              />
+            </div>
+            {urlError ? (
+              <p className="text-xs leading-5 text-red-300">{urlError}</p>
+            ) : null}
+            <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 py-1">
+              <span className="h-px bg-line" />
+              <span className="text-[10px] font-semibold uppercase text-muted">OR</span>
+              <span className="h-px bg-line" />
+            </div>
+          </div>
+        ) : null}
+
         <label className="grid gap-2">
           <span className="text-xs text-muted">Driver</span>
           <select value={form.driver || "postgres"} onChange={(event) => updateDriver(event.target.value)}>
@@ -158,4 +238,85 @@ export function ConnectionPanel({
       </div>
     </form>
   );
+}
+
+function parseConnectionURL(value: string): ParsedConnectionURL | null {
+  const normalized = normalizeConnectionURL(value);
+  if (!normalized) return null;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(normalized);
+  } catch {
+    return null;
+  }
+
+  const driver = parseDriver(parsed.protocol);
+  if (!driver || !parsed.hostname) return null;
+
+  const port = parsed.port ? Number(parsed.port) : defaultPorts[driver];
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) return null;
+
+  const database = decodeURIComponent(parsed.pathname.replace(/^\/+/, "").split("/")[0] || "");
+  const username = decodeURIComponent(parsed.username);
+  if (!database || !username) return null;
+
+  return {
+    driver,
+    host: parsed.hostname,
+    port,
+    database,
+    username,
+    password: decodeURIComponent(parsed.password),
+    sslMode: parseSSLMode(parsed.searchParams),
+    name: defaultConnectionName(driver, parsed.hostname, database),
+  };
+}
+
+function normalizeConnectionURL(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (trimmed.toLowerCase().startsWith("jdbc:postgresql://")) {
+    return `postgresql://${trimmed.slice("jdbc:postgresql://".length)}`;
+  }
+  if (trimmed.toLowerCase().startsWith("jdbc:mysql://")) {
+    return `mysql://${trimmed.slice("jdbc:mysql://".length)}`;
+  }
+  return trimmed;
+}
+
+function parseDriver(protocol: string) {
+  switch (protocol.replace(":", "").toLowerCase()) {
+    case "postgres":
+    case "postgresql":
+      return "postgres";
+    case "mysql":
+      return "mysql";
+    default:
+      return "";
+  }
+}
+
+function parseSSLMode(params: URLSearchParams) {
+  const rawMode =
+    params.get("sslmode") ||
+    params.get("ssl-mode") ||
+    params.get("sslMode") ||
+    params.get("ssl");
+  const mode = (rawMode || "").toLowerCase();
+  if (["disable", "allow", "prefer", "require", "verify-ca", "verify-full"].includes(mode)) {
+    return mode;
+  }
+  if (mode === "true" || mode === "1" || mode === "required") {
+    return "require";
+  }
+  if (mode === "false" || mode === "0") {
+    return "disable";
+  }
+  return "prefer";
+}
+
+function defaultConnectionName(driver: string, host: string, database: string) {
+  const label = driver === "mysql" ? "MySQL" : "Postgres";
+  return `${label} ${database} @ ${host}`;
 }
