@@ -1,0 +1,27 @@
+#!/bin/bash
+clear
+
+RED="\033[0;31m"
+GREEN="\033[0;32m"
+YELLOW="\033[0;33m"
+NC="\033[0m"
+
+parentPath=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+appPath=$(find "$parentPath" -maxdepth 1 -name '*.app' -print -quit)
+appName=${appPath##*/}
+appDIR="/Applications/${appName}"
+
+echo -e "『${appName} 提示已损坏，无法打开/来自身份不明的开发者』修复工具"
+echo ""
+
+if [ ! -d "$appDIR" ]; then
+  echo -e "执行结果：${RED}您还未安装 ${appName}，请先拖入 Applications。${NC}"
+else
+  echo -e "${YELLOW}请输入开机密码，输入完成后按下回车键（输入过程中密码不可见）。${NC}"
+  sudo xattr -rd com.apple.quarantine "$appDIR"
+  sudo xattr -rc "$appDIR"
+  sudo codesign --sign - --force --deep "$appDIR"
+  echo -e "执行结果：${GREEN}修复成功！${NC}您现在可以正常运行 ${appName}。"
+fi
+
+echo "本窗口可以关闭啦。"

@@ -1,0 +1,138 @@
+name: Windows Release
+run-name: ${{ github.event.inputs.tag || github.ref_name }}
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Version tag
+        required: true
+        default: v0.1.0
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release Windows App
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - windows/amd64
+          - windows/arm64
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Normalise platform tag
+        id: normalise_platform
+        shell: bash
+        run: |
+          tag=$(echo "${{ matrix.platform }}" | sed -e 's/\//_/g' -e 's/amd64/x64/g')
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Normalise platform name
+        id: normalise_platform_name
+        shell: bash
+        run: |
+          pname=$(echo "${{ matrix.platform }}" | sed 's/windows\///g')
+          echo "pname=$pname" >> "$GITHUB_OUTPUT"
+
+      - name: Normalise version tag
+        id: normalise_version
+        shell: bash
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          version=$(echo "$tag" | sed -e 's/^v//g')
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.24.4"
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Windows prerequisites
+        shell: powershell
+        run: choco install nsis jq -y
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Install Wails
+        shell: bash
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+
+      - name: Set release version
+        shell: bash
+        env:
+          DATAPANEL_VERSION: ${{ steps.normalise_version.outputs.version }}
+        run: |
+          jq '.info.productVersion = env.DATAPANEL_VERSION' wails.json > tmp.json
+          mv tmp.json wails.json
+          jq '.version = env.DATAPANEL_VERSION' frontend/package.json > frontend/tmp.json
+          mv frontend/tmp.json frontend/package.json
+
+      - name: Build Windows portable app
+        shell: bash
+        run: |
+          release_hash="${GITHUB_SHA}"
+          release_version="${{ steps.normalise_version.outputs.version }}"
+          github_repo="${GITHUB_REPOSITORY#*/}"
+          ldflags="-X datapanel/internal/updater.CurrentVersion=$release_version -X datapanel/internal/updater.CurrentReleaseHash=$release_hash -X datapanel/internal/updater.GitHubOwner=$GITHUB_REPOSITORY_OWNER -X datapanel/internal/updater.GitHubRepo=$github_repo"
+          CGO_ENABLED=1 wails build -clean -skipbindings -nosyncgomod -platform "${{ matrix.platform }}" -webview2 embed -ldflags "$ldflags"
+
+      - name: Compress portable binary
+        working-directory: ./build/bin
+        shell: powershell
+        run: Compress-Archive -Path "DataPanel.exe" -DestinationPath "DataPanel_Portable_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.zip"
+
+      - name: Upload release asset (Portable)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.normalise_version.outputs.tag }}
+          files: ./build/bin/DataPanel_Portable_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.zip
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Windows NSIS installer
+        shell: bash
+        run: |
+          export PATH="/c/Program Files (x86)/NSIS:$PATH"
+          release_hash="${GITHUB_SHA}"
+          release_version="${{ steps.normalise_version.outputs.version }}"
+          github_repo="${GITHUB_REPOSITORY#*/}"
+          ldflags="-X datapanel/internal/updater.CurrentVersion=$release_version -X datapanel/internal/updater.CurrentReleaseHash=$release_hash -X datapanel/internal/updater.GitHubOwner=$GITHUB_REPOSITORY_OWNER -X datapanel/internal/updater.GitHubRepo=$github_repo"
+          CGO_ENABLED=1 wails build -clean -skipbindings -nosyncgomod -platform "${{ matrix.platform }}" -nsis -webview2 embed -ldflags "$ldflags"
+
+      - name: Rename installer
+        working-directory: ./build/bin
+        shell: powershell
+        run: |
+          $installer = Get-ChildItem -Filter "*installer.exe" | Select-Object -First 1
+          if (-not $installer) {
+            throw "No NSIS installer was produced."
+          }
+          Rename-Item -Path $installer.FullName -NewName "DataPanel_Setup_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.exe"
+
+      - name: Upload release asset (Installer)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.normalise_version.outputs.tag }}
+          files: ./build/bin/DataPanel_Setup_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.exe
+          token: ${{ secrets.GITHUB_TOKEN }}

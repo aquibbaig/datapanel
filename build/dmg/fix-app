@@ -1,0 +1,27 @@
+#!/bin/bash
+clear
+
+RED="\033[0;31m"
+GREEN="\033[0;32m"
+YELLOW="\033[0;33m"
+NC="\033[0m"
+
+parentPath=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+appPath=$(find "$parentPath" -maxdepth 1 -name '*.app' -print -quit)
+appName=${appPath##*/}
+appDIR="/Applications/${appName}"
+
+echo -e "This tool fixes situations where \"${appName}\" is damaged or cannot be opened."
+echo ""
+
+if [ ! -d "$appDIR" ]; then
+  echo -e "Execution result: ${RED}${appName} is not installed yet. Please drag it to Applications first.${NC}"
+else
+  echo -e "${YELLOW}Please enter your login password, then press enter. The password is invisible while typing.${NC}"
+  sudo xattr -rd com.apple.quarantine "$appDIR"
+  sudo xattr -rc "$appDIR"
+  sudo codesign --sign - --force --deep "$appDIR"
+  echo -e "Execution result: ${GREEN}Fixed.${NC} ${appName} should now open."
+fi
+
+echo "You can close this window now."

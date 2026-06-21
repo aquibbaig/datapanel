@@ -1,9 +1,18 @@
 name: macOS Release
+run-name: ${{ github.event.inputs.tag || github.ref_name }}
 
 on:
   push:
     branches:
       - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Version tag
+        required: true
+        default: v0.1.0
 
 permissions:
   contents: write
@@ -16,6 +25,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -36,27 +47,74 @@ jobs:
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 
+      - name: Normalise version tag
+        id: normalise_version
+        run: |
+          set -euo pipefail
+          input_tag="${{ github.event.inputs.tag }}"
+          if [ -n "$input_tag" ]; then
+            tag="$input_tag"
+            version="${tag#v}"
+          elif [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            tag="$GITHUB_REF_NAME"
+            version="${tag#v}"
+          else
+            tag="macos-${GITHUB_SHA::7}"
+            version="0.1.0"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Build DataPanel.app
         env:
+          DATAPANEL_VERSION: ${{ steps.normalise_version.outputs.version }}
           DATAPANEL_RELEASE_HASH: ${{ github.sha }}
           DATAPANEL_GITHUB_OWNER: ${{ github.repository_owner }}
           DATAPANEL_GITHUB_REPO: ${{ github.event.repository.name }}
         run: ./scripts/build-mac-app.sh
+
+      - name: Checkout create-dmg
+        uses: actions/checkout@v7
+        with:
+          repository: create-dmg/create-dmg
+          path: build/create-dmg
+          ref: master
 
       - name: Package app bundle
         id: package
         run: |
           set -euo pipefail
           mkdir -p build/dist
-          short_sha="${GITHUB_SHA::7}"
           app_path="build/bin/DataPanel.app"
           zip_path="build/dist/DataPanel-macOS.zip"
+          dmg_path="build/dist/DataPanel-macOS.dmg"
           test -d "$app_path"
           ditto -c -k --keepParent "$app_path" "$zip_path"
           shasum -a 256 "$zip_path" > "${zip_path}.sha256"
+          volicon_args=()
+          if [ -f "$app_path/Contents/Resources/iconfile.icns" ]; then
+            volicon_args=(--volicon "$app_path/Contents/Resources/iconfile.icns")
+          fi
+          build/create-dmg/create-dmg \
+            --no-internet-enable \
+            --volname "DataPanel" \
+            "${volicon_args[@]}" \
+            --text-size 12 \
+            --window-pos 400 400 \
+            --window-size 660 450 \
+            --icon-size 80 \
+            --icon "DataPanel.app" 180 180 \
+            --hide-extension "DataPanel.app" \
+            --app-drop-link 480 180 \
+            --add-file "Repair" "build/dmg/fix-app" 230 300 \
+            --add-file "损坏修复" "build/dmg/fix-app_zh" 430 300 \
+            "$dmg_path" \
+            "build/bin"
+          shasum -a 256 "$dmg_path" > "${dmg_path}.sha256"
           echo "zip_path=$zip_path" >> "$GITHUB_OUTPUT"
           echo "checksum_path=${zip_path}.sha256" >> "$GITHUB_OUTPUT"
-          echo "tag=macos-${short_sha}" >> "$GITHUB_OUTPUT"
+          echo "dmg_path=$dmg_path" >> "$GITHUB_OUTPUT"
+          echo "dmg_checksum_path=${dmg_path}.sha256" >> "$GITHUB_OUTPUT"
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7
@@ -65,17 +123,24 @@ jobs:
           path: |
             ${{ steps.package.outputs.zip_path }}
             ${{ steps.package.outputs.checksum_path }}
+            ${{ steps.package.outputs.dmg_path }}
+            ${{ steps.package.outputs.dmg_checksum_path }}
           if-no-files-found: error
 
-      - name: Create GitHub release
+      - name: Upload release assets
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ steps.package.outputs.tag }}
+          TAG_NAME: ${{ steps.normalise_version.outputs.tag }}
           ZIP_PATH: ${{ steps.package.outputs.zip_path }}
           CHECKSUM_PATH: ${{ steps.package.outputs.checksum_path }}
+          DMG_PATH: ${{ steps.package.outputs.dmg_path }}
+          DMG_CHECKSUM_PATH: ${{ steps.package.outputs.dmg_checksum_path }}
         run: |
           set -euo pipefail
-          gh release create "$TAG_NAME" "$ZIP_PATH" "$CHECKSUM_PATH" \
-            --target "$GITHUB_SHA" \
-            --title "DataPanel macOS ${GITHUB_SHA::7}" \
-            --notes "Automated macOS app build from main at ${GITHUB_SHA}."
+          if ! gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release create "$TAG_NAME" \
+              --target "$GITHUB_SHA" \
+              --title "DataPanel $TAG_NAME" \
+              --notes "Automated DataPanel desktop build for $TAG_NAME."
+          fi
+          gh release upload "$TAG_NAME" "$ZIP_PATH" "$CHECKSUM_PATH" "$DMG_PATH" "$DMG_CHECKSUM_PATH" --clobber

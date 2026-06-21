@@ -1,0 +1,142 @@
+name: Linux WebKit 4.1 Release
+run-name: ${{ github.event.inputs.tag || github.ref_name }}
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Version tag
+        required: true
+        default: v0.1.0
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release Linux App (WebKit 4.1)
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - linux/amd64
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Normalise platform tag
+        id: normalise_platform
+        shell: bash
+        run: |
+          tag=$(echo "${{ matrix.platform }}" | sed -e 's/\//_/g')
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Normalise version tag
+        id: normalise_version
+        shell: bash
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          version=$(echo "$tag" | sed -e 's/^v//g')
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.24.4"
+          cache: true
+
+      - name: Install Wails
+        shell: bash
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+
+      - name: Install Ubuntu prerequisites
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq libgtk-3-dev libwebkit2gtk-4.1-dev libfuse-dev libfuse2
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Set release version
+        shell: bash
+        env:
+          DATAPANEL_VERSION: ${{ steps.normalise_version.outputs.version }}
+        run: |
+          jq '.info.productVersion = env.DATAPANEL_VERSION' wails.json > tmp.json
+          mv tmp.json wails.json
+          jq '.version = env.DATAPANEL_VERSION' frontend/package.json > frontend/tmp.json
+          mv frontend/tmp.json frontend/package.json
+
+      - name: Build Wails app for Linux
+        shell: bash
+        run: |
+          release_hash="${GITHUB_SHA}"
+          release_version="${{ steps.normalise_version.outputs.version }}"
+          github_repo="${GITHUB_REPOSITORY#*/}"
+          ldflags="-X datapanel/internal/updater.CurrentVersion=$release_version -X datapanel/internal/updater.CurrentReleaseHash=$release_hash -X datapanel/internal/updater.GitHubOwner=$GITHUB_REPOSITORY_OWNER -X datapanel/internal/updater.GitHubRepo=$github_repo"
+          CGO_ENABLED=1 wails build -clean -skipbindings -nosyncgomod -platform "${{ matrix.platform }}" -tags webkit2_41 -ldflags "$ldflags" -o datapanel
+
+      - name: Set up control template
+        shell: bash
+        run: |
+          package_root="build/linux/datapanel_0.0.0_amd64"
+          content=$(cat "$package_root/DEBIAN/control")
+          maintainer=$(jq -r '.author.name' wails.json)
+          email=$(jq -r '.author.email' wails.json)
+          if [ -n "$email" ]; then
+            maintainer="$maintainer <$email>"
+          fi
+          content=$(echo "$content" | sed -e "s/{{.Info.ProductVersion}}/$(jq -r '.info.productVersion' wails.json)/g")
+          content=$(echo "$content" | sed -e "s/{{.Maintainer}}/$maintainer/g")
+          content=$(echo "$content" | sed -e "s/{{.Info.Comments}}/$(jq -r '.info.comments' wails.json)/g")
+          content=$(echo "$content" | sed -e "s/{{.libwebkit2gtk.PackageName}}/libwebkit2gtk-4.1-0/g")
+          echo "$content" > "$package_root/DEBIAN/control"
+
+      - name: Set up desktop template
+        shell: bash
+        run: |
+          desktop_path="build/linux/datapanel_0.0.0_amd64/usr/share/applications/datapanel.desktop"
+          content=$(cat "$desktop_path")
+          content=$(echo "$content" | sed -e "s/{{.Info.ProductName}}/$(jq -r '.info.productName' wails.json)/g")
+          content=$(echo "$content" | sed -e "s/{{.Info.Comments}}/$(jq -r '.info.comments' wails.json)/g")
+          echo "$content" > "$desktop_path"
+
+      - name: Package deb file
+        shell: bash
+        run: |
+          package_root="build/linux/datapanel_0.0.0_amd64"
+          mkdir -p "$package_root/usr/local/bin"
+          mkdir -p "$package_root/usr/share/icons/hicolor/512x512/apps"
+          cp frontend/assets/logo-mark.png "$package_root/usr/share/icons/hicolor/512x512/apps/datapanel.png"
+          mv build/bin/datapanel "$package_root/usr/local/bin/"
+          cd build/linux
+          mv datapanel_0.0.0_amd64 "datapanel_${{ steps.normalise_version.outputs.version }}_amd64"
+          dpkg-deb --build -Zxz "datapanel_${{ steps.normalise_version.outputs.version }}_amd64"
+
+      - name: Rename deb
+        working-directory: ./build/linux
+        shell: bash
+        run: mv "datapanel_${{ steps.normalise_version.outputs.version }}_amd64.deb" "datapanel_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}_webkit2_41.deb"
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.normalise_version.outputs.tag }}
+          files: ./build/linux/datapanel_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}_webkit2_41.deb
+          token: ${{ secrets.GITHUB_TOKEN }}

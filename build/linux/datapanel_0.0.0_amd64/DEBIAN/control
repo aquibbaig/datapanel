@@ -1,0 +1,9 @@
+Package: datapanel
+Version: {{.Info.ProductVersion}}
+Section: database
+Priority: optional
+Architecture: amd64
+Depends: {{.libwebkit2gtk.PackageName}}
+Maintainer: {{.Maintainer}}
+Homepage: https://github.com/aquibbaig/datapanel
+Description: {{.Info.Comments}}

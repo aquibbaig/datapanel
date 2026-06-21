@@ -42,19 +42,36 @@ frontend/dist/*
 !frontend/dist/.gitkeep
 
 # Wails
+build/*
+!build/
 build/bin/
 build/dist/
-build/darwin/*
+!build/appicon.png
+!build/dmg/
+build/dmg/*
+!build/dmg/fix-app
+!build/dmg/fix-app_zh
 !build/darwin/
+build/darwin/*
 !build/darwin/Info.plist
 !build/darwin/Info.dev.plist
-build/windows/
-build/linux/
-!build/appicon.png
+!build/windows/
+build/windows/*
+!build/windows/info.json
+!build/windows/installer/
+!build/windows/installer/project.nsi
+!build/linux/
+build/linux/*
+!build/linux/datapanel_0.0.0_amd64/
+!build/linux/datapanel_0.0.0_amd64/DEBIAN/
+!build/linux/datapanel_0.0.0_amd64/DEBIAN/control
+!build/linux/datapanel_0.0.0_amd64/usr/
+!build/linux/datapanel_0.0.0_amd64/usr/share/
+!build/linux/datapanel_0.0.0_amd64/usr/share/applications/
+!build/linux/datapanel_0.0.0_amd64/usr/share/applications/datapanel.desktop
 frontend/wailsjs/runtime/package-lock.json
 
 # Local app data
 *.db
 *.sqlite
 *.sqlite3
-build/

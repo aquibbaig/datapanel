@@ -11,10 +11,11 @@
     "email": ""
   },
   "info": {
+    "companyName": "DataPanel",
     "productName": "DataPanel",
     "productVersion": "0.1.0",
     "copyright": "Copyright 2026 DataPanel. All rights reserved.",
-    "comments": "DataPanel is a desktop database workspace for querying, inspecting, and editing data.",
+    "comments": "A modern AI assisted database client.",
     "protocols": [
       {
         "scheme": "datapanel",
