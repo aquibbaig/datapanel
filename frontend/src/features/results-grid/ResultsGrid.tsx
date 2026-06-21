@@ -345,7 +345,10 @@ export function ResultsGrid({
               <tr>
                 {visibleColumns.map((column) => (
                   <th
-                    className="sticky top-0 bg-surface-800 px-3 py-2 text-left font-medium text-zinc-300"
+                    className={cn(
+                      "sticky top-0 bg-surface-800 py-2 text-left font-medium text-zinc-300",
+                      editable ? "px-5" : "px-3",
+                    )}
                     key={column.name}
                   >
                     <span className="flex min-w-0 items-center gap-1.5">
