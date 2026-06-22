@@ -1,4 +1,11 @@
-import { useEffect, useRef, type HTMLAttributes, type ReactNode } from "react";
+import { ArrowDown } from "lucide-react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type HTMLAttributes,
+  type ReactNode,
+} from "react";
 import { cn } from "../../lib/cn";
 
 export function Conversation({
@@ -23,19 +30,51 @@ export function ConversationContent({
   className?: string;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const pinnedToBottomRef = useRef(true);
+  const [showScrollButton, setShowScrollButton] = useState(false);
 
-  useEffect(() => {
+  function scrollToBottom(behavior: ScrollBehavior = "smooth") {
     const element = scrollRef.current;
     if (!element) return;
-    element.scrollTop = element.scrollHeight;
+    element.scrollTo({ top: element.scrollHeight, behavior });
+  }
+
+  function updatePinnedState() {
+    const element = scrollRef.current;
+    if (!element) return;
+    const distanceFromBottom =
+      element.scrollHeight - element.scrollTop - element.clientHeight;
+    const pinned = distanceFromBottom < 72;
+    pinnedToBottomRef.current = pinned;
+    setShowScrollButton(!pinned);
+  }
+
+  useEffect(() => {
+    if (pinnedToBottomRef.current) {
+      scrollToBottom("auto");
+    } else {
+      updatePinnedState();
+    }
   }, [children]);
 
   return (
-    <div
-      className={cn("min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-3", className)}
-      ref={scrollRef}
-    >
-      <div className="flex min-w-0 flex-col gap-5">{children}</div>
+    <div className="relative min-h-0 flex-1">
+      <div
+        className={cn("h-full min-h-0 overflow-y-auto overflow-x-hidden p-3", className)}
+        onScroll={updatePinnedState}
+        ref={scrollRef}
+      >
+        <div className="flex min-w-0 flex-col gap-5">{children}</div>
+      </div>
+      {showScrollButton ? (
+        <ConversationScrollButton
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 shadow-xl"
+          onClick={() => scrollToBottom()}
+        >
+          <ArrowDown size={12} />
+          Scroll to bottom
+        </ConversationScrollButton>
+      ) : null}
     </div>
   );
 }
@@ -61,7 +100,7 @@ export function ConversationScrollButton({
   return (
     <button
       className={cn(
-        "self-center rounded-full border border-line bg-surface-800 px-3 py-1 text-xs text-muted transition hover:text-zinc-200",
+        "inline-flex items-center gap-1.5 self-center rounded-full border border-line bg-surface-800 px-3 py-1 text-xs text-muted transition hover:text-zinc-200",
         className,
       )}
       type="button"

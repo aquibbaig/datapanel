@@ -7,7 +7,10 @@ import {
   XCircle,
 } from "lucide-react";
 import { Button } from "../components/ui/Button";
-import { AiAssistantPanel } from "../features/ai-assistant/AiAssistantPanel";
+import {
+  AiAssistantPanel,
+  type AISQLAssistantRequest,
+} from "../features/ai-assistant/AiAssistantPanel";
 import { cn } from "../lib/cn";
 import type {
   ConnectionProfile,
@@ -23,6 +26,7 @@ export type RightPanel = "ai" | "history" | "panels";
 export function RightActionPanel({
   panel,
   activeProfile,
+  assistantRequest,
   queryHistory,
   schemas,
   settings,
@@ -35,6 +39,7 @@ export function RightActionPanel({
 }: {
   panel: RightPanel;
   activeProfile: ConnectionProfile | null;
+  assistantRequest?: AISQLAssistantRequest | null;
   settings: AppSettings | null;
   queryHistory: QueryHistoryEntry[];
   schemas: SchemaSummary[];
@@ -73,6 +78,7 @@ export function RightActionPanel({
         {panel === "ai" ? (
           <AiAssistantPanel
             activeProfile={activeProfile}
+            assistantRequest={assistantRequest}
             schemas={schemas}
             settings={settings}
             tableDetails={tableDetails}

@@ -1,4 +1,4 @@
-import { AlertTriangle, FileQuestion, Play, Plus, Square, X } from "lucide-react";
+import { AlertTriangle, Bot, GitBranch, Play, Plus, Square, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../components/ui/Button";
 import { queryService } from "../../lib/backend";
@@ -27,6 +27,7 @@ interface Props {
   onChange(sql: string): void;
   onRun(sql: string, confirmDestructive?: boolean): Promise<unknown>;
   onExplain(sql: string): Promise<unknown>;
+  onExplainWithAI(sql: string): void;
   onCancel(): Promise<void>;
   onCreateWorkspace(): void;
   onDeleteWorkspace(workspace: QueryWorkspace): void;
@@ -59,6 +60,7 @@ export function QueryEditor({
   onChange,
   onRun,
   onExplain,
+  onExplainWithAI,
   onCancel,
   onCreateWorkspace,
   onDeleteWorkspace,
@@ -69,6 +71,10 @@ export function QueryEditor({
 }: Props) {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [pendingSQL, setPendingSQL] = useState("");
+  const [selectedSQL, setSelectedSQL] = useState("");
+  const selectedActionSQL = isRunnableSQLSelection(selectedSQL)
+    ? selectedSQL.trim()
+    : "";
 
   async function run(confirmDestructive = false, sqlOverride?: string) {
     const sqlToRun = (sqlOverride || (confirmDestructive ? pendingSQL : "") || value).trim();
@@ -88,12 +94,21 @@ export function QueryEditor({
   }
 
   async function explain() {
-    const sqlToExplain = value.trim();
+    const sqlToExplain = selectedActionSQL;
     if (!sqlToExplain) return;
 
     setWarnings([]);
     setPendingSQL("");
     await onExplain(sqlToExplain);
+  }
+
+  function explainQueryWithAI() {
+    const sqlToExplain = selectedActionSQL;
+    if (!sqlToExplain) return;
+
+    setWarnings([]);
+    setPendingSQL("");
+    onExplainWithAI(sqlToExplain);
   }
 
   return (
@@ -131,6 +146,7 @@ export function QueryEditor({
           value={value}
           onChange={onChange}
           onRun={(selectedSQL) => void run(false, selectedSQL)}
+          onSelectedSQLChange={setSelectedSQL}
         />
       </div>
 
@@ -152,8 +168,28 @@ export function QueryEditor({
       ) : null}
 
       <div className="flex justify-end gap-2 border-t border-line p-2">
-        <Button disabled={!activeConnectionId || busy} onClick={() => void explain()}>
-          <FileQuestion size={14} />
+        <Button
+          disabled={!activeConnectionId || busy || !selectedActionSQL}
+          onClick={() => void explain()}
+          title={
+            selectedActionSQL
+              ? "Run database EXPLAIN for the selected SQL"
+              : "Select a SQL statement to inspect its plan"
+          }
+        >
+          <GitBranch size={14} />
+          Plan
+        </Button>
+        <Button
+          disabled={busy || !selectedActionSQL}
+          onClick={explainQueryWithAI}
+          title={
+            selectedActionSQL
+              ? "Ask AI to explain the selected SQL"
+              : "Select a SQL statement to explain"
+          }
+        >
+          <Bot size={14} />
           Explain
         </Button>
         <Button variant="primary" disabled={!activeConnectionId || busy} onClick={() => void run(false)}>
@@ -259,4 +295,30 @@ function QueryWorkspaceTabs({
       </button>
     </div>
   );
+}
+
+function isRunnableSQLSelection(sql: string) {
+  const normalized = stripLeadingSQLComments(sql).trim().toLowerCase();
+  if (!normalized) return false;
+
+  return /^(select|with|insert|update|delete|merge|explain|show|describe|desc|create|alter|drop|truncate|call|begin|commit|rollback)\b/.test(
+    normalized,
+  );
+}
+
+function stripLeadingSQLComments(sql: string) {
+  let remaining = sql.trimStart();
+
+  while (remaining.startsWith("--") || remaining.startsWith("/*")) {
+    if (remaining.startsWith("--")) {
+      const nextLine = remaining.indexOf("\n");
+      remaining = nextLine >= 0 ? remaining.slice(nextLine + 1).trimStart() : "";
+      continue;
+    }
+
+    const blockEnd = remaining.indexOf("*/");
+    remaining = blockEnd >= 0 ? remaining.slice(blockEnd + 2).trimStart() : "";
+  }
+
+  return remaining;
 }

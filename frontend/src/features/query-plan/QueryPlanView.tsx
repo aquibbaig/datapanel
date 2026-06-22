@@ -1,9 +1,10 @@
 import {
   AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
   Database,
   Filter,
   GitBranch,
-  Info,
   X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -46,6 +47,7 @@ interface ParsedPlan {
 export function QueryPlanView({ driver, result }: Props) {
   const plan = useMemo(() => parseQueryPlan(result, driver), [driver, result]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [explanationOpen, setExplanationOpen] = useState(true);
   const selectedStep = selectedId ? findStep(plan.rootSteps, selectedId) : null;
 
   if (!result) {
@@ -83,7 +85,14 @@ export function QueryPlanView({ driver, result }: Props) {
   }
 
   return (
-    <section className="grid min-h-0 grid-cols-[minmax(0,1fr)_320px] overflow-hidden bg-surface-900">
+    <section
+      className={cn(
+        "grid min-h-0 overflow-hidden bg-surface-900",
+        explanationOpen
+          ? "grid-cols-[minmax(0,1fr)_320px]"
+          : "grid-cols-[minmax(0,1fr)_40px]",
+      )}
+    >
       <div className="min-h-0 overflow-auto p-4">
         <div className="mb-4 flex min-w-max items-center gap-2 text-xs text-muted">
           <span className="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface-850 px-2 py-1 text-zinc-300">
@@ -110,31 +119,51 @@ export function QueryPlanView({ driver, result }: Props) {
         </div>
       </div>
 
-      <aside className="min-h-0 border-l border-line bg-surface-950 p-4">
-        <div className="mb-3 flex items-center gap-2 text-sm font-medium text-zinc-100">
-          <Info size={14} />
-          Explanation
-          {selectedStep ? (
+      {explanationOpen ? (
+        <aside className="min-h-0 border-l border-line bg-surface-950 p-4">
+          <div className="mb-3 flex items-center gap-2 text-sm font-medium text-zinc-100">
             <button
-              className="ml-auto grid h-6 w-6 place-items-center rounded-md text-zinc-500 hover:bg-surface-700 hover:text-zinc-200"
-              onClick={() => setSelectedId(null)}
-              title="Clear selected node"
+              className="grid h-6 w-6 place-items-center rounded-md text-zinc-500 transition hover:bg-surface-700 hover:text-zinc-200"
+              onClick={() => setExplanationOpen(false)}
+              title="Close explanation panel"
               type="button"
             >
-              <X size={13} />
+              <ChevronRight size={15} />
             </button>
-          ) : null}
-        </div>
-        {selectedStep ? (
-          <PlanStepDetails step={selectedStep} />
-        ) : (
-          <div className="space-y-3 text-xs leading-5 text-zinc-300">
-            {plan.explanation.map((item) => (
-              <p key={item}>{item}</p>
-            ))}
+            Explanation
+            {selectedStep ? (
+              <button
+                className="ml-auto grid h-6 w-6 place-items-center rounded-md text-zinc-500 hover:bg-surface-700 hover:text-zinc-200"
+                onClick={() => setSelectedId(null)}
+                title="Clear selected node"
+                type="button"
+              >
+                <X size={13} />
+              </button>
+            ) : null}
           </div>
-        )}
-      </aside>
+          {selectedStep ? (
+            <PlanStepDetails step={selectedStep} />
+          ) : (
+            <div className="space-y-3 text-xs leading-5 text-zinc-300">
+              {plan.explanation.map((item) => (
+                <p key={item}>{item}</p>
+              ))}
+            </div>
+          )}
+        </aside>
+      ) : (
+        <aside className="flex min-h-0 items-start justify-center border-l border-line bg-surface-950 py-3">
+          <button
+            className="grid h-7 w-7 place-items-center rounded-md text-zinc-500 transition hover:bg-surface-700 hover:text-zinc-200"
+            onClick={() => setExplanationOpen(true)}
+            title="Open explanation panel"
+            type="button"
+          >
+            <ChevronLeft size={15} />
+          </button>
+        </aside>
+      )}
     </section>
   );
 }
@@ -207,7 +236,7 @@ function PlanNode({
                     <Filter size={10} />
                     {condition.label}
                   </span>
-                  <span className="font-mono text-[11px] leading-4">
+                  <span className="block max-w-full break-words font-mono text-[11px] leading-4 [overflow-wrap:anywhere]">
                     {condition.value}
                   </span>
                 </div>
@@ -326,7 +355,7 @@ function DetailRow({
     <div className="border-t border-line pt-2">
       <dt className="text-[11px] uppercase text-muted">{label}</dt>
       <dd>
-        <div className="break-words font-mono text-[11px] text-zinc-200">
+        <div className="break-words font-mono text-[11px] text-zinc-200 [overflow-wrap:anywhere]">
           {value}
         </div>
         {description ? (
@@ -343,7 +372,9 @@ function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 rounded-md bg-surface-900 px-2 py-1">
       <p className="text-[11px] text-muted">{label}</p>
-      <p className="truncate font-mono text-[11px] text-zinc-200">{value}</p>
+      <p className="break-words font-mono text-[11px] leading-4 text-zinc-200 [overflow-wrap:anywhere]">
+        {value}
+      </p>
     </div>
   );
 }

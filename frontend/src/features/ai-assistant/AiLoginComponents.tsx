@@ -3,12 +3,12 @@ import { Button } from "../../components/ui/Button";
 import { cn } from "../../lib/cn";
 
 export type ProviderId = "openai" | "anthropic" | "custom";
-export type ProviderStatus = "idle" | "pending" | "connected" | "error";
+export type ProviderStatus = "idle" | "connected" | "error";
 
 export interface ProviderLogin {
   id: ProviderId;
   name: string;
-  authUrl: string;
+  keyUrl: string;
   modelHint: string;
   description: string;
 }
@@ -26,47 +26,53 @@ export function ProviderButton({
   onClick(): void;
   onConnect(): void;
 }) {
+  const connected = status === "connected";
+
   return (
-    <button
+    <div
       className={cn(
         "flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-ui border p-2 text-left transition",
         active
           ? "border-zinc-500 bg-surface-800"
           : "border-line bg-surface-850 hover:border-zinc-600",
       )}
-      onClick={onClick}
-      type="button"
     >
-      <ProviderMark name={provider.name} />
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 truncate text-sm font-medium text-zinc-100">
-            {provider.name}
-          </span>
-          <span className="max-w-[88px] shrink truncate rounded border border-line bg-surface-900 px-1.5 py-0.5 text-[10px] uppercase text-muted">
-            {provider.modelHint}
-          </span>
+      <button
+        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        onClick={onClick}
+        type="button"
+      >
+        <ProviderMark name={provider.name} />
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="min-w-0 truncate text-sm font-medium text-zinc-100">
+              {provider.name}
+            </span>
+            <span className="max-w-[88px] shrink truncate rounded border border-line bg-surface-900 px-1.5 py-0.5 text-[10px] uppercase text-muted">
+              {provider.modelHint}
+            </span>
+          </div>
+          <p className="mt-0.5 line-clamp-2 break-words text-xs leading-4 text-muted">
+            {provider.description}
+          </p>
         </div>
-        <p className="mt-0.5 line-clamp-2 break-words text-xs leading-4 text-muted">
-          {provider.description}
-        </p>
-      </div>
-      {status === "connected" ? (
+      </button>
+      {connected ? (
         <CheckCircle2 size={14} className="shrink-0 text-emerald-300" />
       ) : null}
       <Button
-        aria-label={`Connect ${provider.name}`}
-        className="shrink-0"
-        size="icon"
-        title={`Connect ${provider.name}`}
+        aria-label={`Get ${provider.name} API key`}
+        className="h-8 shrink-0 px-2.5 text-xs"
+        title={`Get ${provider.name} API key`}
         onClick={(event) => {
           event.stopPropagation();
           onConnect();
         }}
       >
         <ExternalLink size={14} />
+        Get key
       </Button>
-    </button>
+    </div>
   );
 }
 

@@ -30,6 +30,7 @@ interface Props {
   value: string;
   onChange(value: string): void;
   onRun(sql: string): void;
+  onSelectedSQLChange(sql: string): void;
 }
 
 const sqlKeywords = [
@@ -86,6 +87,7 @@ export function SqlCodeEditor({
   value,
   onChange,
   onRun,
+  onSelectedSQLChange,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -93,8 +95,10 @@ export function SqlCodeEditor({
   const initialValueRef = useRef(value);
   const onChangeRef = useRef(onChange);
   const onRunRef = useRef(onRun);
+  const onSelectedSQLChangeRef = useRef(onSelectedSQLChange);
   onChangeRef.current = onChange;
   onRunRef.current = onRun;
+  onSelectedSQLChangeRef.current = onSelectedSQLChange;
 
   const schemaCompletions = useMemo(
     () => buildSchemaCompletions(activeProfile, schemas, tablesBySchema),
@@ -148,6 +152,9 @@ export function SqlCodeEditor({
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           onChangeRef.current(update.state.doc.toString());
+        }
+        if (update.docChanged || update.selectionSet) {
+          onSelectedSQLChangeRef.current(explicitlySelectedSQL(update.view));
         }
       }),
       EditorView.theme({
@@ -363,6 +370,12 @@ function selectedSQL(view: EditorView) {
   const selection = view.state.selection.main;
   const selectedText = view.state.sliceDoc(selection.from, selection.to).trim();
   return selectedText || view.state.doc.toString().trim();
+}
+
+function explicitlySelectedSQL(view: EditorView) {
+  const selection = view.state.selection.main;
+  if (selection.empty) return "";
+  return view.state.sliceDoc(selection.from, selection.to).trim();
 }
 
 function quotePostgres(identifier: string) {

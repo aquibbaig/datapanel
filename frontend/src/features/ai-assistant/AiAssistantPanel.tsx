@@ -2,24 +2,22 @@ import {
   ArrowBigDownDash,
   ArrowUp,
   ChevronDown,
-  Clipboard,
   CogIcon,
   Copy,
   Database,
   ExternalLink,
-  FileQuestion,
   KeyRound,
   Loader2,
   MessageSquare,
   PlayCircle,
   Plus,
-  ShieldCheck,
   Trash2,
   X,
 } from "lucide-react";
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -63,6 +61,7 @@ import {
 
 interface Props {
   activeProfile: ConnectionProfile | null;
+  assistantRequest?: AISQLAssistantRequest | null;
   schemas: SchemaSummary[];
   tablesBySchema: Record<string, TableSummary[]>;
   tableDetails: TableDetails | null;
@@ -70,6 +69,13 @@ interface Props {
   onExecuteSQL(sql: string): Promise<unknown>;
   onEnsureSchemaFresh?(): Promise<SchemaSnapshot>;
   onLoadSQL(sql: string): void;
+}
+
+export interface AISQLAssistantRequest {
+  id: string;
+  displayPrompt?: string;
+  prompt: string;
+  autoSubmit?: boolean;
 }
 
 interface SchemaSnapshot {
@@ -111,23 +117,16 @@ const providers: ProviderLogin[] = [
   {
     id: "openai",
     name: "OpenAI",
-    authUrl: "https://platform.openai.com/login",
+    keyUrl: "https://platform.openai.com/api-keys",
     modelHint: "GPT models",
-    description: "Connect OpenAI for schema-aware SQL chat and actions.",
+    description: "Use an OpenAI API key for SQL chat and actions.",
   },
   {
     id: "anthropic",
     name: "Anthropic",
-    authUrl: "https://console.anthropic.com/login",
+    keyUrl: "https://platform.claude.com/settings/keys",
     modelHint: "Claude models",
-    description: "Connect Anthropic for query drafting and execution review.",
-  },
-  {
-    id: "custom",
-    name: "OpenAI-compatible",
-    authUrl: "https://ai-sdk.dev/providers/openai-compatible-providers",
-    modelHint: "Compatible endpoint",
-    description: "Use a secure backend connector for self-hosted models.",
+    description: "Use an Anthropic API key for query drafting and review.",
   },
 ];
 
@@ -190,6 +189,7 @@ interface HighlightedSQLToken {
 
 export function AiAssistantPanel({
   activeProfile,
+  assistantRequest,
   schemas,
   settings,
   tablesBySchema,
@@ -200,11 +200,7 @@ export function AiAssistantPanel({
 }: Props) {
   const [selectedProvider, setSelectedProvider] =
     useState<ProviderId>("openai");
-  const [pendingProvider, setPendingProvider] = useState<ProviderId | null>(
-    null,
-  );
   const [callback, setCallback] = useState<AICallbackEvent | null>(null);
-  const [manualOpen, setManualOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
   const [credentialStatuses, setCredentialStatuses] = useState<
     Partial<Record<ProviderId, AICredentialStatus>>
@@ -222,6 +218,8 @@ export function AiAssistantPanel({
   const [selectedModel, setSelectedModel] = useState(
     defaultModelForProvider("openai"),
   );
+  const loadedAssistantRequestIdRef = useRef("");
+  const submittedAssistantRequestIdRef = useRef("");
 
   const selected =
     providers.find((provider) => provider.id === selectedProvider) ??
@@ -235,50 +233,9 @@ export function AiAssistantPanel({
     (provider) => credentialStatuses[provider.id]?.connected,
   );
   const chatReady = connectedProviders.length > 0;
-  const returnUrl = buildReturnUrl(selected.id);
   const schemaSummary = useMemo(
     () => summarizeSchema(activeProfile, schemas, tablesBySchema, tableDetails),
     [activeProfile, schemas, tableDetails, tablesBySchema],
-  );
-  const featureCards = useMemo(
-    () => [
-      {
-        icon: <ShieldCheck size={14} />,
-        title: "Credential Safety",
-        description:
-          "Provider keys, access tokens, auth codes, prompts, and schema payloads stay out of frontend storage.",
-      },
-      {
-        icon: <Database size={14} />,
-        title: "Schema Context",
-        description: `${schemaSummary.tables} ${schemaSummary.selectedTable}`,
-      },
-      {
-        icon: <MessageSquare size={14} />,
-        title: "AI Chat",
-        description:
-          "After login, the panel becomes a schema-aware SQL chat surface.",
-      },
-      {
-        icon: <Clipboard size={14} />,
-        title: "Copy Queries",
-        description:
-          "Generated SQL can be copied or loaded directly into the editor.",
-      },
-      {
-        icon: <PlayCircle size={14} />,
-        title: "Approved Execute",
-        description:
-          "Data-changing SQL stays behind review and explicit approval.",
-      },
-      {
-        icon: <FileQuestion size={14} />,
-        title: "Explain Plans",
-        description:
-          "Ask why a query is slow and inspect database-specific plans.",
-      },
-    ],
-    [schemaSummary],
   );
 
   useEffect(() => {
@@ -286,7 +243,6 @@ export function AiAssistantPanel({
 
     return EventsOn("datapanel:ai-callback", (event: AICallbackEvent) => {
       setCallback(event);
-      setPendingProvider(null);
       toast("Provider callback received", {
         description:
           event.status === "error"
@@ -332,6 +288,29 @@ export function AiAssistantPanel({
     setSelectedProvider(provider);
     setSelectedModel(normalizeModelForProvider(provider, activeThread.model));
   }, [activeThread?.id]);
+
+  useEffect(() => {
+    if (!assistantRequest) return;
+    if (loadedAssistantRequestIdRef.current !== assistantRequest.id) {
+      loadedAssistantRequestIdRef.current = assistantRequest.id;
+      setChatPrompt(assistantRequest.displayPrompt || assistantRequest.prompt);
+    }
+
+    if (
+      !assistantRequest.autoSubmit ||
+      !chatReady ||
+      chatBusy ||
+      submittedAssistantRequestIdRef.current === assistantRequest.id
+    ) {
+      return;
+    }
+
+    submittedAssistantRequestIdRef.current = assistantRequest.id;
+    void askAI({
+      displayPrompt: assistantRequest.displayPrompt,
+      prompt: assistantRequest.prompt,
+    });
+  }, [assistantRequest, chatBusy, chatReady]);
 
   async function loadCredentialStatuses() {
     try {
@@ -498,12 +477,11 @@ export function AiAssistantPanel({
     }
   }
 
-  function openProvider(provider: ProviderLogin) {
+  function openKeyPage(provider: ProviderLogin) {
     setSelectedProvider(provider.id);
-    setPendingProvider(provider.id);
-    openExternalUrl(provider.authUrl);
-    toast("Browser opened", {
-      description: `Finish ${provider.name} sign-in, then return to DataPanel.`,
+    openExternalUrl(provider.keyUrl);
+    toast(`${provider.name} key page opened`, {
+      description: "Create or copy an API key there, then paste it in DataPanel.",
     });
   }
 
@@ -521,7 +499,7 @@ export function AiAssistantPanel({
   async function saveCredential() {
     const token = credentialToken.trim();
     if (!token) {
-      toast("Paste a provider token", {
+      toast("Paste an API key", {
         description: "DataPanel stores it locally in your Mac Keychain.",
       });
       return;
@@ -541,8 +519,8 @@ export function AiAssistantPanel({
       setCredentialToken("");
       setCredentialLabel("");
       setManageOpen(false);
-      toast("AI credential stored", {
-        description: `${selected.name} token saved to ${status.storage}.`,
+      toast("API key stored", {
+        description: `${selected.name} key saved to ${status.storage}.`,
       });
     } catch (error) {
       toast("Could not store AI credential", {
@@ -568,8 +546,8 @@ export function AiAssistantPanel({
           storage: selectedCredential?.storage || "keychain",
         } as AICredentialStatus,
       }));
-      toast("AI credential removed", {
-        description: `${selected.name} token deleted from the credential store.`,
+      toast("API key removed", {
+        description: `${selected.name} key deleted from the credential store.`,
       });
     } catch (error) {
       toast("Could not remove AI credential", {
@@ -580,8 +558,17 @@ export function AiAssistantPanel({
     }
   }
 
-  async function askAI() {
-    const prompt = chatPrompt.trim();
+  async function askAI(
+    promptOverride?: string | { displayPrompt?: string; prompt: string },
+  ) {
+    const prompt =
+      typeof promptOverride === "object"
+        ? promptOverride.prompt.trim()
+        : (promptOverride ?? chatPrompt).trim();
+    const displayPrompt =
+      typeof promptOverride === "object"
+        ? (promptOverride.displayPrompt || promptOverride.prompt).trim()
+        : prompt;
     if (!prompt || !chatReady) return;
     const requestModel = normalizeModelForProvider(selected.id, selectedModel);
     if (requestModel !== selectedModel) {
@@ -602,7 +589,7 @@ export function AiAssistantPanel({
     const userMessage = {
       id: crypto.randomUUID(),
       role: "user" as const,
-      content: prompt,
+      content: displayPrompt,
       createdAt: new Date().toISOString(),
     };
     const conversation = buildConversationHistory(chatMessages);
@@ -790,7 +777,6 @@ export function AiAssistantPanel({
 
   const selectedStatus = getProviderStatus(
     selected.id,
-    pendingProvider,
     callback,
     credentialStatuses,
   );
@@ -973,70 +959,102 @@ export function AiAssistantPanel({
             </PromptInput>
           </section>
         ) : (
-          <section className="min-w-0 rounded-ui border border-line bg-surface-900 p-3">
-            {selectedStatus === "connected" || selectedStatus === "error" ? (
-              <div className="mb-2 flex justify-end">
-                <StatusBadge status={selectedStatus} />
+          <section className="min-w-0 rounded-ui border border-line bg-surface-900 p-4">
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase text-zinc-500">
+                  AI assistant setup
+                </p>
+                <h2 className="mt-1 text-lg font-semibold text-zinc-100">
+                  Paste your API token
+                </h2>
+                <p className="mt-1 max-w-[560px] text-sm leading-6 text-muted">
+                  Paste an API key so DataPanel can call the model from this
+                  app. Browser links only help you create or copy a key.
+                </p>
               </div>
-            ) : null}
-
-            <div className="grid min-w-0 gap-1.5">
-              {providers.map((provider) => (
-                <ProviderButton
-                  key={provider.id}
-                  active={provider.id === selected.id}
-                  provider={provider}
-                  status={getProviderStatus(
-                    provider.id,
-                    pendingProvider,
-                    callback,
-                    credentialStatuses,
-                  )}
-                  onClick={() => setSelectedProvider(provider.id)}
-                  onConnect={() => openProvider(provider)}
-                />
-              ))}
+              {selectedStatus === "connected" || selectedStatus === "error" ? (
+                <StatusBadge status={selectedStatus} />
+              ) : null}
             </div>
-            <Button className="mt-3 w-full" onClick={() => setManageOpen(true)}>
-              <KeyRound size={14} />
-              Manage credentials
-            </Button>
+
+            <div className="mt-4 grid min-w-0 gap-3">
+              <SetupStep
+                active
+                index={1}
+                title="Choose the key type"
+                description="OpenAI and Anthropic keys use different APIs and model lists."
+              >
+                <div className="grid min-w-0 gap-1.5">
+                  {providers.map((provider) => (
+                    <ProviderButton
+                      key={provider.id}
+                      active={provider.id === selected.id}
+                      provider={provider}
+                      status={getProviderStatus(
+                        provider.id,
+                        callback,
+                        credentialStatuses,
+                      )}
+                      onClick={() => setSelectedProvider(provider.id)}
+                      onConnect={() => openKeyPage(provider)}
+                    />
+                  ))}
+                </div>
+              </SetupStep>
+
+              <SetupStep
+                index={2}
+                title={`Paste the ${selected.name} API key`}
+                description="The key is stored locally in the Mac Keychain, not in frontend storage."
+              >
+                <div className="flex min-w-0 gap-2">
+                  <Button
+                    className="min-w-0 flex-1"
+                    onClick={() => setManageOpen(true)}
+                    variant="primary"
+                  >
+                    <KeyRound size={14} />
+                    Paste API key
+                  </Button>
+                  <Button
+                    className="shrink-0"
+                    onClick={() => openKeyPage(selected)}
+                  >
+                    <ExternalLink size={14} />
+                    Get key
+                  </Button>
+                </div>
+              </SetupStep>
+
+              <div className="rounded-ui border border-line bg-surface-850 p-3">
+                <div className="flex min-w-0 items-start gap-2">
+                  <Database className="mt-0.5 shrink-0 text-zinc-400" size={14} />
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-zinc-200">
+                      Schema context ready after connection
+                    </div>
+                    <p className="mt-1 break-words text-xs leading-5 text-muted">
+                      {schemaSummary.connection} {schemaSummary.tables}{" "}
+                      {schemaSummary.selectedTable}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </section>
         )}
 
-        {!chatReady ? (
-          <ManualLoginSection
-            manualOpen={manualOpen}
-            returnUrl={returnUrl}
-            selected={selected}
-            onCopyText={copyText}
-            onOpenProvider={openProvider}
-            onToggle={() => setManualOpen((current) => !current)}
-          />
-        ) : null}
-
-        {!chatReady ? (
-          <section className="grid min-w-0 grid-cols-[repeat(2,minmax(0,1fr))] gap-2">
-            {featureCards.map((feature) => (
-              <FeatureCard
-                key={feature.title}
-                description={feature.description}
-                icon={feature.icon}
-                title={feature.title}
-              />
-            ))}
-          </section>
-        ) : null}
       </div>
       <Modal
         open={manageOpen}
-        title="Manage credentials"
+        title="Manage API key"
         onClose={() => setManageOpen(false)}
       >
         <div className="grid min-w-0 gap-3">
           <p className="text-sm leading-6 text-muted">
-            Paste the provider token after login. DataPanel stores it locally in
-            your Mac Keychain and never shows the full value again.
+            Paste the {selected.name} API key. DataPanel stores it locally in
+            your Mac Keychain and never shows the full key again.
           </p>
 
           {selectedCredential?.connected ? (
@@ -1063,7 +1081,7 @@ export function AiAssistantPanel({
           <input
             autoComplete="off"
             className="min-w-0 rounded-ui border-line bg-surface-900 px-2 py-1.5 font-mono text-sm text-zinc-200 placeholder:text-zinc-600"
-            placeholder={`Paste ${selected.name} token`}
+            placeholder={`Paste ${selected.name} API key`}
             type="password"
             value={credentialToken}
             onChange={(event) => setCredentialToken(event.target.value)}
@@ -1220,81 +1238,36 @@ function ChatThreadBar({
   );
 }
 
-function ManualLoginSection({
-  manualOpen,
-  onCopyText,
-  onOpenProvider,
-  onToggle,
-  returnUrl,
-  selected,
-}: {
-  manualOpen: boolean;
-  onCopyText(label: string, value: string): Promise<void>;
-  onOpenProvider(provider: ProviderLogin): void;
-  onToggle(): void;
-  returnUrl: string;
-  selected: ProviderLogin;
-}) {
-  return (
-    <section className="min-w-0 rounded-ui border border-line bg-surface-900 p-3">
-      <button
-        aria-expanded={manualOpen}
-        className="flex w-full min-w-0 items-center justify-between gap-3 text-left"
-        onClick={onToggle}
-        type="button"
-      >
-        <span className="flex min-w-0 items-center gap-2 text-xs font-semibold uppercase text-zinc-400">
-          <ExternalLink size={12} />
-          Manual Login URLs
-        </span>
-        <ChevronDown
-          className={cn("text-zinc-500 transition", manualOpen && "rotate-180")}
-          size={14}
-        />
-      </button>
-      {manualOpen ? (
-        <div className="mt-3 grid min-w-0 gap-2">
-          <p className="text-xs leading-5 text-muted">
-            Use these when the packaged app cannot open your browser or when you
-            are configuring an OAuth app by hand.
-          </p>
-          <UrlRow
-            label={`${selected.name} login URL`}
-            help="Copy this into your browser if the connect button does not open."
-            value={selected.authUrl}
-            onCopy={() =>
-              void onCopyText("Provider login URL copied.", selected.authUrl)
-            }
-            onOpen={() => onOpenProvider(selected)}
-          />
-          <UrlRow
-            label="DataPanel return URL"
-            help="Copy this into the provider's allowed callback or redirect URLs."
-            value={returnUrl}
-            onCopy={() => void onCopyText("Return URL copied.", returnUrl)}
-          />
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-function FeatureCard({
+function SetupStep({
+  active,
+  children,
   description,
-  icon,
+  index,
   title,
 }: {
+  active?: boolean;
+  children: ReactNode;
   description: string;
-  icon: ReactNode;
+  index: number;
   title: string;
 }) {
   return (
-    <div className="min-h-[112px] min-w-0 overflow-hidden rounded-ui border border-line bg-surface-900 p-3">
-      <div className="mb-2 flex min-w-0 items-center gap-2 text-[11px] font-semibold uppercase text-zinc-300">
-        <span className="shrink-0 text-zinc-400">{icon}</span>
-        <span className="min-w-0 truncate">{title}</span>
+    <div className="grid min-w-0 grid-cols-[28px_minmax(0,1fr)] gap-3">
+      <div
+        className={cn(
+          "grid h-7 w-7 place-items-center rounded-full border text-xs font-semibold",
+          active
+            ? "border-accent bg-accent/20 text-zinc-100"
+            : "border-line bg-surface-850 text-zinc-400",
+        )}
+      >
+        {index}
       </div>
-      <p className="break-words text-xs leading-5 text-muted">{description}</p>
+      <div className="min-w-0">
+        <div className="text-sm font-semibold text-zinc-100">{title}</div>
+        <p className="mt-0.5 text-xs leading-5 text-muted">{description}</p>
+        <div className="mt-2 min-w-0">{children}</div>
+      </div>
     </div>
   );
 }
@@ -1332,9 +1305,7 @@ function AIResponseView({
               destructive.
             </div>
           ) : null}
-          <p className="whitespace-pre-wrap break-words text-[15px] leading-7 text-zinc-100">
-            {response.answer}
-          </p>
+          <MarkdownAnswer content={response.answer} />
           {response.assumptions?.length ? (
             <div className="border-t border-line/70 pt-3">
               <ul className="list-disc space-y-1 pl-4 text-xs leading-5 text-muted">
@@ -1374,6 +1345,184 @@ function AIResponseView({
       </div>
     </div>
   );
+}
+
+type MarkdownBlock =
+  | { type: "code"; content: string; language: string }
+  | { type: "heading"; level: number; text: string }
+  | { type: "ol"; items: string[] }
+  | { type: "paragraph"; text: string }
+  | { type: "ul"; items: string[] };
+
+function MarkdownAnswer({ content }: { content: string }) {
+  const blocks = useMemo(() => parseMarkdownBlocks(content), [content]);
+
+  return (
+    <div className="min-w-0 text-sm leading-6 text-zinc-100">
+      <div className="space-y-3">
+        {blocks.map((block, index) => {
+          if (block.type === "heading") {
+            const HeadingTag = block.level === 1 ? "h3" : "h4";
+            return (
+              <HeadingTag
+                className="text-sm font-semibold leading-6 text-zinc-100"
+                key={index}
+              >
+                {renderInlineMarkdown(block.text)}
+              </HeadingTag>
+            );
+          }
+          if (block.type === "ul") {
+            return (
+              <ul className="list-disc space-y-1 pl-4" key={index}>
+                {block.items.map((item, itemIndex) => (
+                  <li className="break-words [overflow-wrap:anywhere]" key={itemIndex}>
+                    {renderInlineMarkdown(item)}
+                  </li>
+                ))}
+              </ul>
+            );
+          }
+          if (block.type === "ol") {
+            return (
+              <ol className="list-decimal space-y-1 pl-4" key={index}>
+                {block.items.map((item, itemIndex) => (
+                  <li className="break-words [overflow-wrap:anywhere]" key={itemIndex}>
+                    {renderInlineMarkdown(item)}
+                  </li>
+                ))}
+              </ol>
+            );
+          }
+          if (block.type === "code") {
+            return (
+              <pre
+                className="whitespace-pre-wrap break-words font-mono text-[11px] leading-5 text-zinc-200 [overflow-wrap:anywhere]"
+                key={index}
+              >
+                <code>{block.content}</code>
+              </pre>
+            );
+          }
+          return (
+            <p
+              className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
+              key={index}
+            >
+              {renderInlineMarkdown(block.text)}
+            </p>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function parseMarkdownBlocks(content: string): MarkdownBlock[] {
+  const lines = content.split(/\r?\n/);
+  const blocks: MarkdownBlock[] = [];
+  let paragraph: string[] = [];
+
+  function flushParagraph() {
+    const text = paragraph.join("\n").trim();
+    if (text) blocks.push({ type: "paragraph", text });
+    paragraph = [];
+  }
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      flushParagraph();
+      continue;
+    }
+
+    const fence = trimmed.match(/^```([A-Za-z0-9_-]*)\s*$/);
+    if (fence) {
+      flushParagraph();
+      const codeLines: string[] = [];
+      index += 1;
+      while (index < lines.length && !lines[index].trim().startsWith("```")) {
+        codeLines.push(lines[index]);
+        index += 1;
+      }
+      blocks.push({
+        type: "code",
+        language: fence[1] || "",
+        content: codeLines.join("\n"),
+      });
+      continue;
+    }
+
+    const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      flushParagraph();
+      blocks.push({
+        type: "heading",
+        level: heading[1].length,
+        text: heading[2],
+      });
+      continue;
+    }
+
+    const unordered = trimmed.match(/^[-*]\s+(.+)$/);
+    if (unordered) {
+      flushParagraph();
+      const items = [unordered[1]];
+      while (index + 1 < lines.length) {
+        const next = lines[index + 1].trim().match(/^[-*]\s+(.+)$/);
+        if (!next) break;
+        items.push(next[1]);
+        index += 1;
+      }
+      blocks.push({ type: "ul", items });
+      continue;
+    }
+
+    const ordered = trimmed.match(/^\d+[.)]\s+(.+)$/);
+    if (ordered) {
+      flushParagraph();
+      const items = [ordered[1]];
+      while (index + 1 < lines.length) {
+        const next = lines[index + 1].trim().match(/^\d+[.)]\s+(.+)$/);
+        if (!next) break;
+        items.push(next[1]);
+        index += 1;
+      }
+      blocks.push({ type: "ol", items });
+      continue;
+    }
+
+    paragraph.push(line);
+  }
+
+  flushParagraph();
+  return blocks.length > 0 ? blocks : [{ type: "paragraph", text: content }];
+}
+
+function renderInlineMarkdown(text: string) {
+  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
+  return parts.map((part, index) => {
+    if (part.startsWith("`") && part.endsWith("`")) {
+      return (
+        <code
+          className="font-mono text-[12px] text-zinc-200"
+          key={index}
+        >
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return (
+        <strong className="font-semibold text-zinc-100" key={index}>
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    return part;
+  });
 }
 
 function SQLCodeBlock({
@@ -1482,55 +1631,8 @@ function ChatActionButton({
   );
 }
 
-function UrlRow({
-  label,
-  help,
-  value,
-  onCopy,
-  onOpen,
-}: {
-  label: string;
-  help: string;
-  value: string;
-  onCopy(): void;
-  onOpen?: () => void;
-}) {
-  return (
-    <div className="grid gap-1">
-      <label className="text-[11px] font-medium text-zinc-400">{label}</label>
-      <p className="text-[11px] leading-4 text-muted">{help}</p>
-      <div className="flex min-w-0 gap-1.5">
-        <input
-          className="min-w-0 flex-1 rounded-ui border-line bg-surface-850 px-2 py-1.5 font-mono text-[11px] text-zinc-300"
-          readOnly
-          value={value}
-        />
-        {onOpen ? (
-          <Button
-            aria-label="Open URL"
-            size="icon"
-            title="Open URL"
-            onClick={onOpen}
-          >
-            <ExternalLink size={14} />
-          </Button>
-        ) : null}
-        <Button
-          aria-label="Copy URL"
-          size="icon"
-          title="Copy URL"
-          onClick={onCopy}
-        >
-          <Copy size={14} />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 function getProviderStatus(
   provider: ProviderId,
-  pendingProvider: ProviderId | null,
   callback: AICallbackEvent | null,
   credentials: Partial<Record<ProviderId, AICredentialStatus>>,
 ) {
@@ -1538,7 +1640,6 @@ function getProviderStatus(
   if (callback?.provider === provider) {
     return callback.status === "error" ? "error" : "idle";
   }
-  if (pendingProvider === provider) return "pending";
   return "idle";
 }
 
@@ -1555,10 +1656,6 @@ function formatCredentialDate(value: string) {
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(value));
-}
-
-function buildReturnUrl(provider: ProviderId) {
-  return `datapanel://ai-callback?provider=${provider}&status=manual`;
 }
 
 function zeroTokenUsage(): TokenUsage {

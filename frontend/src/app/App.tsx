@@ -1,15 +1,15 @@
 import {
   Bot,
-  ChevronDown,
-  ChevronUp,
   Clock3,
   KeyRound,
+  Maximize2,
+  Minimize2,
   PanelRight,
   RefreshCw,
   Search,
   Settings,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { Toaster } from "sonner";
 import { EventsOn } from "../../wailsjs/runtime/runtime";
 import { AppSidebar } from "../components/AppSidebar";
@@ -35,6 +35,7 @@ import { SettingsPanel } from "../features/settings/SettingsPanel";
 import { appDataService } from "../lib/backend";
 import { cn } from "../lib/cn";
 import type { ConnectionProfile, TableDetails, TableSummary } from "../lib/types";
+import type { AISQLAssistantRequest } from "../features/ai-assistant/AiAssistantPanel";
 import { CommandPalette } from "./CommandPalette";
 import { RightActionPanel, type RightPanel } from "./RightActionPanel";
 import { useDataPanelState } from "./useDataPanelState";
@@ -125,10 +126,15 @@ export function App() {
   const [commandOpen, setCommandOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rightPanel, setRightPanel] = useState<RightPanel | null>(null);
+  const [assistantRequest, setAssistantRequest] =
+    useState<AISQLAssistantRequest | null>(null);
   const [bottomView, setBottomView] = useState<"results" | "plan">(
     "results",
   );
   const [bottomPanelExpanded, setBottomPanelExpanded] = useState(true);
+  const [bottomPanelHeight, setBottomPanelHeight] = useState<number | null>(
+    null,
+  );
   const [queryWorkspaces, setQueryWorkspaces] = useState<QueryWorkspace[]>([
     initialQueryWorkspace,
   ]);
@@ -150,6 +156,8 @@ export function App() {
   const previousConnectionIdRef = useRef<string | null>(null);
   const queryDraftHydratedConnectionIdRef = useRef<string | null>(null);
   const queryDraftLoadSequenceRef = useRef(0);
+  const workspaceGridRef = useRef<HTMLDivElement | null>(null);
+  const bottomPanelRef = useRef<HTMLElement | null>(null);
   const activeQueryWorkspaceIdRef = useRef(activeQueryWorkspaceId);
   const queryWorkspacesRef = useRef(queryWorkspaces);
   const activeQueryWorkspace =
@@ -446,6 +454,19 @@ export function App() {
     return result;
   }
 
+  function explainSelectedSQLWithAI(sql: string) {
+    const selectedSQL = sql.trim();
+    if (!selectedSQL) return;
+
+    setAssistantRequest({
+      id: crypto.randomUUID(),
+      displayPrompt: buildSQLExplanationDisplayPrompt(selectedSQL),
+      prompt: buildSQLExplanationPrompt(selectedSQL, model.activeProfile?.driver),
+      autoSubmit: true,
+    });
+    openRightPanel("ai");
+  }
+
   function loadHistoryQuery(sql: string) {
     setSqlDraft(sql);
     setRightPanel(null);
@@ -516,6 +537,47 @@ export function App() {
 
     setQueryWorkspaces(remaining);
     setActiveQueryWorkspaceId(nextActiveId);
+  }
+
+  function startBottomPanelResize(event: ReactMouseEvent<HTMLDivElement>) {
+    if (!bottomPanelExpanded) return;
+    const container = workspaceGridRef.current;
+    if (!container) return;
+
+    event.preventDefault();
+    const containerHeight = container.getBoundingClientRect().height;
+    const startY = event.clientY;
+    const startHeight =
+      bottomPanelRef.current?.getBoundingClientRect().height ||
+      bottomPanelHeight ||
+      Math.round(containerHeight * 0.52);
+    const minBottomHeight = 120;
+    const minEditorHeight = 180;
+    const maxBottomHeight = Math.max(
+      minBottomHeight,
+      containerHeight - minEditorHeight - 6,
+    );
+
+    function handleMouseMove(moveEvent: MouseEvent) {
+      const nextHeight = clamp(
+        startHeight + startY - moveEvent.clientY,
+        minBottomHeight,
+        maxBottomHeight,
+      );
+      setBottomPanelHeight(nextHeight);
+    }
+
+    function stopResize() {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", stopResize);
+    }
+
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", stopResize);
   }
 
   const cursorMode =
@@ -652,12 +714,15 @@ export function App() {
               <WorkspaceLoader />
             ) : model.activeProfile ? (
               <div
-                className={cn(
-                  "grid min-h-0 min-w-0 flex-1",
-                  bottomPanelExpanded
-                    ? "grid-rows-[48%_minmax(0,1fr)]"
-                    : "grid-rows-[minmax(0,1fr)_44px]",
-                )}
+                className="grid min-h-0 min-w-0 flex-1"
+                ref={workspaceGridRef}
+                style={{
+                  gridTemplateRows: bottomPanelExpanded
+                    ? bottomPanelHeight
+                      ? `minmax(180px, 1fr) 3px minmax(120px, ${bottomPanelHeight}px)`
+                      : "48% 3px minmax(0, 1fr)"
+                    : "minmax(0, 1fr) 0px 44px",
+                }}
               >
                 <QueryEditor
                   activeConnectionId={model.activeConnectionId}
@@ -685,15 +750,29 @@ export function App() {
                   workspaces={queryWorkspaces}
                   onChange={setSqlDraft}
                   onExplain={explainTypedSQL}
+                  onExplainWithAI={explainSelectedSQLWithAI}
                   onRun={runTypedSQL}
                 />
+                <div
+                  aria-label="Resize results panel"
+                  aria-orientation="horizontal"
+                  className={cn(
+                    "group relative z-10 cursor-row-resize bg-surface-950",
+                    !bottomPanelExpanded && "pointer-events-none",
+                  )}
+                  onMouseDown={startBottomPanelResize}
+                  role="separator"
+                >
+                  <div className="absolute left-0 right-0 top-0 h-px bg-line transition group-hover:bg-accent" />
+                </div>
                 <section
                   className={cn(
-                    "grid min-h-0 overflow-hidden border-t border-line bg-surface-900",
+                    "grid min-h-0 overflow-hidden bg-surface-900",
                     bottomPanelExpanded
                       ? "grid-rows-[44px_minmax(0,1fr)]"
                       : "grid-rows-[44px_0px]",
                   )}
+                  ref={bottomPanelRef}
                 >
                   <div className="flex h-11 shrink-0 items-center justify-between border-b border-line px-2">
                     <div className="flex items-center gap-1">
@@ -738,9 +817,9 @@ export function App() {
                         }
                       >
                         {bottomPanelExpanded ? (
-                          <ChevronDown size={14} />
+                          <Minimize2 size={14} />
                         ) : (
-                          <ChevronUp size={14} />
+                          <Maximize2 size={14} />
                         )}
                       </Button>
                     </div>
@@ -781,6 +860,7 @@ export function App() {
                   <RightActionPanel
                     panel={rightPanel}
                     activeProfile={model.activeProfile}
+                    assistantRequest={assistantRequest}
                     queryHistory={model.queryHistory}
                     schemas={model.schemas}
                     settings={model.settings}
@@ -1099,6 +1179,28 @@ function quoteIdentifier(driver: SQLDriver, identifier: string) {
     return `\`${identifier.split("`").join("``")}\``;
   }
   return `"${identifier.split('"').join('""')}"`;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function buildSQLExplanationPrompt(sql: string, driver: string | undefined) {
+  const dialect = driver || "the active database";
+  return [
+    `Explain this ${dialect} SQL query in plain English.`,
+    "Use the existing chat context and available schema context when they help disambiguate tables, columns, or intent.",
+    "Focus on what it returns or changes, the joins, filters, grouping, ordering, and any obvious correctness or performance risks.",
+    "Do not rewrite the query unless a change is needed to explain an issue.",
+    "",
+    "```sql",
+    sql,
+    "```",
+  ].join("\n");
+}
+
+function buildSQLExplanationDisplayPrompt(sql: string) {
+  return ["Explain this query:", "", "```sql", sql, "```"].join("\n");
 }
 
 function connectionTooltip(model: ReturnType<typeof useDataPanelState>) {
