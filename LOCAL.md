@@ -59,8 +59,7 @@ macOS, Windows, and Linux builds are attached to GitHub Releases when a version 
 - Linux: `.deb` and `.AppImage` for Ubuntu 22.04/WebKit 4.0 compatible systems.
 - Linux WebKit 4.1: `.deb` for Ubuntu 24.04 compatible systems.
 
-Push a tag such as `v0.1.0`, or run the release workflows manually with the same tag.
-The macOS workflow also keeps publishing `DataPanel-macOS.zip` from `main` for the Homebrew cask.
+Create a GitHub Release with a tag such as `v0.1.0`, or run the release workflows manually with an existing release tag.
 
 ## Project Layout
 

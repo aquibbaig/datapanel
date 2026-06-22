@@ -1,16 +1,14 @@
 name: macOS Release
-run-name: ${{ github.event.inputs.tag || github.ref_name }}
+run-name: ${{ github.event.release.tag_name || github.event.inputs.tag || github.ref_name }}
 
 on:
-  push:
-    branches:
-      - main
-    tags:
-      - "v*"
+  release:
+    types:
+      - published
   workflow_dispatch:
     inputs:
       tag:
-        description: Version tag
+        description: Existing release tag
         required: true
         default: v0.1.0
 
@@ -26,7 +24,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          ref: ${{ github.event.release.tag_name || github.event.inputs.tag }}
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -49,19 +47,17 @@ jobs:
 
       - name: Normalise version tag
         id: normalise_version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
         run: |
           set -euo pipefail
-          input_tag="${{ github.event.inputs.tag }}"
-          if [ -n "$input_tag" ]; then
-            tag="$input_tag"
-            version="${tag#v}"
-          elif [ "$GITHUB_REF_TYPE" = "tag" ]; then
-            tag="$GITHUB_REF_NAME"
-            version="${tag#v}"
-          else
-            tag="macos-${GITHUB_SHA::7}"
-            version="0.1.0"
+          tag="${RELEASE_TAG:-$INPUT_TAG}"
+          if [ -z "$tag" ]; then
+            echo "A release tag is required." >&2
+            exit 1
           fi
+          version="${tag#v}"
           release_target="$(git rev-parse HEAD)"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -139,14 +135,8 @@ jobs:
           DMG_CHECKSUM_PATH: ${{ steps.package.outputs.dmg_checksum_path }}
         run: |
           set -euo pipefail
-          if ! gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release create "$TAG_NAME" \
-              --target "$RELEASE_TARGET" \
-              --title "DataPanel $TAG_NAME" \
-              --notes "Automated DataPanel desktop build for $TAG_NAME."
-          else
-            gh release edit "$TAG_NAME" \
-              --target "$RELEASE_TARGET" \
-              --title "DataPanel $TAG_NAME"
-          fi
+          gh release view "$TAG_NAME" >/dev/null
+          gh release edit "$TAG_NAME" \
+            --target "$RELEASE_TARGET" \
+            --title "DataPanel $TAG_NAME"
           gh release upload "$TAG_NAME" "$ZIP_PATH" "$CHECKSUM_PATH" "$DMG_PATH" "$DMG_CHECKSUM_PATH" --clobber
