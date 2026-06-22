@@ -59,25 +59,6 @@ cask "datapanel" do
     rescue StandardError
       nil
     end
-
-    begin
-      require "uri"
-
-      issue_url = "https://github.com/aquibbaig/datapanel/issues/new?" + URI.encode_www_form(
-        title: "Uninstall feedback",
-        labels: "feedback",
-        body: <<~EOS,
-          I uninstalled DataPanel and wanted to share feedback.
-
-          What made you uninstall?
-
-          What would have made DataPanel worth keeping?
-        EOS
-      )
-      system_command "/usr/bin/open", args: [issue_url], must_succeed: false
-    rescue StandardError
-      nil
-    end
   end
 
   caveats <<~EOS

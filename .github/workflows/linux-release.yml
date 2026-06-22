@@ -96,10 +96,9 @@ jobs:
       - name: Build Wails app for Linux
         shell: bash
         run: |
-          release_hash="${GITHUB_SHA}"
           release_version="${{ steps.normalise_version.outputs.version }}"
           github_repo="${GITHUB_REPOSITORY#*/}"
-          ldflags="-X datapanel/internal/updater.CurrentVersion=$release_version -X datapanel/internal/updater.CurrentReleaseHash=$release_hash -X datapanel/internal/updater.GitHubOwner=$GITHUB_REPOSITORY_OWNER -X datapanel/internal/updater.GitHubRepo=$github_repo"
+          ldflags="-X datapanel/internal/updater.CurrentVersion=$release_version -X datapanel/internal/updater.CurrentReleaseHash=$release_version -X datapanel/internal/updater.GitHubOwner=$GITHUB_REPOSITORY_OWNER -X datapanel/internal/updater.GitHubRepo=$github_repo"
           CGO_ENABLED=1 wails build -clean -skipbindings -nosyncgomod -platform "${{ matrix.platform }}" -ldflags "$ldflags" -o datapanel
 
       - name: Set up control template
@@ -178,13 +177,18 @@ jobs:
       - name: Rename deb
         working-directory: ./build/linux
         shell: bash
-        run: mv "datapanel_${{ steps.normalise_version.outputs.version }}_amd64.deb" "datapanel_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.deb"
+        run: |
+          deb="datapanel_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.deb"
+          mv "datapanel_${{ steps.normalise_version.outputs.version }}_amd64.deb" "$deb"
+          sha256sum "$deb" > "$deb.sha256"
 
       - name: Rename AppImage
         shell: bash
         run: |
           appimage=$(ls *.AppImage | head -n 1)
-          mv "$appimage" "datapanel_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.AppImage"
+          renamed="datapanel_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.AppImage"
+          mv "$appimage" "$renamed"
+          sha256sum "$renamed" > "$renamed.sha256"
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
@@ -192,5 +196,7 @@ jobs:
           tag_name: ${{ steps.normalise_version.outputs.tag }}
           files: |
             ./build/linux/datapanel_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.deb
+            ./build/linux/datapanel_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.deb.sha256
             datapanel_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.AppImage
+            datapanel_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.AppImage.sha256
           token: ${{ secrets.GITHUB_TOKEN }}

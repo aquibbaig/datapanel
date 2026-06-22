@@ -62,13 +62,14 @@ jobs:
             tag="macos-${GITHUB_SHA::7}"
             version="0.1.0"
           fi
+          release_target="$(git rev-parse HEAD)"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release_target=$release_target" >> "$GITHUB_OUTPUT"
 
       - name: Build DataPanel.app
         env:
           DATAPANEL_VERSION: ${{ steps.normalise_version.outputs.version }}
-          DATAPANEL_RELEASE_HASH: ${{ github.sha }}
           DATAPANEL_GITHUB_OWNER: ${{ github.repository_owner }}
           DATAPANEL_GITHUB_REPO: ${{ github.event.repository.name }}
         run: ./scripts/build-mac-app.sh
@@ -131,6 +132,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ steps.normalise_version.outputs.tag }}
+          RELEASE_TARGET: ${{ steps.normalise_version.outputs.release_target }}
           ZIP_PATH: ${{ steps.package.outputs.zip_path }}
           CHECKSUM_PATH: ${{ steps.package.outputs.checksum_path }}
           DMG_PATH: ${{ steps.package.outputs.dmg_path }}
@@ -139,8 +141,12 @@ jobs:
           set -euo pipefail
           if ! gh release view "$TAG_NAME" >/dev/null 2>&1; then
             gh release create "$TAG_NAME" \
-              --target "$GITHUB_SHA" \
+              --target "$RELEASE_TARGET" \
               --title "DataPanel $TAG_NAME" \
               --notes "Automated DataPanel desktop build for $TAG_NAME."
+          else
+            gh release edit "$TAG_NAME" \
+              --target "$RELEASE_TARGET" \
+              --title "DataPanel $TAG_NAME"
           fi
           gh release upload "$TAG_NAME" "$ZIP_PATH" "$CHECKSUM_PATH" "$DMG_PATH" "$DMG_CHECKSUM_PATH" --clobber

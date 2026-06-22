@@ -28,7 +28,6 @@ else
 fi
 
 echo "Building DataPanel for macOS..."
-release_hash="${DATAPANEL_RELEASE_HASH:-$(git rev-parse HEAD 2>/dev/null || echo dev)}"
 release_version="${DATAPANEL_VERSION:-0.1.0}"
 origin_url="$(git remote get-url origin 2>/dev/null || true)"
 origin_slug="$(printf '%s' "$origin_url" | sed -E 's#^git@github.com:##; s#^https://github.com/##; s#\.git$##')"
@@ -36,7 +35,7 @@ origin_owner="$(printf '%s' "$origin_slug" | cut -d/ -f1)"
 origin_repo="$(printf '%s' "$origin_slug" | cut -d/ -f2)"
 github_owner="${DATAPANEL_GITHUB_OWNER:-${origin_owner:-aquibbaig}}"
 github_repo="${DATAPANEL_GITHUB_REPO:-${origin_repo:-datapanel}}"
-ldflags="-X datapanel/internal/updater.CurrentVersion=$release_version -X datapanel/internal/updater.CurrentReleaseHash=$release_hash -X datapanel/internal/updater.GitHubOwner=$github_owner -X datapanel/internal/updater.GitHubRepo=$github_repo"
+ldflags="-X datapanel/internal/updater.CurrentVersion=$release_version -X datapanel/internal/updater.CurrentReleaseHash=$release_version -X datapanel/internal/updater.GitHubOwner=$github_owner -X datapanel/internal/updater.GitHubRepo=$github_repo"
 wails build -clean -skipbindings -m -nosyncgomod -ldflags "$ldflags"
 
 if [[ ! -d "$APP_PATH" ]]; then

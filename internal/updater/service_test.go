@@ -19,18 +19,49 @@ func TestNormalizeDigest(t *testing.T) {
 	}
 }
 
-func TestSelectInstallableAssetPrefersMacOSZip(t *testing.T) {
+func TestSelectPlatformInstallableAssetPrefersMacOSZip(t *testing.T) {
 	assets := []githubAsset{
 		{Name: "DataPanel-Windows.zip", Digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
 		{Name: "DataPanel-macOS.zip", Digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
 	}
 
-	asset := selectInstallableAsset(assets)
+	asset := selectPlatformInstallableAsset(assets, "darwin", "arm64")
 	if asset == nil {
 		t.Fatal("expected asset")
 	}
 	if asset.Name != "DataPanel-macOS.zip" {
 		t.Fatalf("expected macOS asset, got %q", asset.Name)
+	}
+}
+
+func TestSelectPlatformInstallableAssetPrefersWindowsInstaller(t *testing.T) {
+	assets := []githubAsset{
+		{Name: "DataPanel_Portable_0.2.0_windows_x64.zip"},
+		{Name: "DataPanel_Setup_0.2.0_windows_arm64.exe"},
+		{Name: "DataPanel_Setup_0.2.0_windows_x64.exe"},
+	}
+
+	asset := selectPlatformInstallableAsset(assets, "windows", "amd64")
+	if asset == nil {
+		t.Fatal("expected asset")
+	}
+	if asset.Name != "DataPanel_Setup_0.2.0_windows_x64.exe" {
+		t.Fatalf("expected x64 setup asset, got %q", asset.Name)
+	}
+}
+
+func TestSelectPlatformInstallableAssetPrefersLinuxDeb(t *testing.T) {
+	assets := []githubAsset{
+		{Name: "datapanel_0.2.0_linux_amd64.AppImage"},
+		{Name: "datapanel_0.2.0_linux_amd64.deb"},
+	}
+
+	asset := selectPlatformInstallableAsset(assets, "linux", "amd64")
+	if asset == nil {
+		t.Fatal("expected asset")
+	}
+	if asset.Name != "datapanel_0.2.0_linux_amd64.deb" {
+		t.Fatalf("expected linux deb asset, got %q", asset.Name)
 	}
 }
 
@@ -49,8 +80,8 @@ func TestCheckForUpdateSkipsDevelopmentBuild(t *testing.T) {
 		CurrentReleaseHash = previousHash
 	})
 
-	configDir := t.TempDir()
-	service := NewService(configDir)
+	cacheDir := t.TempDir()
+	service := NewService(cacheDir)
 
 	result, err := service.CheckForUpdate()
 	if err != nil {
@@ -62,62 +93,86 @@ func TestCheckForUpdateSkipsDevelopmentBuild(t *testing.T) {
 	if result.CanInstall {
 		t.Fatal("expected install to be disabled in development build")
 	}
-	if _, err := os.Stat(filepath.Join(configDir, "release.json")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(cacheDir, "release.json")); !os.IsNotExist(err) {
 		t.Fatalf("expected dev update check not to write release state, got %v", err)
 	}
 }
 
-func TestReleaseHashFallsBackToTagForBranchTargets(t *testing.T) {
-	got := releaseHash(githubRelease{TagName: "macos-abc1234", TargetCommit: "main"})
-	if got != "macos-abc1234" {
-		t.Fatalf("expected tag fallback, got %q", got)
+func TestReleaseVersionNormalizesVersionTags(t *testing.T) {
+	got := releaseVersion(githubRelease{TagName: "v0.2.0", TargetCommit: "ignored"})
+	if got != "0.2.0" {
+		t.Fatalf("expected normalized version, got %q", got)
 	}
 
-	got = releaseHash(githubRelease{TagName: "macos-abc1234", TargetCommit: "0123456789abcdef"})
-	if got != "0123456789abcdef" {
-		t.Fatalf("expected commit hash, got %q", got)
+	got = releaseVersion(githubRelease{TagName: "macos-abc1234", TargetCommit: "ignored"})
+	if got != "" {
+		t.Fatalf("expected non-version tag to be ignored, got %q", got)
 	}
 }
 
-func TestSameReleaseMatchesMacOSTagToFullHash(t *testing.T) {
-	if !sameRelease("macos-1870672", "1870672f1925f8e03b6a7e9df3f7605e31e3922d") {
-		t.Fatal("expected macOS short tag to match full commit hash")
+func TestVersionNewerThanUsesNumericOrdering(t *testing.T) {
+	if !versionNewerThan("v0.10.0", "0.2.0") {
+		t.Fatal("expected 0.10.0 to be newer than 0.2.0")
 	}
-	if !sameRelease("1870672f1925f8e03b6a7e9df3f7605e31e3922d", "1870672") {
-		t.Fatal("expected short commit hash to match full commit hash")
+	if versionNewerThan("v0.2.0", "0.10.0") {
+		t.Fatal("expected 0.2.0 not to be newer than 0.10.0")
 	}
-	if sameRelease("macos-1870672", "1412182f1925f8e03b6a7e9df3f7605e31e3922d") {
-		t.Fatal("expected different release hashes not to match")
+	if versionNewerThan("macos-abc1234", "0.1.0") {
+		t.Fatal("expected commit-style macOS tag not to trigger a version update")
 	}
 }
 
-func TestEnsureStateUsesRunningBinaryReleaseHash(t *testing.T) {
+func TestEnsureStateUsesRunningBinaryVersion(t *testing.T) {
 	previousVersion := CurrentVersion
 	previousHash := CurrentReleaseHash
 	CurrentVersion = "0.1.0"
-	CurrentReleaseHash = "1870672f1925f8e03b6a7e9df3f7605e31e3922d"
+	CurrentReleaseHash = "0.1.0"
 	t.Cleanup(func() {
 		CurrentVersion = previousVersion
 		CurrentReleaseHash = previousHash
 	})
 
-	configDir := t.TempDir()
-	statePath := filepath.Join(configDir, "release.json")
+	cacheDir := t.TempDir()
+	statePath := filepath.Join(cacheDir, "release.json")
 	if err := os.WriteFile(statePath, []byte(`{
-  "currentVersion": "macos-1412182",
-  "currentReleaseHash": "macos-1412182",
+  "currentVersion": "0.0.9",
+  "currentReleaseHash": "0.0.9",
   "lastCheckedAt": "2026-06-13T00:00:00Z"
 }
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	service := NewService(configDir)
+	service := NewService(cacheDir)
 	state, err := service.ensureState()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.CurrentReleaseHash != CurrentReleaseHash {
-		t.Fatalf("expected state hash %q, got %q", CurrentReleaseHash, state.CurrentReleaseHash)
+	if state.CurrentVersion != CurrentVersion {
+		t.Fatalf("expected state version %q, got %q", CurrentVersion, state.CurrentVersion)
+	}
+	if state.CurrentReleaseHash != CurrentVersion {
+		t.Fatalf("expected legacy release id %q, got %q", CurrentVersion, state.CurrentReleaseHash)
+	}
+}
+
+func TestSaveStateCreatesNestedCacheDirectory(t *testing.T) {
+	cacheDir := filepath.Join(t.TempDir(), "local-cache", "datapanel")
+	service := NewService(cacheDir)
+
+	state := ReleaseState{
+		CurrentVersion:     "1.2.3",
+		CurrentReleaseHash: "1.2.3",
+		LastCheckedAt:      "2026-06-22T00:00:00Z",
+	}
+	if err := service.saveState(state); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(filepath.Join(cacheDir, "release.json")); err != nil {
+		t.Fatalf("expected release state to be written in cache dir, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(cacheDir, "updates")); !os.IsNotExist(err) {
+		t.Fatalf("expected updates directory to be created only when downloading updates, got %v", err)
 	}
 }

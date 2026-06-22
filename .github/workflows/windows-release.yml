@@ -92,47 +92,56 @@ jobs:
       - name: Build Windows portable app
         shell: bash
         run: |
-          release_hash="${GITHUB_SHA}"
           release_version="${{ steps.normalise_version.outputs.version }}"
           github_repo="${GITHUB_REPOSITORY#*/}"
-          ldflags="-X datapanel/internal/updater.CurrentVersion=$release_version -X datapanel/internal/updater.CurrentReleaseHash=$release_hash -X datapanel/internal/updater.GitHubOwner=$GITHUB_REPOSITORY_OWNER -X datapanel/internal/updater.GitHubRepo=$github_repo"
+          ldflags="-X datapanel/internal/updater.CurrentVersion=$release_version -X datapanel/internal/updater.CurrentReleaseHash=$release_version -X datapanel/internal/updater.GitHubOwner=$GITHUB_REPOSITORY_OWNER -X datapanel/internal/updater.GitHubRepo=$github_repo"
           CGO_ENABLED=1 wails build -clean -skipbindings -nosyncgomod -platform "${{ matrix.platform }}" -webview2 embed -ldflags "$ldflags"
 
       - name: Compress portable binary
         working-directory: ./build/bin
         shell: powershell
-        run: Compress-Archive -Path "DataPanel.exe" -DestinationPath "DataPanel_Portable_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.zip"
+        run: |
+          $zip = "DataPanel_Portable_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.zip"
+          Compress-Archive -Path "DataPanel.exe" -DestinationPath $zip
+          $hash = Get-FileHash -Algorithm SHA256 $zip
+          "$($hash.Hash.ToLower())  $zip" | Set-Content -Encoding ascii "$zip.sha256"
 
       - name: Upload release asset (Portable)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.normalise_version.outputs.tag }}
-          files: ./build/bin/DataPanel_Portable_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.zip
+          files: |
+            ./build/bin/DataPanel_Portable_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.zip
+            ./build/bin/DataPanel_Portable_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.zip.sha256
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Windows NSIS installer
         shell: bash
         run: |
           export PATH="/c/Program Files (x86)/NSIS:$PATH"
-          release_hash="${GITHUB_SHA}"
           release_version="${{ steps.normalise_version.outputs.version }}"
           github_repo="${GITHUB_REPOSITORY#*/}"
-          ldflags="-X datapanel/internal/updater.CurrentVersion=$release_version -X datapanel/internal/updater.CurrentReleaseHash=$release_hash -X datapanel/internal/updater.GitHubOwner=$GITHUB_REPOSITORY_OWNER -X datapanel/internal/updater.GitHubRepo=$github_repo"
+          ldflags="-X datapanel/internal/updater.CurrentVersion=$release_version -X datapanel/internal/updater.CurrentReleaseHash=$release_version -X datapanel/internal/updater.GitHubOwner=$GITHUB_REPOSITORY_OWNER -X datapanel/internal/updater.GitHubRepo=$github_repo"
           CGO_ENABLED=1 wails build -clean -skipbindings -nosyncgomod -platform "${{ matrix.platform }}" -nsis -webview2 embed -ldflags "$ldflags"
 
       - name: Rename installer
         working-directory: ./build/bin
         shell: powershell
         run: |
+          $installerName = "DataPanel_Setup_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.exe"
           $installer = Get-ChildItem -Filter "*installer.exe" | Select-Object -First 1
           if (-not $installer) {
             throw "No NSIS installer was produced."
           }
-          Rename-Item -Path $installer.FullName -NewName "DataPanel_Setup_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.exe"
+          Rename-Item -Path $installer.FullName -NewName $installerName
+          $hash = Get-FileHash -Algorithm SHA256 $installerName
+          "$($hash.Hash.ToLower())  $installerName" | Set-Content -Encoding ascii "$installerName.sha256"
 
       - name: Upload release asset (Installer)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.normalise_version.outputs.tag }}
-          files: ./build/bin/DataPanel_Setup_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.exe
+          files: |
+            ./build/bin/DataPanel_Setup_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.exe
+            ./build/bin/DataPanel_Setup_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.exe.sha256
           token: ${{ secrets.GITHUB_TOKEN }}

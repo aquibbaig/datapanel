@@ -62,7 +62,7 @@ func main() {
 	aiService := ai.NewService(secretStore, secretStorage)
 	schemaService := postgres.NewSchemaService(databaseRouter)
 	queryService := query.NewService(databaseRouter, settingsService)
-	updateService := updater.NewService(paths.ConfigDir)
+	updateService := updater.NewService(paths.CacheDir)
 	application := appcore.NewApplication(paths, appcore.MultiCloser{databaseRouter, appDataService})
 
 	err = wails.Run(&options.App{

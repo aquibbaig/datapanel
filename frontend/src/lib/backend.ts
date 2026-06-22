@@ -30,6 +30,7 @@ import type {
   TableDetails,
   TableSummary,
   TestConnectionRequest,
+  InstallUpdateResult,
   UpdateCheckResult,
 } from "./types";
 import { ai } from "../../wailsjs/go/models";
@@ -714,8 +715,8 @@ export const updateService = {
     }
     return UpdaterBindings.CheckForUpdate();
   },
-  async install(assetName: string): Promise<void> {
+  async install(assetName: string): Promise<InstallUpdateResult | void> {
     if (!isWailsRuntime()) return;
-    await UpdaterBindings.InstallUpdate({ assetName });
+    return UpdaterBindings.InstallUpdate({ assetName });
   }
 };

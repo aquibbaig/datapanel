@@ -344,13 +344,13 @@ export function useDataPanelState() {
     const toastId = "datapanel-install-update";
     toast.loading("Downloading update", {
       id: toastId,
-      description: "DataPanel will restart after the download is verified.",
+      description: "DataPanel will continue after the download is verified.",
     });
     try {
-      await updateService.install(assetName);
+      const result = await updateService.install(assetName);
       toast.success("Update ready", {
         id: toastId,
-        description: "DataPanel is restarting to finish installing.",
+        description: result?.message || "DataPanel is preparing the installer.",
       });
     } catch (error) {
       const message = errorMessage(error, "Could not install update");

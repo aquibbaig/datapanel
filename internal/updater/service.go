@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -25,7 +26,7 @@ var (
 	CurrentVersion     = "0.1.0"
 	CurrentReleaseHash = "dev"
 	GitHubOwner        = "aquibbaig"
-	GitHubRepo         = "sequel"
+	GitHubRepo         = "datapanel"
 )
 
 type Service struct {
@@ -36,10 +37,10 @@ type Service struct {
 	ctx        context.Context
 }
 
-func NewService(configDir string) *Service {
+func NewService(cacheDir string) *Service {
 	return &Service{
-		statePath:  filepath.Join(configDir, "release.json"),
-		updatesDir: filepath.Join(configDir, "updates"),
+		statePath:  filepath.Join(cacheDir, "release.json"),
+		updatesDir: filepath.Join(cacheDir, "updates"),
 		client: &http.Client{
 			Timeout: 45 * time.Second,
 		},
@@ -80,16 +81,15 @@ func (s *Service) CheckForUpdate() (UpdateCheckResult, error) {
 	if asset != nil {
 		assetDigest, _ = s.assetDigest(*asset, release.Assets)
 	}
-	latestHash := releaseHash(release)
-	updateAvailable := strings.TrimSpace(latestHash) != "" &&
-		!sameRelease(latestHash, state.CurrentReleaseHash) &&
-		!sameRelease(latestHash, CurrentReleaseHash)
+	latestVersion := releaseVersion(release)
+	updateAvailable := versionNewerThan(latestVersion, state.CurrentVersion) ||
+		versionNewerThan(latestVersion, CurrentVersion)
 
 	result := UpdateCheckResult{
 		CurrentVersion:     state.CurrentVersion,
 		CurrentReleaseHash: state.CurrentReleaseHash,
-		LatestVersion:      release.TagName,
-		LatestReleaseHash:  latestHash,
+		LatestVersion:      displayReleaseVersion(release),
+		LatestReleaseHash:  latestVersion,
 		ReleaseName:        release.Name,
 		ReleaseURL:         release.HTMLURL,
 		PublishedAt:        release.PublishedAt,
@@ -100,20 +100,20 @@ func (s *Service) CheckForUpdate() (UpdateCheckResult, error) {
 		result.AssetName = asset.Name
 		result.AssetSize = asset.Size
 		result.AssetDigest = assetDigest
-		result.CanInstall = runtime.GOOS == "darwin" && strings.HasSuffix(strings.ToLower(asset.Name), ".zip") && assetDigest != ""
+		result.CanInstall = canInstallAsset(asset.Name, assetDigest)
 	}
 
 	switch {
 	case !updateAvailable:
 		result.Message = "DataPanel is up to date."
 	case asset == nil:
-		result.Message = "A new release is available, but no macOS zip asset was found."
-	case runtime.GOOS != "darwin":
-		result.Message = "A new release is available, but automatic installation is currently supported on macOS only."
+		result.Message = fmt.Sprintf("A new release is available, but no %s installer asset was found.", runtime.GOOS)
 	case assetDigest == "":
 		result.Message = "A new release is available, but the release asset does not include a SHA-256 digest."
-	case !strings.HasSuffix(strings.ToLower(asset.Name), ".zip"):
-		result.Message = "A new release is available, but the selected asset is not a zip archive."
+	case !platformInstallerAvailable():
+		result.Message = platformInstallerUnavailableMessage()
+	case !isPlatformInstallableAsset(asset.Name, runtime.GOOS, runtime.GOARCH):
+		result.Message = "A new release is available, but the selected asset is not installable on this platform."
 	default:
 		result.Message = "A new DataPanel update is available."
 	}
@@ -162,13 +162,8 @@ func (s *Service) InstallUpdate(input InstallUpdateRequest) (InstallUpdateResult
 		return InstallUpdateResult{}, errors.New("release asset does not include a SHA-256 digest")
 	}
 
-	if runtime.GOOS != "darwin" {
-		return InstallUpdateResult{}, errors.New("automatic installation is currently supported on macOS only")
-	}
-
-	currentApp, err := currentAppBundle()
-	if err != nil {
-		return InstallUpdateResult{}, err
+	if !platformInstallerAvailable() {
+		return InstallUpdateResult{}, errors.New(platformInstallerUnavailableMessage())
 	}
 	if err := os.MkdirAll(s.updatesDir, 0o700); err != nil {
 		return InstallUpdateResult{}, err
@@ -182,41 +177,64 @@ func (s *Service) InstallUpdate(input InstallUpdateRequest) (InstallUpdateResult
 		return InstallUpdateResult{}, err
 	}
 
+	switch runtime.GOOS {
+	case "darwin":
+		if err := s.installDarwinUpdate(downloadPath); err != nil {
+			return InstallUpdateResult{}, err
+		}
+	case "windows":
+		if err := startWindowsInstallScript(os.Getpid(), downloadPath, s.updatesDir); err != nil {
+			return InstallUpdateResult{}, err
+		}
+	case "linux":
+		currentExecutable, err := os.Executable()
+		if err != nil {
+			return InstallUpdateResult{}, err
+		}
+		if err := startLinuxDebInstallScript(os.Getpid(), downloadPath, currentExecutable, s.updatesDir); err != nil {
+			return InstallUpdateResult{}, err
+		}
+	default:
+		return InstallUpdateResult{}, errors.New("automatic installation is not supported on this platform")
+	}
+
+	s.quit()
+
+	return InstallUpdateResult{
+		Restarting: true,
+		Message:    installStartedMessage(),
+	}, nil
+}
+
+func (s *Service) installDarwinUpdate(downloadPath string) error {
+	currentApp, err := currentAppBundle()
+	if err != nil {
+		return err
+	}
+
 	extractDir := filepath.Join(s.updatesDir, "extract-"+time.Now().UTC().Format("20060102150405"))
 	if err := unzip(downloadPath, extractDir); err != nil {
-		return InstallUpdateResult{}, err
+		return err
 	}
 
 	nextApp, err := findAppBundle(extractDir)
 	if err != nil {
-		return InstallUpdateResult{}, err
-	}
-
-	state := ReleaseState{
-		CurrentVersion:     release.TagName,
-		CurrentReleaseHash: check.LatestReleaseHash,
-		LastCheckedAt:      time.Now().UTC().Format(time.RFC3339),
-		LastInstalledAt:    time.Now().UTC().Format(time.RFC3339),
-	}
-	if err := s.saveState(state); err != nil {
-		return InstallUpdateResult{}, err
+		return err
 	}
 
 	if err := startInstallScript(os.Getpid(), nextApp, currentApp, s.updatesDir); err != nil {
-		return InstallUpdateResult{}, err
+		return err
 	}
+	return nil
+}
 
+func (s *Service) quit() {
 	s.mu.RLock()
 	ctx := s.ctx
 	s.mu.RUnlock()
 	if ctx != nil {
 		wailsruntime.Quit(ctx)
 	}
-
-	return InstallUpdateResult{
-		Restarting: true,
-		Message:    "Update downloaded. DataPanel will restart to finish installing.",
-	}, nil
 }
 
 func isDevelopmentBuild() bool {
@@ -242,11 +260,11 @@ func (s *Service) ensureState() (ReleaseState, error) {
 		return ReleaseState{}, err
 	}
 	changed := false
-	if state.CurrentVersion != CurrentVersion {
-		state.CurrentVersion = CurrentVersion
+	if !sameVersion(state.CurrentVersion, CurrentVersion) {
+		state.CurrentVersion = canonicalCurrentVersion()
 		changed = true
 	}
-	if !sameRelease(state.CurrentReleaseHash, CurrentReleaseHash) {
+	if strings.TrimSpace(state.CurrentReleaseHash) != strings.TrimSpace(CurrentReleaseHash) {
 		state.CurrentReleaseHash = CurrentReleaseHash
 		changed = true
 	}
@@ -262,7 +280,7 @@ func (s *Service) loadState() (ReleaseState, error) {
 	contents, err := os.ReadFile(s.statePath)
 	if errors.Is(err, os.ErrNotExist) {
 		return ReleaseState{
-			CurrentVersion:     CurrentVersion,
+			CurrentVersion:     canonicalCurrentVersion(),
 			CurrentReleaseHash: CurrentReleaseHash,
 		}, nil
 	}
@@ -350,19 +368,32 @@ func (s *Service) downloadFile(url string, destination string) error {
 }
 
 func selectInstallableAsset(assets []githubAsset) *githubAsset {
+	return selectPlatformInstallableAsset(assets, runtime.GOOS, runtime.GOARCH)
+}
+
+func selectPlatformInstallableAsset(assets []githubAsset, goos string, goarch string) *githubAsset {
 	var selected *githubAsset
 	bestScore := 0
 	for i := range assets {
 		name := strings.ToLower(assets[i].Name)
-		if !strings.HasSuffix(name, ".zip") {
+		if !isPlatformInstallableAsset(name, goos, goarch) {
 			continue
 		}
 		score := 1
 		if strings.Contains(name, "datapanel") {
-			score = 2
+			score += 2
 		}
-		if strings.Contains(name, "macos") || strings.Contains(name, "darwin") {
-			score = 3
+		if platformNameMatches(name, goos) {
+			score += 4
+		}
+		if platformArchMatches(name, goos, goarch) {
+			score += 3
+		}
+		if goos == "windows" && strings.Contains(name, "setup") {
+			score += 3
+		}
+		if goos == "linux" && strings.HasSuffix(name, ".deb") {
+			score += 3
 		}
 		if score > bestScore {
 			selected = &assets[i]
@@ -373,6 +404,93 @@ func selectInstallableAsset(assets []githubAsset) *githubAsset {
 		return nil
 	}
 	return selected
+}
+
+func canInstallAsset(assetName string, assetDigest string) bool {
+	return assetDigest != "" &&
+		isPlatformInstallableAsset(assetName, runtime.GOOS, runtime.GOARCH) &&
+		platformInstallerAvailable()
+}
+
+func isPlatformInstallableAsset(assetName string, goos string, goarch string) bool {
+	name := strings.ToLower(assetName)
+	switch goos {
+	case "darwin":
+		return strings.HasSuffix(name, ".zip") &&
+			(strings.Contains(name, "macos") || strings.Contains(name, "darwin"))
+	case "windows":
+		return strings.HasSuffix(name, ".exe") &&
+			strings.Contains(name, "setup") &&
+			platformArchMatches(name, goos, goarch)
+	case "linux":
+		return strings.HasSuffix(name, ".deb") &&
+			platformArchMatches(name, goos, goarch)
+	default:
+		return false
+	}
+}
+
+func platformNameMatches(name string, goos string) bool {
+	switch goos {
+	case "darwin":
+		return strings.Contains(name, "macos") || strings.Contains(name, "darwin")
+	case "windows":
+		return strings.Contains(name, "windows") || strings.Contains(name, "win")
+	case "linux":
+		return strings.Contains(name, "linux")
+	default:
+		return false
+	}
+}
+
+func platformArchMatches(name string, goos string, goarch string) bool {
+	name = strings.ToLower(name)
+	switch goos + "/" + goarch {
+	case "darwin/amd64", "darwin/arm64":
+		return true
+	case "windows/amd64":
+		return strings.Contains(name, "windows_x64") || strings.Contains(name, "x64") || strings.Contains(name, "amd64")
+	case "windows/arm64":
+		return strings.Contains(name, "windows_arm64") || strings.Contains(name, "arm64") || strings.Contains(name, "aarch64")
+	case "linux/amd64":
+		return strings.Contains(name, "linux_amd64") || strings.Contains(name, "amd64") || strings.Contains(name, "x86_64")
+	case "linux/arm64":
+		return strings.Contains(name, "linux_arm64") || strings.Contains(name, "arm64") || strings.Contains(name, "aarch64")
+	default:
+		return false
+	}
+}
+
+func platformInstallerAvailable() bool {
+	if runtime.GOOS != "linux" {
+		return runtime.GOOS == "darwin" || runtime.GOOS == "windows"
+	}
+	_, err := exec.LookPath("pkexec")
+	return err == nil
+}
+
+func platformInstallerUnavailableMessage() string {
+	switch runtime.GOOS {
+	case "linux":
+		return "A new release is available, but automatic Linux installation requires pkexec."
+	case "darwin", "windows":
+		return "A new release is available, but automatic installation is not available on this device."
+	default:
+		return "A new release is available, but automatic installation is not supported on this platform."
+	}
+}
+
+func installStartedMessage() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return "Update downloaded. DataPanel will restart to finish installing."
+	case "windows":
+		return "Update downloaded. DataPanel will close and open the installer."
+	case "linux":
+		return "Update downloaded. DataPanel will close and ask for permission to install the package."
+	default:
+		return "Update downloaded."
+	}
 }
 
 func (s *Service) assetDigest(asset githubAsset, assets []githubAsset) (string, error) {
@@ -465,68 +583,110 @@ func normalizeDigest(value string) string {
 	return value
 }
 
-func normalizeHash(value string) string {
-	return strings.TrimSpace(strings.ToLower(value))
+func canonicalCurrentVersion() string {
+	if version := normalizedVersionTag(CurrentVersion); version != "" {
+		return version
+	}
+	return strings.TrimSpace(CurrentVersion)
 }
 
-func sameRelease(left string, right string) bool {
-	normalizedLeft := normalizeHash(left)
-	normalizedRight := normalizeHash(right)
-	if normalizedLeft == "" || normalizedRight == "" {
-		return false
-	}
-	if normalizedLeft == normalizedRight {
-		return true
-	}
-
-	leftHash := releaseIdentifierHash(normalizedLeft)
-	rightHash := releaseIdentifierHash(normalizedRight)
-	if leftHash == "" || rightHash == "" {
-		return false
-	}
-	return hashPrefixMatch(leftHash, rightHash)
-}
-
-func releaseIdentifierHash(value string) string {
-	value = normalizeHash(value)
-	for _, prefix := range []string{"macos-", "darwin-", "datapanel-macos-", "datapanel-darwin-"} {
-		value = strings.TrimPrefix(value, prefix)
-	}
-	if looksLikeGitHash(value) {
-		return value
-	}
-	return ""
-}
-
-func hashPrefixMatch(left string, right string) bool {
-	if len(left) > len(right) {
-		left, right = right, left
-	}
-	if len(left) < 7 {
-		return false
-	}
-	return strings.HasPrefix(right, left)
-}
-
-func releaseHash(release githubRelease) string {
-	target := strings.TrimSpace(release.TargetCommit)
-	if looksLikeGitHash(target) {
-		return target
+func displayReleaseVersion(release githubRelease) string {
+	if version := releaseVersion(release); version != "" {
+		return version
 	}
 	return strings.TrimSpace(release.TagName)
 }
 
-func looksLikeGitHash(value string) bool {
-	value = strings.TrimSpace(strings.ToLower(value))
-	if len(value) < 7 || len(value) > 40 {
+func releaseVersion(release githubRelease) string {
+	return normalizedVersionTag(release.TagName)
+}
+
+func sameVersion(left string, right string) bool {
+	normalizedLeft := normalizedVersionTag(left)
+	normalizedRight := normalizedVersionTag(right)
+	return normalizedLeft != "" && normalizedLeft == normalizedRight
+}
+
+func versionNewerThan(latest string, current string) bool {
+	normalizedLatest := normalizedVersionTag(latest)
+	normalizedCurrent := normalizedVersionTag(current)
+	if normalizedLatest == "" || normalizedCurrent == "" {
 		return false
 	}
-	for _, char := range value {
-		if !strings.ContainsRune("0123456789abcdef", char) {
-			return false
+	return compareVersions(normalizedLatest, normalizedCurrent) > 0
+}
+
+func compareVersions(left string, right string) int {
+	leftCore, leftPre := splitVersion(left)
+	rightCore, rightPre := splitVersion(right)
+	leftParts := strings.Split(leftCore, ".")
+	rightParts := strings.Split(rightCore, ".")
+	maxParts := len(leftParts)
+	if len(rightParts) > maxParts {
+		maxParts = len(rightParts)
+	}
+	for i := 0; i < maxParts; i++ {
+		leftValue := versionPart(leftParts, i)
+		rightValue := versionPart(rightParts, i)
+		if leftValue > rightValue {
+			return 1
+		}
+		if leftValue < rightValue {
+			return -1
 		}
 	}
-	return true
+	switch {
+	case leftPre == rightPre:
+		return 0
+	case leftPre == "":
+		return 1
+	case rightPre == "":
+		return -1
+	case leftPre > rightPre:
+		return 1
+	case leftPre < rightPre:
+		return -1
+	default:
+		return 0
+	}
+}
+
+func splitVersion(version string) (string, string) {
+	version = strings.SplitN(version, "+", 2)[0]
+	parts := strings.SplitN(version, "-", 2)
+	if len(parts) == 1 {
+		return parts[0], ""
+	}
+	return parts[0], parts[1]
+}
+
+func versionPart(parts []string, index int) int {
+	if index >= len(parts) {
+		return 0
+	}
+	value, err := strconv.Atoi(parts[index])
+	if err != nil {
+		return 0
+	}
+	return value
+}
+
+func normalizedVersionTag(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	value = strings.TrimPrefix(value, "v")
+	if value == "" || value[0] < '0' || value[0] > '9' {
+		return ""
+	}
+	for _, char := range value {
+		switch {
+		case char >= '0' && char <= '9':
+		case char >= 'a' && char <= 'z':
+		case char == '.', char == '-', char == '+':
+		default:
+			return ""
+		}
+	}
+	return value
 }
 
 func verifySHA256(path string, expected string) error {
@@ -714,6 +874,64 @@ rm -rf "$cleanup_dir"
 		return err
 	}
 	command := exec.Command("/bin/sh", scriptPath, fmt.Sprintf("%d", pid), sourceApp, destinationApp, cleanupDir)
+	return command.Start()
+}
+
+func startWindowsInstallScript(pid int, installerPath string, cleanupDir string) error {
+	scriptPath := filepath.Join(cleanupDir, "install-update.cmd")
+	script := `@echo off
+setlocal
+set "pid=%~1"
+set "installer=%~2"
+set "cleanup_dir=%~3"
+
+:wait
+tasklist /FI "PID eq %pid%" 2>NUL | findstr /R /C:"%pid%" >NUL
+if not errorlevel 1 (
+  timeout /T 1 /NOBREAK >NUL
+  goto wait
+)
+
+start "" /WAIT "%installer%"
+rmdir /S /Q "%cleanup_dir%" >NUL 2>NUL
+`
+	if err := os.MkdirAll(filepath.Dir(scriptPath), 0o700); err != nil {
+		return err
+	}
+	if err := os.WriteFile(scriptPath, []byte(script), 0o700); err != nil {
+		return err
+	}
+	command := exec.Command("cmd", "/C", "start", "", scriptPath, fmt.Sprintf("%d", pid), installerPath, cleanupDir)
+	return command.Start()
+}
+
+func startLinuxDebInstallScript(pid int, packagePath string, executablePath string, cleanupDir string) error {
+	scriptPath := filepath.Join(cleanupDir, "install-update.sh")
+	script := `#!/bin/sh
+set -eu
+pid="$1"
+package_path="$2"
+executable_path="$3"
+cleanup_dir="$4"
+
+while kill -0 "$pid" >/dev/null 2>&1; do
+  sleep 0.2
+done
+
+pkexec /usr/bin/dpkg -i "$package_path"
+
+if [ -n "$executable_path" ] && [ -x "$executable_path" ]; then
+  nohup "$executable_path" >/dev/null 2>&1 &
+fi
+rm -rf "$cleanup_dir"
+`
+	if err := os.MkdirAll(filepath.Dir(scriptPath), 0o700); err != nil {
+		return err
+	}
+	if err := os.WriteFile(scriptPath, []byte(script), 0o700); err != nil {
+		return err
+	}
+	command := exec.Command("/bin/sh", scriptPath, fmt.Sprintf("%d", pid), packagePath, executablePath, cleanupDir)
 	return command.Start()
 }
 
