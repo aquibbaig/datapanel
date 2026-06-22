@@ -6,6 +6,29 @@ tap_url="https://github.com/aquibbaig/datapanel.git"
 cask_name="datapanel"
 no_quarantine="0"
 
+brew_has_datapanel_receipt() {
+  brew list --cask "$cask_name" >/dev/null 2>&1
+}
+
+brew_has_datapanel_app() {
+  brew list --cask "$cask_name" 2>/dev/null | grep -Eq '(^|/)DataPanel[.]app$'
+}
+
+install_datapanel() {
+  if [ "$no_quarantine" = "1" ] && brew install --help 2>/dev/null | grep -q -- "--no-quarantine"; then
+    brew install --cask --no-quarantine "$cask_name"
+  else
+    brew install --cask "$cask_name"
+  fi
+}
+
+repair_stale_datapanel_receipt() {
+  if brew_has_datapanel_receipt && ! brew_has_datapanel_app; then
+    echo "Found stale Homebrew cask metadata without DataPanel.app; repairing..."
+    brew uninstall --cask --force "$cask_name" >/dev/null 2>&1 || true
+  fi
+}
+
 usage() {
   cat <<EOF
 Usage: install-macos.sh [--no-quarantine]
@@ -56,21 +79,19 @@ if brew trust --help >/dev/null 2>&1; then
 fi
 
 echo "Installing DataPanel..."
-if [ "$no_quarantine" = "1" ]; then
-  if brew install --help 2>/dev/null | grep -q -- "--no-quarantine"; then
-    brew install --cask --no-quarantine "$cask_name"
-  else
-    brew install --cask "$cask_name"
-  fi
+repair_stale_datapanel_receipt
+install_datapanel || {
+  repair_stale_datapanel_receipt
+  install_datapanel
+}
 
+if [ "$no_quarantine" = "1" ]; then
   echo "Clearing quarantine..."
   for app_path in "/Applications/DataPanel.app" "$HOME/Applications/DataPanel.app"; do
     if [ -d "$app_path" ]; then
       xattr -dr com.apple.quarantine "$app_path" >/dev/null 2>&1 || true
     fi
   done
-else
-  brew install --cask "$cask_name"
 fi
 
 echo "DataPanel installed."
