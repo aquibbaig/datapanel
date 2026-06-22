@@ -2,6 +2,8 @@
 
 DataPanel is a modern AI-assisted database client for querying, inspecting, and editing data from a desktop workspace.
 
+<img width="1672" height="941" alt="datapanel_showcase" src="https://github.com/user-attachments/assets/35c9649c-d066-48e8-9363-db96c3d8ac29" />
+
 ## Goals
 
 - Save database connection profiles without storing secrets in plain text.
