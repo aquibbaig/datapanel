@@ -796,8 +796,10 @@ export function AiAssistantPanel({
   }
 
   async function executeGeneratedSQL(sql: string) {
+    if (!sql.trim()) return;
     setChatBusy(true);
     try {
+      onLoadSQL(sql);
       await onExecuteSQL(sql);
     } finally {
       setChatBusy(false);
