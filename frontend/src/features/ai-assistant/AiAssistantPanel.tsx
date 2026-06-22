@@ -102,6 +102,11 @@ interface ChatMessage {
 
 type TokenUsage = AIGenerateResponse["tokenUsage"];
 
+interface PreparedPrompt {
+  displayPrompt: string;
+  prompt: string;
+}
+
 type RuntimeBridge = {
   BrowserOpenURL?: (url: string) => void;
   EventsOn?: (
@@ -221,6 +226,7 @@ export function AiAssistantPanel({
     defaultModelForProvider("openai"),
   );
   const loadedAssistantRequestIdRef = useRef("");
+  const preparedPromptRef = useRef<PreparedPrompt | null>(null);
   const submittedAssistantRequestIdRef = useRef("");
 
   const selected =
@@ -295,7 +301,12 @@ export function AiAssistantPanel({
     if (!assistantRequest) return;
     if (loadedAssistantRequestIdRef.current !== assistantRequest.id) {
       loadedAssistantRequestIdRef.current = assistantRequest.id;
-      setChatPrompt(assistantRequest.displayPrompt || assistantRequest.prompt);
+      const displayPrompt = assistantRequest.displayPrompt || assistantRequest.prompt;
+      preparedPromptRef.current = {
+        displayPrompt,
+        prompt: assistantRequest.prompt,
+      };
+      setChatPrompt(displayPrompt);
       onAssistantRequestConsumed?.(assistantRequest.id);
     }
 
@@ -564,15 +575,30 @@ export function AiAssistantPanel({
   async function askAI(
     promptOverride?: string | { displayPrompt?: string; prompt: string },
   ) {
+    const preparedPrompt = preparedPromptRef.current;
+    const chatPromptText = chatPrompt.trim();
+    const activePreparedPrompt =
+      !promptOverride &&
+      preparedPrompt &&
+      chatPromptText === preparedPrompt.displayPrompt.trim()
+        ? preparedPrompt
+        : null;
     const prompt =
       typeof promptOverride === "object"
         ? promptOverride.prompt.trim()
-        : (promptOverride ?? chatPrompt).trim();
+        : activePreparedPrompt
+          ? activePreparedPrompt.prompt.trim()
+          : (promptOverride ?? chatPrompt).trim();
     const displayPrompt =
       typeof promptOverride === "object"
         ? (promptOverride.displayPrompt || promptOverride.prompt).trim()
+        : activePreparedPrompt
+          ? activePreparedPrompt.displayPrompt.trim()
         : prompt;
     if (!prompt || !chatReady) return;
+    if (activePreparedPrompt) {
+      preparedPromptRef.current = null;
+    }
     const requestModel = normalizeModelForProvider(selected.id, selectedModel);
     if (requestModel !== selectedModel) {
       setSelectedModel(requestModel);
@@ -848,7 +874,16 @@ export function AiAssistantPanel({
                       />
                     ) : (
                       <Message from={message.role} key={message.id}>
-                        <MessageContent>{message.content}</MessageContent>
+                        {message.role === "user" ? (
+                          <UserMessageContent
+                            content={message.content}
+                            onCopySQL={(sql) =>
+                              void copyText("Selected SQL copied.", sql)
+                            }
+                          />
+                        ) : (
+                          <MessageContent>{message.content}</MessageContent>
+                        )}
                       </Message>
                     ),
                   )
@@ -1284,6 +1319,43 @@ function ThinkingMessage() {
       <span className="datapanel-chat-cursor ml-1 h-5 w-[3px] rounded-full bg-zinc-200" />
     </div>
   );
+}
+
+function UserMessageContent({
+  content,
+  onCopySQL,
+}: {
+  content: string;
+  onCopySQL(sql: string): void;
+}) {
+  const explainPrompt = parseExplainQueryMessage(content);
+  if (!explainPrompt) {
+    return <MessageContent>{content}</MessageContent>;
+  }
+
+  return (
+    <div className="grid min-w-0 gap-2">
+      <MessageContent>{explainPrompt.label}</MessageContent>
+      <SQLCodeBlock
+        onCopySQL={() => onCopySQL(explainPrompt.sql)}
+        sql={explainPrompt.sql}
+      />
+    </div>
+  );
+}
+
+function parseExplainQueryMessage(content: string) {
+  const match = content.match(/^\s*(explain this query:)\s*\n+([\s\S]+?)\s*$/i);
+  if (!match) return null;
+  const sql = stripMarkdownCodeFence(match[2]);
+  if (!sql) return null;
+  return { label: match[1], sql };
+}
+
+function stripMarkdownCodeFence(value: string) {
+  const trimmed = value.trim();
+  const match = trimmed.match(/^```[A-Za-z0-9_-]*\s*\n?([\s\S]*?)\n?```\s*$/);
+  return (match ? match[1] : trimmed).trim();
 }
 
 function AIResponseView({

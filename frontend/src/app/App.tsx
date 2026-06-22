@@ -1195,7 +1195,7 @@ function buildSQLExplanationPrompt(sql: string, driver: string | undefined) {
 }
 
 function buildSQLExplanationDisplayPrompt(sql: string) {
-  return ["Explain this query:", "", "```sql", sql, "```"].join("\n");
+  return ["explain this query:", "", sql].join("\n");
 }
 
 function connectionTooltip(model: ReturnType<typeof useDataPanelState>) {
