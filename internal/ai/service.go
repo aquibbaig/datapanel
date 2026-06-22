@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -191,15 +192,7 @@ func (s *Service) PlanSQL(input PlanRequest) (PlanResponse, error) {
 }
 
 func (s *Service) generateOpenAI(token string, model string, system string, user string) (GenerateResponse, error) {
-	payload := map[string]any{
-		"model": model,
-		"messages": []map[string]string{
-			{"role": "system", "content": system},
-			{"role": "user", "content": user},
-		},
-		"temperature":     0.2,
-		"response_format": map[string]string{"type": "json_object"},
-	}
+	payload := openAIChatPayload(model, system, user)
 
 	var parsed struct {
 		Choices []struct {
@@ -231,16 +224,19 @@ func (s *Service) generateOpenAI(token string, model string, system string, user
 	return result, nil
 }
 
-func (s *Service) planOpenAI(token string, model string, system string, user string) (PlanResponse, error) {
-	payload := map[string]any{
+func openAIChatPayload(model string, system string, user string) map[string]any {
+	return map[string]any{
 		"model": model,
 		"messages": []map[string]string{
 			{"role": "system", "content": system},
 			{"role": "user", "content": user},
 		},
-		"temperature":     0,
 		"response_format": map[string]string{"type": "json_object"},
 	}
+}
+
+func (s *Service) planOpenAI(token string, model string, system string, user string) (PlanResponse, error) {
+	payload := openAIChatPayload(model, system, user)
 
 	var parsed struct {
 		Choices []struct {
@@ -407,7 +403,7 @@ func (s *Service) postJSON(endpoint string, headers map[string]string, payload a
 
 	response, err := s.client.Do(request)
 	if err != nil {
-		return apperrors.New(apperrors.CodeValidation, "AI request failed")
+		return apperrors.New(apperrors.CodeValidation, "AI request failed: "+err.Error())
 	}
 	defer response.Body.Close()
 
@@ -419,7 +415,7 @@ func (s *Service) postJSON(endpoint string, headers map[string]string, payload a
 		return providerHTTPError(response.StatusCode, responseBody)
 	}
 	if err := json.Unmarshal(responseBody, out); err != nil {
-		return apperrors.New(apperrors.CodeValidation, "could not parse AI response")
+		return apperrors.New(apperrors.CodeValidation, "could not parse AI response: "+err.Error())
 	}
 	return nil
 }
@@ -686,5 +682,23 @@ func providerHTTPError(statusCode int, responseBody []byte) error {
 	if err := json.Unmarshal(responseBody, &parsed); err == nil && parsed.Error != nil && strings.TrimSpace(parsed.Error.Message) != "" {
 		return apperrors.New(apperrors.CodeValidation, parsed.Error.Message)
 	}
-	return apperrors.New(apperrors.CodeValidation, "AI provider returned HTTP "+http.StatusText(statusCode))
+	status := strings.TrimSpace(http.StatusText(statusCode))
+	if status == "" {
+		status = fmt.Sprintf("status %d", statusCode)
+	} else {
+		status = fmt.Sprintf("%d %s", statusCode, status)
+	}
+	body := strings.TrimSpace(string(responseBody))
+	if body == "" {
+		return apperrors.New(apperrors.CodeValidation, "AI provider returned HTTP "+status)
+	}
+	return apperrors.New(apperrors.CodeValidation, "AI provider returned HTTP "+status+": "+truncateErrorDetail(body, 500))
+}
+
+func truncateErrorDetail(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if limit <= 0 || len(value) <= limit {
+		return value
+	}
+	return strings.TrimSpace(value[:limit]) + "..."
 }

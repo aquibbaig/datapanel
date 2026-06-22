@@ -380,7 +380,7 @@ export function App() {
 
     if (editableTarget && !isExplainSQL(sql)) {
       editableTable = editableTarget;
-        editableDetailsPromise = model.inspectTable(editableTarget, { force: true }).catch(
+      editableDetailsPromise = model.loadTableDetails(editableTarget, { force: true }).catch(
         () => null,
       );
       if (driver === "postgres" && isPostgresBaseTable(editableTarget.type)) {

@@ -635,6 +635,27 @@ export function useDataPanelState() {
     [activeConnectionId, queryClient, selectedTable, tableDetails]
   );
 
+  const loadTableDetails = useCallback(
+    async (table: TableSummary, options: { force?: boolean } = {}) => {
+      if (!activeConnectionId) return null;
+      const detailsKey = tableDetailsQueryKey(
+        activeConnectionId,
+        table.schema,
+        table.name,
+      );
+      if (options.force) {
+        queryClient.removeQueries({ queryKey: detailsKey });
+      }
+      return queryClient.fetchQuery({
+        queryKey: detailsKey,
+        queryFn: () =>
+          schemaService.describe(activeConnectionId, table.schema, table.name),
+        staleTime: Infinity,
+      });
+    },
+    [activeConnectionId, queryClient],
+  );
+
   const prefetchTableDetails = useCallback(
     async (table: TableSummary) => {
       if (!activeConnectionId) return;
@@ -924,6 +945,7 @@ export function useDataPanelState() {
     refreshMetadata,
     ensureFreshSchema,
     inspectTable,
+    loadTableDetails,
     prefetchTableDetails,
     runQuery,
     explainQuery,

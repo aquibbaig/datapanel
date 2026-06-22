@@ -63,6 +63,29 @@ func TestDeleteCredentialClearsStatus(t *testing.T) {
 	}
 }
 
+func TestProviderHTTPErrorIncludesStatusAndPlainBody(t *testing.T) {
+	err := providerHTTPError(429, []byte("rate limit exceeded"))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	for _, expected := range []string{"429 Too Many Requests", "rate limit exceeded"} {
+		if !strings.Contains(err.Error(), expected) {
+			t.Fatalf("expected error to contain %q, got %q", expected, err.Error())
+		}
+	}
+}
+
+func TestOpenAIChatPayloadOmitsTemperature(t *testing.T) {
+	payload := openAIChatPayload("gpt-5.4", "system", "user")
+	if _, ok := payload["temperature"]; ok {
+		t.Fatal("expected OpenAI payload to omit temperature")
+	}
+	responseFormat, ok := payload["response_format"].(map[string]string)
+	if !ok || responseFormat["type"] != "json_object" {
+		t.Fatalf("expected JSON response format, got %#v", payload["response_format"])
+	}
+}
+
 func TestPlanUserMessageIncludesConversationContext(t *testing.T) {
 	message := planUserMessage(PlanRequest{
 		TableContext: "public.subscribers",

@@ -44,6 +44,7 @@ import { Modal } from "../../components/ui/Modal";
 import { aiCredentialService, appDataService, schemaService } from "../../lib/backend";
 import { cn } from "../../lib/cn";
 import type {
+  AIChatTurn,
   AIChatThread,
   AICredentialStatus,
   AIGenerateResponse,
@@ -342,7 +343,7 @@ export function AiAssistantPanel({
       );
     } catch (error) {
       toast("Could not load AI credentials", {
-        description: error instanceof Error ? error.message : "Unknown error",
+        description: errorMessage(error),
       });
     }
   }
@@ -368,7 +369,7 @@ export function AiAssistantPanel({
       );
     } catch (error) {
       toast("Could not load AI chats", {
-        description: error instanceof Error ? error.message : "Unknown error",
+        description: errorMessage(error),
       });
     }
   }
@@ -387,7 +388,7 @@ export function AiAssistantPanel({
       );
     } catch (error) {
       toast("Could not load AI messages", {
-        description: error instanceof Error ? error.message : "Unknown error",
+        description: errorMessage(error),
       });
     }
   }
@@ -412,7 +413,7 @@ export function AiAssistantPanel({
       setChatMessages([]);
     } catch (error) {
       toast("Could not create chat", {
-        description: error instanceof Error ? error.message : "Unknown error",
+        description: errorMessage(error),
       });
     }
   }
@@ -436,7 +437,7 @@ export function AiAssistantPanel({
       );
     } catch (error) {
       toast("Could not update chat settings", {
-        description: error instanceof Error ? error.message : "Unknown error",
+        description: errorMessage(error),
       });
     }
   }
@@ -458,7 +459,7 @@ export function AiAssistantPanel({
       );
     } catch (error) {
       toast("Could not rename chat", {
-        description: error instanceof Error ? error.message : "Unknown error",
+        description: errorMessage(error),
       });
     }
   }
@@ -492,7 +493,7 @@ export function AiAssistantPanel({
       toast("Chat deleted", { description: thread.title });
     } catch (error) {
       toast("Could not delete chat", {
-        description: error instanceof Error ? error.message : "Unknown error",
+        description: errorMessage(error),
       });
     }
   }
@@ -545,7 +546,7 @@ export function AiAssistantPanel({
       });
     } catch (error) {
       toast("Could not store AI credential", {
-        description: error instanceof Error ? error.message : "Unknown error",
+        description: errorMessage(error),
       });
     } finally {
       setCredentialBusy(false);
@@ -572,7 +573,7 @@ export function AiAssistantPanel({
       });
     } catch (error) {
       toast("Could not remove AI credential", {
-        description: error instanceof Error ? error.message : "Unknown error",
+        description: errorMessage(error),
       });
     } finally {
       setCredentialBusy(false);
@@ -632,8 +633,9 @@ export function AiAssistantPanel({
         await saveAssistantResponse(thread.id, response);
         return;
       }
+      const tableSelectionPrompt = buildTableSelectionPrompt(prompt, conversation);
       const deterministicTables = resolveTablesFromPrompt(
-        prompt,
+        tableSelectionPrompt,
         schemaSnapshot.schemas,
         schemaSnapshot.tablesBySchema,
       );
@@ -722,7 +724,7 @@ export function AiAssistantPanel({
       if (response.sql) onLoadSQL(response.sql);
     } catch (error) {
       toast("AI request failed", {
-        description: error instanceof Error ? error.message : "Unknown error",
+        description: errorMessage(error),
       });
     } finally {
       setChatBusy(false);
@@ -1655,6 +1657,15 @@ function conversationContent(message: ChatMessage) {
   return parts.filter((part) => part.trim().length > 0).join("\n\n");
 }
 
+function buildTableSelectionPrompt(prompt: string, conversation: AIChatTurn[]) {
+  const recentContext = conversation
+    .slice(-6)
+    .map((turn) => turn.content)
+    .filter((content) => content.trim().length > 0)
+    .join("\n\n");
+  return [recentContext, prompt].filter((part) => part.trim().length > 0).join("\n\n");
+}
+
 function summarizeSchema(
   activeProfile: ConnectionProfile | null,
   schemas: SchemaSummary[],
@@ -1769,6 +1780,27 @@ function uniqueTables(tables: TableSummary[]) {
     unique.push(table);
   }
   return unique;
+}
+
+function errorMessage(error: unknown, fallback = "Unknown error") {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error.trim()) return error;
+  if (error && typeof error === "object") {
+    const shaped = error as { message?: unknown; error?: unknown };
+    if (typeof shaped.message === "string" && shaped.message.trim()) {
+      return shaped.message;
+    }
+    if (typeof shaped.error === "string" && shaped.error.trim()) {
+      return shaped.error;
+    }
+    try {
+      const serialized = JSON.stringify(error);
+      if (serialized && serialized !== "{}") return serialized;
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
 }
 
 function clarificationResponse(
