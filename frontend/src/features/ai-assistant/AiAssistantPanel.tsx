@@ -68,6 +68,7 @@ interface Props {
   settings: AppSettings | null;
   onExecuteSQL(sql: string): Promise<unknown>;
   onEnsureSchemaFresh?(): Promise<SchemaSnapshot>;
+  onAssistantRequestConsumed?(id: string): void;
   onLoadSQL(sql: string): void;
 }
 
@@ -195,6 +196,7 @@ export function AiAssistantPanel({
   tablesBySchema,
   tableDetails,
   onExecuteSQL,
+  onAssistantRequestConsumed,
   onEnsureSchemaFresh,
   onLoadSQL,
 }: Props) {
@@ -294,6 +296,7 @@ export function AiAssistantPanel({
     if (loadedAssistantRequestIdRef.current !== assistantRequest.id) {
       loadedAssistantRequestIdRef.current = assistantRequest.id;
       setChatPrompt(assistantRequest.displayPrompt || assistantRequest.prompt);
+      onAssistantRequestConsumed?.(assistantRequest.id);
     }
 
     if (
@@ -850,7 +853,10 @@ export function AiAssistantPanel({
                     ),
                   )
                 )}
-                {chatBusy ? <ThinkingMessage /> : null}
+                {chatBusy &&
+                chatMessages.some((message) => message.role === "user") ? (
+                  <ThinkingMessage />
+                ) : null}
               </ConversationContent>
             </Conversation>
 

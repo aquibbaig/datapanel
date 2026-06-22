@@ -719,9 +719,9 @@ export function App() {
                 style={{
                   gridTemplateRows: bottomPanelExpanded
                     ? bottomPanelHeight
-                      ? `minmax(180px, 1fr) 3px minmax(120px, ${bottomPanelHeight}px)`
-                      : "48% 3px minmax(0, 1fr)"
-                    : "minmax(0, 1fr) 0px 44px",
+                      ? `minmax(180px, 1fr) minmax(120px, ${bottomPanelHeight}px)`
+                      : "48% minmax(0, 1fr)"
+                    : "minmax(0, 1fr) 44px",
                 }}
               >
                 <QueryEditor
@@ -731,6 +731,7 @@ export function App() {
                   busy={Boolean(model.runningRequestId)}
                   multiWorkspaceEnabled={multiQueryWorkspacesEnabled}
                   renamingWorkspaceId={renamingQueryWorkspaceId}
+                  resizeEnabled={bottomPanelExpanded}
                   schemas={model.schemas}
                   settings={model.settings}
                   tablesBySchema={model.tablesBySchema}
@@ -744,6 +745,7 @@ export function App() {
                     setRenamingQueryWorkspaceId(workspace.id);
                     setQueryWorkspaceTitleDraft(workspace.title);
                   }}
+                  onResizeStart={startBottomPanelResize}
                   onSelectWorkspace={setActiveQueryWorkspaceId}
                   onTitleDraftChange={setQueryWorkspaceTitleDraft}
                   value={sqlDraft}
@@ -753,18 +755,6 @@ export function App() {
                   onExplainWithAI={explainSelectedSQLWithAI}
                   onRun={runTypedSQL}
                 />
-                <div
-                  aria-label="Resize results panel"
-                  aria-orientation="horizontal"
-                  className={cn(
-                    "group relative z-10 cursor-row-resize bg-surface-950",
-                    !bottomPanelExpanded && "pointer-events-none",
-                  )}
-                  onMouseDown={startBottomPanelResize}
-                  role="separator"
-                >
-                  <div className="absolute left-0 right-0 top-0 h-px bg-line transition group-hover:bg-accent" />
-                </div>
                 <section
                   className={cn(
                     "grid min-h-0 overflow-hidden bg-surface-900",
@@ -867,6 +857,11 @@ export function App() {
                     tableDetails={model.tableDetails}
                     tablesBySchema={model.tablesBySchema}
                     onExecuteSQL={executeAISQL}
+                    onAssistantRequestConsumed={(id) => {
+                      setAssistantRequest((current) =>
+                        current?.id === id ? null : current,
+                      );
+                    }}
                     onEnsureSchemaFresh={model.ensureFreshSchema}
                     onLoadSQL={loadSQL}
                     onUseQuery={loadHistoryQuery}

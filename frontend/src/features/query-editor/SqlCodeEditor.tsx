@@ -93,6 +93,7 @@ export function SqlCodeEditor({
   const viewRef = useRef<EditorView | null>(null);
   const extensionCompartmentRef = useRef(new Compartment());
   const initialValueRef = useRef(value);
+  const themeRef = useRef(theme);
   const onChangeRef = useRef(onChange);
   const onRunRef = useRef(onRun);
   const onSelectedSQLChangeRef = useRef(onSelectedSQLChange);
@@ -241,10 +242,40 @@ export function SqlCodeEditor({
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
+    if (themeRef.current !== theme) return;
     view.dispatch({
       effects: extensionCompartmentRef.current.reconfigure(extensions)
     });
   }, [extensions]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const view = viewRef.current;
+    if (!container || !view || themeRef.current === theme) return;
+
+    const doc = view.state.doc.toString();
+    const selection = view.state.selection;
+    const scrollDOM = view.scrollDOM;
+    const scrollTop = scrollDOM.scrollTop;
+    const scrollLeft = scrollDOM.scrollLeft;
+
+    themeRef.current = theme;
+    view.destroy();
+
+    const nextView = new EditorView({
+      parent: container,
+      state: EditorState.create({
+        doc,
+        selection,
+        extensions: extensionCompartmentRef.current.of(extensions),
+      }),
+    });
+    viewRef.current = nextView;
+    window.requestAnimationFrame(() => {
+      nextView.scrollDOM.scrollTop = scrollTop;
+      nextView.scrollDOM.scrollLeft = scrollLeft;
+    });
+  }, [extensions, theme]);
 
   useEffect(() => {
     const view = viewRef.current;

@@ -1,5 +1,5 @@
 import { AlertTriangle, Bot, GitBranch, Play, Plus, Square, X } from "lucide-react";
-import { useState } from "react";
+import { useState, type MouseEvent as ReactMouseEvent } from "react";
 import { Button } from "../../components/ui/Button";
 import { queryService } from "../../lib/backend";
 import type {
@@ -17,6 +17,7 @@ interface Props {
   busy: boolean;
   multiWorkspaceEnabled: boolean;
   renamingWorkspaceId: string | null;
+  resizeEnabled: boolean;
   schemas: SchemaSummary[];
   settings: AppSettings | null;
   tablesBySchema: Record<string, TableSummary[]>;
@@ -33,6 +34,7 @@ interface Props {
   onDeleteWorkspace(workspace: QueryWorkspace): void;
   onRenameCommit(workspace: QueryWorkspace, title: string): void;
   onRenameStart(workspace: QueryWorkspace): void;
+  onResizeStart(event: ReactMouseEvent<HTMLDivElement>): void;
   onSelectWorkspace(workspaceId: string): void;
   onTitleDraftChange(title: string): void;
 }
@@ -50,6 +52,7 @@ export function QueryEditor({
   busy,
   multiWorkspaceEnabled,
   renamingWorkspaceId,
+  resizeEnabled,
   schemas,
   settings,
   tablesBySchema,
@@ -66,6 +69,7 @@ export function QueryEditor({
   onDeleteWorkspace,
   onRenameCommit,
   onRenameStart,
+  onResizeStart,
   onSelectWorkspace,
   onTitleDraftChange,
 }: Props) {
@@ -112,7 +116,7 @@ export function QueryEditor({
   }
 
   return (
-    <section className="grid min-h-0 grid-rows-[38px_minmax(0,1fr)_auto_auto] border-b border-line bg-surface-950">
+    <section className="grid min-h-0 grid-rows-[38px_minmax(0,1fr)_auto_3px_auto] border-b border-line bg-surface-950">
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center border-b border-line">
         {multiWorkspaceEnabled ? (
           <QueryWorkspaceTabs
@@ -150,24 +154,39 @@ export function QueryEditor({
         />
       </div>
 
-      {warnings.length > 0 ? (
-        <div className="grid grid-cols-[18px_minmax(0,1fr)_auto_auto] items-start gap-2 border-t border-yellow-500/30 bg-yellow-500/10 p-3">
-          <AlertTriangle size={14} className="text-yellow-200" />
-          <div className="flex flex-col gap-1">
-            <b className="text-sm text-yellow-100">Confirm destructive SQL</b>
-            {warnings.map((warning) => (
-              <p className="text-xs text-yellow-100/80" key={warning}>{warning}</p>
-            ))}
+      <div>
+        {warnings.length > 0 ? (
+          <div className="grid grid-cols-[18px_minmax(0,1fr)_auto_auto] items-start gap-2 border-t border-yellow-500/30 bg-yellow-500/10 p-3">
+            <AlertTriangle size={14} className="text-yellow-200" />
+            <div className="flex flex-col gap-1">
+              <b className="text-sm text-yellow-100">Confirm destructive SQL</b>
+              {warnings.map((warning) => (
+                <p className="text-xs text-yellow-100/80" key={warning}>{warning}</p>
+              ))}
+            </div>
+            <Button variant="danger" onClick={() => void run(true)}>Run anyway</Button>
+            <Button onClick={() => {
+              setPendingSQL("");
+              setWarnings([]);
+            }}>Cancel</Button>
           </div>
-          <Button variant="danger" onClick={() => void run(true)}>Run anyway</Button>
-          <Button onClick={() => {
-            setPendingSQL("");
-            setWarnings([]);
-          }}>Cancel</Button>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
-      <div className="flex justify-end gap-2 border-t border-line p-2">
+      <div
+        aria-label="Resize results panel"
+        aria-orientation="horizontal"
+        className={[
+          "group relative cursor-row-resize bg-surface-950",
+          !resizeEnabled ? "pointer-events-none opacity-60" : "",
+        ].join(" ")}
+        onMouseDown={onResizeStart}
+        role="separator"
+      >
+        <div className="absolute left-0 right-0 top-0 h-px bg-line transition group-hover:bg-accent" />
+      </div>
+
+      <div className="flex justify-end gap-2 p-2">
         <Button
           disabled={!activeConnectionId || busy || !selectedActionSQL}
           onClick={() => void explain()}

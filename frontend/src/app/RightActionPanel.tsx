@@ -33,6 +33,7 @@ export function RightActionPanel({
   tableDetails,
   tablesBySchema,
   onExecuteSQL,
+  onAssistantRequestConsumed,
   onEnsureSchemaFresh,
   onLoadSQL,
   onUseQuery,
@@ -46,6 +47,7 @@ export function RightActionPanel({
   tableDetails: TableDetails | null;
   tablesBySchema: Record<string, TableSummary[]>;
   onExecuteSQL(sql: string): Promise<unknown>;
+  onAssistantRequestConsumed?(id: string): void;
   onEnsureSchemaFresh(): Promise<{
     schemas: SchemaSummary[];
     tablesBySchema: Record<string, TableSummary[]>;
@@ -84,6 +86,7 @@ export function RightActionPanel({
             tableDetails={tableDetails}
             tablesBySchema={tablesBySchema}
             onExecuteSQL={onExecuteSQL}
+            onAssistantRequestConsumed={onAssistantRequestConsumed}
             onEnsureSchemaFresh={onEnsureSchemaFresh}
             onLoadSQL={onLoadSQL}
           />
