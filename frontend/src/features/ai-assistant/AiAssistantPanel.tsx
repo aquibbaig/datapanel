@@ -41,6 +41,7 @@ import { Button } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
 import { aiCredentialService, appDataService, schemaService } from "../../lib/backend";
 import { cn } from "../../lib/cn";
+import { textInputBehaviorProps } from "../../lib/text-input";
 import type {
   AIChatTurn,
   AIChatThread,
@@ -1115,6 +1116,7 @@ export function AiAssistantPanel({
           ) : null}
 
           <input
+            {...textInputBehaviorProps}
             autoComplete="off"
             className="min-w-0 rounded-ui border-line bg-surface-900 px-2 py-1.5 text-sm text-zinc-200 placeholder:text-zinc-600"
             placeholder="Optional label, e.g. Work project"
@@ -1122,6 +1124,7 @@ export function AiAssistantPanel({
             onChange={(event) => setCredentialLabel(event.target.value)}
           />
           <input
+            {...textInputBehaviorProps}
             autoComplete="off"
             className="min-w-0 rounded-ui border-line bg-surface-900 px-2 py-1.5 font-mono text-sm text-zinc-200 placeholder:text-zinc-600"
             placeholder={`Paste ${selected.name} API key`}
@@ -1215,6 +1218,7 @@ function ChatThreadBar({
         const renaming = thread.id === renamingThreadId;
         return renaming ? (
           <input
+            {...textInputBehaviorProps}
             autoFocus
             className="h-8 w-40 shrink-0 rounded-full border-transparent bg-surface-800 px-3 text-sm font-medium text-zinc-100"
             key={thread.id}

@@ -11,6 +11,7 @@ import { useState } from "react";
 import logoMarkUrl from "../../assets/logo-mark.png";
 import { SchemaBrowser } from "../features/schema-browser/SchemaBrowser";
 import { cn } from "../lib/cn";
+import { textInputBehaviorProps } from "../lib/text-input";
 import type {
   ConnectionProfile,
   SchemaSummary,
@@ -177,6 +178,7 @@ function WorkspaceSelector({
                 size={14}
               />
               <input
+                {...textInputBehaviorProps}
                 autoFocus
                 className="h-8 rounded-md border-line bg-surface-900 pl-8 pr-2 text-sm text-zinc-200 placeholder:text-zinc-600"
                 placeholder="Search workspaces"

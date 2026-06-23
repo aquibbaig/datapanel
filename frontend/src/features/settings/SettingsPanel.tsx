@@ -1,6 +1,7 @@
 import { Monitor, Moon, RotateCcw, Save, Sun } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../../components/ui/Button";
+import { textInputBehaviorProps } from "../../lib/text-input";
 import type { AppSettings } from "../../lib/types";
 
 interface Props {
@@ -167,6 +168,7 @@ export function SettingsPanel({ settings, onUpdate }: Props) {
           <label className="grid gap-2">
             <span className="text-xs text-muted">Chat response prompt</span>
             <textarea
+              {...textInputBehaviorProps}
               className="min-h-20 rounded-ui p-2 text-sm"
               placeholder="Talk to me like Keanu Reeves"
               value={draft.chatResponsePrompt}

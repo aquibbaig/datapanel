@@ -1,6 +1,7 @@
 import { Database, Link2, PlugZap, Save, Trash2 } from "lucide-react";
 import { ClipboardEvent, FormEvent, useEffect, useId, useState } from "react";
 import { Button } from "../../components/ui/Button";
+import { textInputBehaviorProps } from "../../lib/text-input";
 import type { ConnectionProfile, SaveConnectionRequest, TestConnectionRequest } from "../../lib/types";
 
 interface Props {
@@ -194,6 +195,7 @@ export function ConnectionPanel({
                 size={14}
               />
               <input
+                {...textInputBehaviorProps}
                 id={connectionUrlInputId}
                 className="pl-8"
                 value={connectionUrl}
@@ -227,6 +229,7 @@ export function ConnectionPanel({
         <label className="grid gap-2">
           <span className="text-xs text-muted">Name</span>
           <input
+            {...textInputBehaviorProps}
             value={form.name}
             onChange={(event) => {
               setForm({ ...form, name: event.target.value });
@@ -241,7 +244,7 @@ export function ConnectionPanel({
         <div className={form.driver === "bigquery" ? "grid gap-2" : "grid grid-cols-[minmax(0,1fr)_96px] gap-2"}>
           <label className="grid gap-2">
             <span className="text-xs text-muted">{form.driver === "bigquery" ? "Project ID" : "Host"}</span>
-            <input value={form.host} onChange={(event) => setForm({ ...form, host: event.target.value })} />
+            <input {...textInputBehaviorProps} value={form.host} onChange={(event) => setForm({ ...form, host: event.target.value })} />
           </label>
           {form.driver !== "bigquery" ? (
             <label className="grid gap-2">
@@ -252,16 +255,17 @@ export function ConnectionPanel({
         </div>
         <label className="grid gap-2">
           <span className="text-xs text-muted">{form.driver === "bigquery" ? "Default dataset" : "Database"}</span>
-          <input value={form.database} onChange={(event) => setForm({ ...form, database: event.target.value })} />
+          <input {...textInputBehaviorProps} value={form.database} onChange={(event) => setForm({ ...form, database: event.target.value })} />
         </label>
         <label className="grid gap-2">
           <span className="text-xs text-muted">{form.driver === "bigquery" ? "Location" : "Username"}</span>
-          <input value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} />
+          <input {...textInputBehaviorProps} value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} />
         </label>
         {form.driver === "bigquery" ? (
           <label className="grid gap-2">
             <span className="text-xs text-muted">API endpoint</span>
             <input
+              {...textInputBehaviorProps}
               value={form.endpoint}
               onChange={(event) => setForm({ ...form, endpoint: event.target.value })}
               placeholder="https://bigquery.googleapis.com or http://localhost:9050"
@@ -272,6 +276,7 @@ export function ConnectionPanel({
           <label className="grid gap-2">
             <span className="text-xs text-muted">{form.driver === "bigquery" ? "Credentials file path" : "Password"}</span>
             <input
+              {...textInputBehaviorProps}
               type={form.driver === "bigquery" ? "text" : "password"}
               value={form.password}
               onChange={(event) => setForm({ ...form, password: event.target.value })}

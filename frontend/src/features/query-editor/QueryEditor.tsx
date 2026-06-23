@@ -2,6 +2,7 @@ import { AlertTriangle, Bot, GitBranch, Play, Plus, Square, X } from "lucide-rea
 import { useState, type MouseEvent as ReactMouseEvent } from "react";
 import { Button } from "../../components/ui/Button";
 import { queryService } from "../../lib/backend";
+import { textInputBehaviorProps } from "../../lib/text-input";
 import type {
   AppSettings,
   ConnectionProfile,
@@ -255,6 +256,7 @@ function QueryWorkspaceTabs({
           const renaming = workspace.id === renamingWorkspaceId;
           return renaming ? (
             <input
+              {...textInputBehaviorProps}
               autoFocus
               className="h-8 w-36 shrink-0 rounded-md border-transparent bg-surface-800 px-2 text-sm font-medium text-zinc-100"
               key={workspace.id}

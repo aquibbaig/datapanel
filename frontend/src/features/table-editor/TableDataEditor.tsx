@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../../components/ui/Button";
 import { queryService } from "../../lib/backend";
 import { cn } from "../../lib/cn";
+import { textInputBehaviorProps } from "../../lib/text-input";
 import type {
   AppSettings,
   ColumnSummary,
@@ -461,6 +462,7 @@ export function TableDataEditor({
               </span>
             </div>
             <textarea
+              {...textInputBehaviorProps}
               className="min-h-0 resize-none rounded-ui border-line bg-background p-2 text-xs text-zinc-300"
               readOnly
               value={generatedSQL}
@@ -494,6 +496,7 @@ function CellEditor({
       )}
     >
       <input
+        {...textInputBehaviorProps}
         className="h-full min-w-0 flex-1 border-0 bg-transparent px-2 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-transparent focus:shadow-none"
         disabled={disabled}
         onChange={(event) =>

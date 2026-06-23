@@ -1,5 +1,6 @@
 import { type FormHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import { cn } from "../../lib/cn";
+import { textInputBehaviorProps } from "../../lib/text-input";
 
 export function PromptInput({
   children,
@@ -25,6 +26,7 @@ export function PromptInputTextarea({
 }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
+      {...textInputBehaviorProps}
       className={cn(
         "min-h-[84px] resize-none border-0 bg-transparent p-0 text-sm leading-5 text-zinc-200 placeholder:text-zinc-600 focus:ring-0",
         className,

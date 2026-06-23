@@ -15,6 +15,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "../../components/ui/Button";
 import { cn } from "../../lib/cn";
+import { textInputBehaviorProps } from "../../lib/text-input";
 import type {
   SchemaSummary,
   TableDetails,
@@ -148,6 +149,7 @@ export function SchemaBrowser({
             size={14}
           />
           <input
+            {...textInputBehaviorProps}
             className="h-8 rounded-md border-line bg-control/[0.03] pl-8 pr-2 text-sm text-zinc-200 placeholder:text-zinc-600"
             disabled={!activeConnectionId}
             placeholder="Explorer..."
