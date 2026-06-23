@@ -113,7 +113,7 @@ function WorkspaceSelector({
   const displayName =
     activeProfile?.name || switchingWorkspaceName || "No workspace";
   const displayDetail = activeProfile
-    ? `${driverLabel(activeProfile.driver)} · ${activeProfile.database || activeProfile.host}`
+    ? connectionDetail(activeProfile)
     : switchingWorkspaceName
       ? "Switching workspace"
       : "Select a connection";
@@ -202,7 +202,7 @@ function WorkspaceSelector({
                         {profile.name}
                       </span>
                       <span className="block truncate text-[11px] text-muted">
-                        {profile.host}:{profile.port} · {profile.database}
+                        {connectionDetail(profile)}
                       </span>
                     </span>
                     {active ? (
@@ -246,4 +246,14 @@ function driverLabel(driver: string) {
   if (driver === "mysql") return "MySQL";
   if (driver === "bigquery") return "BigQuery";
   return "Postgres";
+}
+
+function connectionDetail(profile: ConnectionProfile) {
+  if (profile.driver === "bigquery") {
+    const dataset = profile.database?.trim();
+    return dataset
+      ? `BigQuery · ${dataset}`
+      : `BigQuery · project ${profile.host}`;
+  }
+  return `${driverLabel(profile.driver)} · ${profile.host}:${profile.port} · ${profile.database}`;
 }

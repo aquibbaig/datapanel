@@ -229,7 +229,12 @@ export function SchemaBrowser({
 
 type BrowserRow =
   | { kind: "schema"; key: string; schema: SchemaSummary }
-  | { kind: "table"; key: string; table: TableSummary }
+  | {
+      kind: "table";
+      key: string;
+      table: TableSummary;
+      firstInSchema: boolean;
+    }
   | {
       kind: "column";
       key: string;
@@ -267,11 +272,12 @@ function buildBrowserRows({
   const rows: BrowserRow[] = [];
   for (const { schema, tables } of filteredSchemas) {
     rows.push({ kind: "schema", key: `schema:${schema.name}`, schema });
-    for (const table of tables) {
+    for (const [index, table] of tables.entries()) {
       rows.push({
         kind: "table",
         key: `table:${table.schema}.${table.name}`,
         table,
+        firstInSchema: index === 0,
       });
       if (
         selectedTable?.schema === table.schema &&
@@ -293,7 +299,8 @@ function buildBrowserRows({
 
 function estimatedRowHeight(row: BrowserRow | undefined) {
   if (!row) return 32;
-  if (row.kind === "schema") return 28;
+  if (row.kind === "schema") return 40;
+  if (row.kind === "table" && row.firstInSchema) return 38;
   return 32;
 }
 
@@ -326,8 +333,9 @@ function BrowserRow({
 }) {
   if (row.kind === "schema") {
     return (
-      <div className="flex h-7 items-center px-2 text-[11px] font-semibold uppercase text-muted">
-        {row.schema.name}
+      <div className="flex h-10 items-end border-t border-line/60 px-2 text-[11px] font-bold uppercase tracking-wide text-zinc-400">
+        <Database className="mr-1.5 text-zinc-600" size={12} />
+        <span className="min-w-0 truncate">{row.schema.name}</span>
       </div>
     );
   }
@@ -349,30 +357,32 @@ function BrowserRow({
     inspectingTable.name === table.name;
 
   return (
-    <div className="py-0.5">
-      <Button
-        size="row"
-        className={cn(
-          "w-full justify-start rounded-md text-left",
-          active
-            ? "bg-selection text-selection-foreground"
-            : "text-zinc-500 hover:bg-selection-hover hover:text-zinc-200",
-        )}
-        onClick={() => void onInspectTable(table)}
-      >
-        <Table2 size={14} />
-        <span className="min-w-0 flex-1 truncate">{table.name}</span>
-        <span className="text-[11px] text-muted">
-          {table.type.replace("BASE ", "")}
-        </span>
-        {loading ? (
-          <Loader2
-            aria-label="Loading table metadata"
-            className="animate-spin text-zinc-300"
-            size={14}
-          />
-        ) : null}
-      </Button>
+    <div className={cn("pb-0.5 pl-4 pr-1", row.firstInSchema ? "pt-2" : "pt-0.5")}>
+      <div className="border-l border-line/70 pl-2">
+        <Button
+          size="row"
+          className={cn(
+            "w-full justify-start rounded-md text-left",
+            active
+              ? "bg-selection text-selection-foreground"
+              : "text-zinc-500 hover:bg-selection-hover hover:text-zinc-200",
+          )}
+          onClick={() => void onInspectTable(table)}
+        >
+          <Table2 size={14} />
+          <span className="min-w-0 flex-1 truncate">{table.name}</span>
+          <span className="text-[11px] text-muted">
+            {table.type.replace("BASE ", "")}
+          </span>
+          {loading ? (
+            <Loader2
+              aria-label="Loading table metadata"
+              className="animate-spin text-zinc-300"
+              size={14}
+            />
+          ) : null}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -388,17 +398,25 @@ function filterSchemas(
       const tables = tablesBySchema[schema.name] || [];
       if (!query) return { schema, tables };
 
+      const schemaMatches = schema.name.toLowerCase().includes(query);
       return {
         schema,
-        tables: tables.filter((table) =>
-          [schema.name, table.schema, table.name, table.type]
-            .join(" ")
-            .toLowerCase()
-            .includes(query),
-        ),
+        tables: schemaMatches
+          ? tables
+          : tables.filter((table) =>
+              [schema.name, table.schema, table.name, table.type]
+                .join(" ")
+                .toLowerCase()
+                .includes(query),
+            ),
       };
     })
-    .filter((entry) => entry.tables.length > 0);
+    .filter(
+      (entry) =>
+        !query ||
+        entry.tables.length > 0 ||
+        entry.schema.name.toLowerCase().includes(query),
+    );
 }
 
 function ColumnRow({
@@ -411,7 +429,7 @@ function ColumnRow({
   const displayType = formatDisplayDataType(column.dataType);
 
   return (
-    <div className="ml-6 border-l border-line py-0.5 pl-2">
+    <div className="ml-12 border-l border-line/70 py-0.5 pl-2">
       <div
         className="grid h-7 w-full grid-cols-[minmax(0,1fr)_minmax(4.75rem,auto)] items-center gap-2 rounded-md px-2 text-left text-xs font-medium text-zinc-400 hover:bg-control/[0.05] hover:text-zinc-100"
         title={`${column.name}: ${displayType}`}

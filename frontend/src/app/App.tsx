@@ -1214,7 +1214,7 @@ function connectionTooltip(model: ReturnType<typeof useDataPanelState>) {
   return (
     <div className="flex flex-col gap-2">
       <b className="font-medium text-zinc-100">
-        {driverLabel(profile.driver)} / {profile.database || profile.host}
+        {connectionTooltipTitle(profile)}
       </b>
       <div className="flex flex-col gap-1">
         <span>
@@ -1247,6 +1247,16 @@ function driverLabel(driver: string) {
   if (driver === "mysql") return "MySQL";
   if (driver === "bigquery") return "BigQuery";
   return "Postgres";
+}
+
+function connectionTooltipTitle(profile: ConnectionProfile) {
+  if (profile.driver === "bigquery") {
+    const dataset = profile.database?.trim();
+    return dataset
+      ? `BigQuery / ${dataset}`
+      : `BigQuery / project ${profile.host}`;
+  }
+  return `${driverLabel(profile.driver)} / ${profile.database || profile.host}`;
 }
 
 function currentKeychainAccessHint(

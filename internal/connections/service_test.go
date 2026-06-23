@@ -157,6 +157,67 @@ func TestConnectAllowsBigQueryWithoutSavedSecret(t *testing.T) {
 	}
 }
 
+func TestConnectUsesSavedBigQuerySecretWhenPresent(t *testing.T) {
+	profile := ConnectionProfile{
+		ID:       "local-bq",
+		Driver:   "bigquery",
+		Name:     "Local BigQuery",
+		Host:     "local-project",
+		Database: "analytics",
+	}
+	secrets := NewMemorySecretStore()
+	if err := secrets.Save(context.Background(), profile.ID, "/Users/me/key.json"); err != nil {
+		t.Fatalf("save secret: %v", err)
+	}
+	connector := &fakeConnector{}
+	service := NewService(
+		fakeProfileStore{profile: profile},
+		secrets,
+		connector,
+	)
+
+	status, err := service.Connect(ConnectRequest{ProfileID: profile.ID})
+	if err != nil {
+		t.Fatalf("expected saved BigQuery credentials to connect: %v", err)
+	}
+	if !status.Connected {
+		t.Fatal("expected connected status")
+	}
+	if connector.password != "/Users/me/key.json" {
+		t.Fatalf("expected saved credentials path, got %q", connector.password)
+	}
+}
+
+func TestSaveConnectionClearsBlankBigQuerySecret(t *testing.T) {
+	profile := ConnectionProfile{
+		ID:     "local-bq",
+		Driver: "bigquery",
+		Name:   "Local BigQuery",
+		Host:   "local-project",
+	}
+	secrets := NewMemorySecretStore()
+	if err := secrets.Save(context.Background(), profile.ID, "/Users/me/key.json"); err != nil {
+		t.Fatalf("save secret: %v", err)
+	}
+	service := NewService(
+		fakeProfileStore{profile: profile},
+		secrets,
+		&fakeConnector{},
+	)
+
+	if _, err := service.SaveConnection(SaveConnectionRequest{
+		ID:     profile.ID,
+		Driver: "bigquery",
+		Name:   profile.Name,
+		Host:   profile.Host,
+	}); err != nil {
+		t.Fatalf("save connection: %v", err)
+	}
+	if _, err := secrets.Get(context.Background(), profile.ID); err == nil {
+		t.Fatal("expected blank BigQuery credentials to clear saved secret")
+	}
+}
+
 type fakeProfileStore struct {
 	profile ConnectionProfile
 }

@@ -49,6 +49,7 @@ interface MetadataLoadOptions {
 interface ConnectOptions {
   suppressErrorToast?: boolean;
   reconnectKeychain?: boolean;
+  refresh?: boolean;
 }
 
 interface SchemaSnapshot {
@@ -64,6 +65,7 @@ const tableDetailsQueryKey = (connectionId: string, schema: string, table: strin
   ["tableDetails", connectionId, schema, table] as const;
 
 const maxBackgroundWorkspacePrefetches = 5;
+const maxToastDescriptionLength = 260;
 
 async function applyTelemetrySettings(
   nextSettings: AppSettings,
@@ -114,17 +116,22 @@ export function useDataPanelState() {
   const inspectRequestRef = useRef(0);
   const queryRequestRef = useRef(0);
   const updateCheckStartedRef = useRef(false);
+  const profilesRef = useRef<ConnectionProfile[]>([]);
 
   const activeProfile = useMemo(
     () => profiles.find((profile) => profile.id === activeConnectionId) || null,
     [activeConnectionId, profiles]
   );
 
+  useEffect(() => {
+    profilesRef.current = profiles;
+  }, [profiles]);
+
   const readSchemaSnapshotCache = useCallback(async (profileId: string) => {
     const cached = queryClient.getQueryData<SchemaSnapshot>(
       schemaSnapshotQueryKey(profileId),
     );
-    if (cached) return cached;
+    if (cached && schemaSnapshotHasTables(cached)) return cached;
 
     const persisted = await appDataService
       .getSchemaSnapshot(profileId)
@@ -138,6 +145,7 @@ export function useDataPanelState() {
         tablesBySchema: persisted.tablesBySchema,
         fingerprint: persisted.fingerprint,
       };
+      if (!schemaSnapshotHasTables(snapshot)) return null;
       queryClient.setQueryData(schemaSnapshotQueryKey(profileId), snapshot);
       return snapshot;
     }
@@ -162,8 +170,17 @@ export function useDataPanelState() {
     }
 
     const nextSchemas = await schemaService.refresh(profileId);
+    const profile = profilesRef.current.find((item) => item.id === profileId);
     const tableEntries = await Promise.all(
-      nextSchemas.map(async (schema) => [schema.name, await schemaService.tables(profileId, schema.name)] as const)
+      nextSchemas.map(async (schema) => {
+        try {
+          return [schema.name, await schemaService.tables(profileId, schema.name)] as const;
+        } catch (error) {
+          if (profile?.driver !== "bigquery") throw error;
+          console.warn(`BigQuery table metadata load failed for ${schema.name}`, error);
+          return [schema.name, []] as const;
+        }
+      })
     );
     const nextTablesBySchema = Object.fromEntries(tableEntries);
     const snapshot = {
@@ -191,6 +208,21 @@ export function useDataPanelState() {
     setTablesBySchema(snapshot.tablesBySchema);
     return snapshot;
   }, [fetchSchemaSnapshot]);
+
+  const invalidateSchemaSnapshot = useCallback(async (profileId: string) => {
+    queryClient.removeQueries({ queryKey: schemaSnapshotQueryKey(profileId) });
+    queryClient.removeQueries({ queryKey: ["tableDetails", profileId] });
+    await appDataService
+      .saveSchemaSnapshot({
+        connectionId: profileId,
+        schemas: [],
+        tablesBySchema: {},
+        fingerprint: "",
+      })
+      .catch((error: unknown) => {
+        console.warn("Schema snapshot cache clear failed", error);
+      });
+  }, [queryClient]);
 
   const prefetchWorkspaceMetadata = useCallback(async (profilesToPrefetch: ConnectionProfile[]) => {
     const queuedProfiles = profilesToPrefetch.filter((profile) => profile.id);
@@ -379,6 +411,7 @@ export function useDataPanelState() {
       setBusy(true);
       try {
         const profile = await connectionService.save(input);
+        await invalidateSchemaSnapshot(profile.id);
         await loadProfiles();
         setStatus({ tone: "success", text: `${profile.name} saved` });
         notify("success", "Connection saved", profile.name);
@@ -392,7 +425,7 @@ export function useDataPanelState() {
         setBusy(false);
       }
     },
-    [loadProfiles]
+    [invalidateSchemaSnapshot, loadProfiles]
   );
 
   const testConnection = useCallback(async (input: TestConnectionRequest) => {
@@ -440,7 +473,7 @@ export function useDataPanelState() {
     setBusy(true);
     try {
       const result = await connectAndLoadMetadata(profileId, password, {
-        refresh: !switchingWorkspace && (settings?.autoRefreshMetadata ?? true),
+        refresh: options.refresh ?? (settings?.autoRefreshMetadata ?? true),
         reconnectKeychain: options.reconnectKeychain,
       });
       const profile = profiles.find((item) => item.id === profileId);
@@ -989,6 +1022,10 @@ function querySuccessMessage(rows: number, affectedRows: number, durationMs: num
   return `Query completed in ${durationMs}ms`;
 }
 
+function schemaSnapshotHasTables(snapshot: SchemaSnapshot) {
+  return Object.values(snapshot.tablesBySchema).some((tables) => tables.length > 0);
+}
+
 async function runWithConcurrency<T>(
   items: T[],
   limit: number,
@@ -1018,10 +1055,17 @@ function notify(
   id?: string,
 ) {
   toast(title, {
-    description,
+    description: truncateToastDescription(description),
     id,
     icon: toastIcon(tone),
   });
+}
+
+function truncateToastDescription(description?: string) {
+  if (!description) return description;
+  const normalized = description.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxToastDescriptionLength) return normalized;
+  return `${normalized.slice(0, maxToastDescriptionLength - 3)}...`;
 }
 
 function toastIcon(tone: "success" | "danger" | "warning" | "loading" | "neutral") {

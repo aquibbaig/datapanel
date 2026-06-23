@@ -52,6 +52,8 @@ func (s *Service) SaveConnection(input SaveConnectionRequest) (ConnectionProfile
 		if err := s.secrets.Save(context.Background(), profile.ID, input.Password); err != nil {
 			return ConnectionProfile{}, apperrors.New(apperrors.CodeSecurity, "could not save password")
 		}
+	} else if profile.Driver == "bigquery" {
+		_ = s.secrets.Delete(context.Background(), profile.ID)
 	}
 
 	return profile, nil
@@ -99,16 +101,20 @@ func (s *Service) Connect(input ConnectRequest) (ConnectionStatus, error) {
 	}
 
 	password := input.Password
-	if password == "" && requiresSavedSecret(profile) {
-		if input.ReconnectKeychain {
+	if password == "" {
+		requiresSecret := requiresSavedSecret(profile)
+		if input.ReconnectKeychain || requiresSecret {
 			if err := s.secrets.RequestAccess(context.Background()); err != nil {
-				return ConnectionStatus{}, err
+				if requiresSecret {
+					return ConnectionStatus{}, err
+				}
 			}
 		}
-		password, err = s.secrets.Get(context.Background(), profile.ID)
-		if err != nil {
+		savedPassword, err := s.secrets.Get(context.Background(), profile.ID)
+		if err != nil && requiresSecret {
 			return ConnectionStatus{}, err
 		}
+		password = savedPassword
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), defaultConnectTimeout)

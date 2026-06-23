@@ -6,6 +6,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
+	"net"
+	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -17,6 +22,7 @@ import (
 	"datapanel/internal/connections"
 	"datapanel/internal/postgres"
 	"datapanel/internal/query"
+	"golang.org/x/oauth2"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
@@ -103,6 +109,10 @@ func (a *Adapter) ListSchemas(ctx context.Context, connectionID string) ([]postg
 		return nil, err
 	}
 
+	if schema := state.defaultDataset(); schema != "" {
+		return []postgres.SchemaSummary{{Name: schema}}, nil
+	}
+
 	it := state.client.Datasets(ctx)
 	it.ProjectID = state.projectID()
 	schemas := []postgres.SchemaSummary{}
@@ -112,10 +122,13 @@ func (a *Adapter) ListSchemas(ctx context.Context, connectionID string) ([]postg
 			break
 		}
 		if err != nil {
-			return nil, apperrors.New(apperrors.CodeDatabase, "could not load BigQuery datasets")
+			return nil, apperrors.New(apperrors.CodeDatabase, fmt.Sprintf("could not load BigQuery datasets: %s", sanitizeError(err)))
 		}
 		schemas = append(schemas, postgres.SchemaSummary{Name: dataset.DatasetID})
 	}
+	sort.Slice(schemas, func(i, j int) bool {
+		return schemas[i].Name < schemas[j].Name
+	})
 	return schemas, nil
 }
 
@@ -125,28 +138,7 @@ func (a *Adapter) ListTables(ctx context.Context, connectionID string, schema st
 		return nil, err
 	}
 
-	it := state.client.DatasetInProject(state.projectID(), schema).Tables(ctx)
-	tables := []postgres.TableSummary{}
-	for {
-		table, err := it.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			return nil, apperrors.New(apperrors.CodeDatabase, "could not load BigQuery tables")
-		}
-		metadata, err := table.Metadata(ctx)
-		if err != nil {
-			return nil, apperrors.New(apperrors.CodeDatabase, "could not read BigQuery table metadata")
-		}
-		tables = append(tables, postgres.TableSummary{
-			Schema:      schema,
-			Name:        table.TableID,
-			Type:        bigQueryTableType(metadata.Type),
-			RowEstimate: int64(metadata.NumRows),
-		})
-	}
-	return tables, nil
+	return state.listInformationSchemaTables(ctx, schema)
 }
 
 func (a *Adapter) DescribeTable(ctx context.Context, connectionID string, schema string, table string) (postgres.TableDetails, error) {
@@ -155,58 +147,36 @@ func (a *Adapter) DescribeTable(ctx context.Context, connectionID string, schema
 		return postgres.TableDetails{}, err
 	}
 
-	metadata, err := state.client.DatasetInProject(state.projectID(), schema).Table(table).Metadata(ctx)
-	if err != nil {
-		return postgres.TableDetails{}, apperrors.New(apperrors.CodeDatabase, "could not read BigQuery table metadata")
-	}
-	details := postgres.TableDetails{
-		Schema:      schema,
-		Name:        table,
-		Type:        bigQueryTableType(metadata.Type),
-		Columns:     columnsFromSchema(metadata.Schema),
-		Indexes:     []postgres.IndexSummary{},
-		Constraints: []postgres.ConstraintSummary{},
-	}
-	return details, nil
+	return state.describeInformationSchemaTable(ctx, schema, table)
 }
 
 func (a *Adapter) SchemaFingerprint(ctx context.Context, connectionID string) (postgres.SchemaFingerprint, error) {
-	state, err := a.client(connectionID)
-	if err != nil {
+	if _, err := a.client(connectionID); err != nil {
 		return postgres.SchemaFingerprint{}, err
 	}
 
 	lines := []string{}
-	datasets := state.client.Datasets(ctx)
-	datasets.ProjectID = state.projectID()
-	for {
-		dataset, err := datasets.Next()
-		if err == iterator.Done {
-			break
-		}
+	schemas, err := a.ListSchemas(ctx, connectionID)
+	if err != nil {
+		return postgres.SchemaFingerprint{}, err
+	}
+	for _, schema := range schemas {
+		lines = append(lines, "schema\x1f"+schema.Name)
+		tables, err := a.ListTables(ctx, connectionID, schema.Name)
 		if err != nil {
-			return postgres.SchemaFingerprint{}, apperrors.New(apperrors.CodeDatabase, "could not fingerprint BigQuery schema")
+			return postgres.SchemaFingerprint{}, err
 		}
-		lines = append(lines, "schema\x1f"+dataset.DatasetID)
-		tables := dataset.Tables(ctx)
-		for {
-			table, err := tables.Next()
-			if err == iterator.Done {
-				break
-			}
+		for _, table := range tables {
+			lines = append(lines, strings.Join([]string{"table", schema.Name, table.Name, table.Type}, "\x1f"))
+			details, err := a.DescribeTable(ctx, connectionID, schema.Name, table.Name)
 			if err != nil {
-				return postgres.SchemaFingerprint{}, apperrors.New(apperrors.CodeDatabase, "could not fingerprint BigQuery tables")
+				return postgres.SchemaFingerprint{}, err
 			}
-			metadata, err := table.Metadata(ctx)
-			if err != nil {
-				return postgres.SchemaFingerprint{}, apperrors.New(apperrors.CodeDatabase, "could not fingerprint BigQuery table metadata")
-			}
-			lines = append(lines, strings.Join([]string{"table", dataset.DatasetID, table.TableID, bigQueryTableType(metadata.Type)}, "\x1f"))
-			for _, column := range columnsFromSchema(metadata.Schema) {
+			for _, column := range details.Columns {
 				lines = append(lines, strings.Join([]string{
 					"column",
-					dataset.DatasetID,
-					table.TableID,
+					schema.Name,
+					table.Name,
 					fmt.Sprintf("%d", column.Position),
 					column.Name,
 					column.DataType,
@@ -308,13 +278,15 @@ func newClient(ctx context.Context, profile connections.ConnectionProfile, passw
 	opts := []option.ClientOption{}
 	endpoint := strings.TrimSpace(profile.Endpoint)
 	if endpoint != "" {
-		opts = append(opts, option.WithEndpoint(endpoint))
+		opts = append(opts, option.WithEndpoint(normalizeBigQueryEndpoint(endpoint)))
 	}
-	if credentialsJSON := strings.TrimSpace(password); credentialsJSON != "" {
-		opts = append(opts, option.WithCredentialsJSON([]byte(credentialsJSON)))
-	} else if endpoint != "" {
-		opts = append(opts, option.WithoutAuthentication())
+
+	authOpts, err := bigQueryAuthOptions(ctx, strings.TrimSpace(password), endpoint)
+	if err != nil {
+		return nil, err
 	}
+	opts = append(opts, authOpts...)
+
 	client, err := gcbigquery.NewClient(ctx, projectID, opts...)
 	if err != nil {
 		return nil, apperrors.New(apperrors.CodeDatabase, "could not create BigQuery client")
@@ -325,8 +297,263 @@ func newClient(ctx context.Context, profile connections.ConnectionProfile, passw
 	return client, nil
 }
 
+func bigQueryAuthOptions(ctx context.Context, credentialsSource string, endpoint string) ([]option.ClientOption, error) {
+	if credentialsSource != "" {
+		if looksLikeCredentialsJSON(credentialsSource) {
+			return []option.ClientOption{option.WithCredentialsJSON([]byte(credentialsSource))}, nil
+		}
+		return []option.ClientOption{option.WithCredentialsFile(expandCredentialsFilePath(credentialsSource))}, nil
+	}
+
+	if usesUnauthenticatedEndpoint(endpoint) {
+		return []option.ClientOption{option.WithoutAuthentication()}, nil
+	}
+
+	tokenSource := &gcloudTokenSource{}
+	if _, err := tokenSource.Token(); err != nil {
+		return nil, apperrors.New(
+			apperrors.CodeDatabase,
+			fmt.Sprintf("Failed to obtain a BigQuery access token from `gcloud auth login`: %v", err),
+		)
+	}
+	return []option.ClientOption{option.WithTokenSource(tokenSource)}, nil
+}
+
+type gcloudTokenSource struct {
+	mu    sync.Mutex
+	token *oauth2.Token
+}
+
+func (s *gcloudTokenSource) Token() (*oauth2.Token, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.token != nil && s.token.Valid() {
+		return s.token, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	output, err := exec.CommandContext(ctx, "gcloud", "auth", "print-access-token").Output()
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("gcloud auth print-access-token timed out")
+	}
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			message := strings.TrimSpace(string(exitErr.Stderr))
+			if message != "" {
+				return nil, fmt.Errorf("%s", message)
+			}
+		}
+		return nil, err
+	}
+
+	accessToken := strings.TrimSpace(string(output))
+	if accessToken == "" {
+		return nil, fmt.Errorf("gcloud auth print-access-token returned an empty token")
+	}
+	s.token = &oauth2.Token{
+		AccessToken: accessToken,
+		TokenType:   "Bearer",
+		Expiry:      time.Now().Add(50 * time.Minute),
+	}
+	return s.token, nil
+}
+
+func looksLikeCredentialsJSON(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	return strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[")
+}
+
+func expandCredentialsFilePath(value string) string {
+	expanded := os.ExpandEnv(strings.TrimSpace(value))
+	if expanded == "~" || strings.HasPrefix(expanded, "~/") {
+		home, err := os.UserHomeDir()
+		if err == nil && home != "" {
+			if expanded == "~" {
+				return home
+			}
+			return filepath.Join(home, strings.TrimPrefix(expanded, "~/"))
+		}
+	}
+	return expanded
+}
+
+func normalizeBigQueryEndpoint(value string) string {
+	trimmed := strings.TrimRight(strings.TrimSpace(value), "/")
+	if trimmed == "" {
+		return ""
+	}
+
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return value
+	}
+	if parsed.Path == "" {
+		parsed.Path = "/bigquery/v2"
+	}
+	return strings.TrimRight(parsed.String(), "/") + "/"
+}
+
+func usesUnauthenticatedEndpoint(endpoint string) bool {
+	trimmed := strings.TrimSpace(endpoint)
+	if trimmed == "" {
+		return false
+	}
+
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return false
+	}
+	host := parsed.Hostname()
+	if host == "" {
+		return false
+	}
+	if parsed.Scheme == "http" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return host == "localhost" || ip != nil && ip.IsLoopback()
+}
+
 func (s *clientState) projectID() string {
 	return strings.TrimSpace(s.profile.Host)
+}
+
+func (s *clientState) defaultDataset() string {
+	return strings.TrimSpace(s.profile.Database)
+}
+
+func (s *clientState) listInformationSchemaTables(ctx context.Context, schema string) ([]postgres.TableSummary, error) {
+	projectID, err := quoteBigQueryIdentifier(s.projectID())
+	if err != nil {
+		return nil, err
+	}
+	datasetID, err := quoteBigQueryIdentifier(schema)
+	if err != nil {
+		return nil, err
+	}
+
+	q := s.client.Query(fmt.Sprintf(
+		"SELECT table_name, table_type FROM %s.%s.INFORMATION_SCHEMA.TABLES ORDER BY table_name",
+		projectID,
+		datasetID,
+	))
+	q.UseLegacySQL = false
+	it, err := q.Read(ctx)
+	if err != nil {
+		return nil, apperrors.New(apperrors.CodeDatabase, fmt.Sprintf("could not load BigQuery tables for dataset %q: %s", schema, sanitizeError(err)))
+	}
+
+	tables := []postgres.TableSummary{}
+	for {
+		var row []gcbigquery.Value
+		if err := it.Next(&row); err == iterator.Done {
+			break
+		} else if err != nil {
+			return nil, apperrors.New(apperrors.CodeDatabase, fmt.Sprintf("could not load BigQuery tables for dataset %q: %s", schema, sanitizeError(err)))
+		}
+		name, _ := rowString(row, 0)
+		if name == "" {
+			continue
+		}
+		tableType, _ := rowString(row, 1)
+		tables = append(tables, postgres.TableSummary{
+			Schema: schema,
+			Name:   name,
+			Type:   normalizeInformationSchemaTableType(tableType),
+		})
+	}
+	return tables, nil
+}
+
+func (s *clientState) describeInformationSchemaTable(ctx context.Context, schema string, table string) (postgres.TableDetails, error) {
+	projectID, err := quoteBigQueryIdentifier(s.projectID())
+	if err != nil {
+		return postgres.TableDetails{}, err
+	}
+	datasetID, err := quoteBigQueryIdentifier(schema)
+	if err != nil {
+		return postgres.TableDetails{}, err
+	}
+
+	q := s.client.Query(fmt.Sprintf(
+		"SELECT column_name, data_type, is_nullable FROM %s.%s.INFORMATION_SCHEMA.COLUMNS WHERE table_name = @table_name ORDER BY ordinal_position",
+		projectID,
+		datasetID,
+	))
+	q.UseLegacySQL = false
+	q.Parameters = []gcbigquery.QueryParameter{{Name: "table_name", Value: table}}
+	it, err := q.Read(ctx)
+	if err != nil {
+		return postgres.TableDetails{}, apperrors.New(apperrors.CodeDatabase, fmt.Sprintf("could not read BigQuery table metadata for %q.%q: %s", schema, table, sanitizeError(err)))
+	}
+
+	columns := []postgres.ColumnSummary{}
+	for {
+		var row []gcbigquery.Value
+		if err := it.Next(&row); err == iterator.Done {
+			break
+		} else if err != nil {
+			return postgres.TableDetails{}, apperrors.New(apperrors.CodeDatabase, fmt.Sprintf("could not read BigQuery table metadata for %q.%q: %s", schema, table, sanitizeError(err)))
+		}
+		name, _ := rowString(row, 0)
+		if name == "" {
+			continue
+		}
+		dataType, _ := rowString(row, 1)
+		isNullable, _ := rowString(row, 2)
+		columns = append(columns, postgres.ColumnSummary{
+			Name:      name,
+			DataType:  dataType,
+			Nullable:  !strings.EqualFold(isNullable, "NO"),
+			Position:  len(columns) + 1,
+			IsPrimary: false,
+		})
+	}
+
+	return postgres.TableDetails{
+		Schema:      schema,
+		Name:        table,
+		Type:        "TABLE",
+		Columns:     columns,
+		Indexes:     []postgres.IndexSummary{},
+		Constraints: []postgres.ConstraintSummary{},
+	}, nil
+}
+
+func quoteBigQueryIdentifier(value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", apperrors.New(apperrors.CodeValidation, "BigQuery identifier is required")
+	}
+	if strings.Contains(trimmed, "`") {
+		return "", apperrors.New(apperrors.CodeValidation, "BigQuery identifier cannot contain backticks")
+	}
+	return "`" + trimmed + "`", nil
+}
+
+func rowString(row []gcbigquery.Value, index int) (string, bool) {
+	if index < 0 || index >= len(row) || row[index] == nil {
+		return "", false
+	}
+	switch value := row[index].(type) {
+	case string:
+		return value, true
+	case []byte:
+		return string(value), true
+	default:
+		return fmt.Sprint(value), true
+	}
+}
+
+func normalizeInformationSchemaTableType(value string) string {
+	normalized := strings.ToUpper(strings.TrimSpace(value))
+	if normalized == "" {
+		return "TABLE"
+	}
+	return normalized
 }
 
 func columnsFromSchema(schema gcbigquery.Schema) []postgres.ColumnSummary {

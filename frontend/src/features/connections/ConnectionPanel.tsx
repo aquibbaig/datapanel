@@ -32,6 +32,7 @@ const defaultPorts: Record<string, number> = {
   mysql: 3306,
   bigquery: 0
 };
+const defaultBigQueryEndpoint = "https://bigquery.googleapis.com";
 
 function emptyFormForDriver(driver: string): SaveConnectionRequest {
   const normalizedDriver =
@@ -41,6 +42,7 @@ function emptyFormForDriver(driver: string): SaveConnectionRequest {
     driver: normalizedDriver,
     host: normalizedDriver === "bigquery" ? "" : "localhost",
     port: defaultPorts[normalizedDriver],
+    endpoint: normalizedDriver === "bigquery" ? defaultBigQueryEndpoint : "",
   };
 }
 
@@ -87,7 +89,10 @@ export function ConnectionPanel({
       port: initialProfile.port,
       database: initialProfile.database,
       username: initialProfile.username,
-      endpoint: initialProfile.endpoint,
+      endpoint:
+        initialProfile.driver === "bigquery" && !initialProfile.endpoint
+          ? defaultBigQueryEndpoint
+          : initialProfile.endpoint,
       password: "",
       sslMode: initialProfile.sslMode,
       color: initialProfile.color
@@ -110,7 +115,13 @@ export function ConnectionPanel({
           : !current.port || current.port === previousDefaultPort
           ? defaultPorts[driver]
           : current.port;
-      return { ...current, driver, port: nextPort };
+      const nextEndpoint =
+        driver === "bigquery" && !current.endpoint
+          ? defaultBigQueryEndpoint
+          : driver === "bigquery"
+          ? current.endpoint
+          : "";
+      return { ...current, driver, port: nextPort, endpoint: nextEndpoint };
     });
   }
 
@@ -259,12 +270,12 @@ export function ConnectionPanel({
         ) : null}
         <div className={form.driver === "bigquery" ? "grid grid-cols-[minmax(0,1fr)_96px] gap-2" : "grid gap-2"}>
           <label className="grid gap-2">
-            <span className="text-xs text-muted">{form.driver === "bigquery" ? "Credentials JSON" : "Password"}</span>
+            <span className="text-xs text-muted">{form.driver === "bigquery" ? "Credentials file path" : "Password"}</span>
             <input
-              type="password"
+              type={form.driver === "bigquery" ? "text" : "password"}
               value={form.password}
               onChange={(event) => setForm({ ...form, password: event.target.value })}
-              placeholder={form.driver === "bigquery" ? "Application Default Credentials" : initialProfile ? "Saved in keychain" : ""}
+              placeholder={form.driver === "bigquery" ? "/Users/me/key.json or blank for gcloud auth login" : initialProfile ? "Saved in keychain" : ""}
             />
           </label>
           {form.driver === "bigquery" ? (
@@ -355,7 +366,7 @@ function parseConnectionURL(value: string): ParsedConnectionURL | null {
     port,
     database: driver === "bigquery" ? bigQueryDataset : database,
     username: driver === "bigquery" ? parsed.searchParams.get("location") || "" : username,
-    endpoint: driver === "bigquery" ? parsed.searchParams.get("endpoint") || "" : "",
+    endpoint: driver === "bigquery" ? parsed.searchParams.get("endpoint") || defaultBigQueryEndpoint : "",
     password: decodeURIComponent(parsed.password),
     sslMode: parseSSLMode(parsed.searchParams),
     name: defaultConnectionName(driver, parsed.hostname, driver === "bigquery" ? bigQueryDataset : database),
