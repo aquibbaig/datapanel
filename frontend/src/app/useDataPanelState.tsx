@@ -44,11 +44,16 @@ interface QueryToastOptions {
 interface MetadataLoadOptions {
   refresh?: boolean;
   reconnectKeychain?: boolean;
+  backgroundRefresh?: boolean;
 }
 
 interface ConnectOptions {
   suppressErrorToast?: boolean;
   reconnectKeychain?: boolean;
+  refresh?: boolean;
+}
+
+interface PrefetchMetadataOptions {
   refresh?: boolean;
 }
 
@@ -115,8 +120,10 @@ export function useDataPanelState() {
     useState<WorkspaceSwitchState | null>(null);
   const inspectRequestRef = useRef(0);
   const queryRequestRef = useRef(0);
+  const metadataRequestRef = useRef(0);
   const updateCheckStartedRef = useRef(false);
   const profilesRef = useRef<ConnectionProfile[]>([]);
+  const activeConnectionIdRef = useRef("");
 
   const activeProfile = useMemo(
     () => profiles.find((profile) => profile.id === activeConnectionId) || null,
@@ -126,6 +133,10 @@ export function useDataPanelState() {
   useEffect(() => {
     profilesRef.current = profiles;
   }, [profiles]);
+
+  useEffect(() => {
+    activeConnectionIdRef.current = activeConnectionId;
+  }, [activeConnectionId]);
 
   const readSchemaSnapshotCache = useCallback(async (profileId: string) => {
     const cached = queryClient.getQueryData<SchemaSnapshot>(
@@ -189,7 +200,7 @@ export function useDataPanelState() {
       fingerprint,
     };
     queryClient.setQueryData(schemaSnapshotQueryKey(profileId), snapshot);
-    void appDataService
+    await appDataService
       .saveSchemaSnapshot({
         connectionId: profileId,
         schemas: nextSchemas,
@@ -202,12 +213,35 @@ export function useDataPanelState() {
     return snapshot;
   }, [queryClient, readSchemaSnapshotCache]);
 
-  const loadMetadata = useCallback(async (profileId: string, options: MetadataLoadOptions = {}) => {
-    const snapshot = await fetchSchemaSnapshot(profileId, options);
+  const applySchemaSnapshot = useCallback((profileId: string, snapshot: SchemaSnapshot) => {
+    if (activeConnectionIdRef.current !== profileId) return false;
     setSchemas(snapshot.schemas);
     setTablesBySchema(snapshot.tablesBySchema);
+    return true;
+  }, []);
+
+  const loadMetadata = useCallback(async (profileId: string, options: MetadataLoadOptions = {}) => {
+    const requestId = metadataRequestRef.current + 1;
+    metadataRequestRef.current = requestId;
+    const snapshot = await fetchSchemaSnapshot(profileId, options);
+    if (metadataRequestRef.current === requestId) {
+      applySchemaSnapshot(profileId, snapshot);
+    }
     return snapshot;
-  }, [fetchSchemaSnapshot]);
+  }, [applySchemaSnapshot, fetchSchemaSnapshot]);
+
+  const refreshMetadataInBackground = useCallback((profileId: string) => {
+    const requestId = metadataRequestRef.current + 1;
+    metadataRequestRef.current = requestId;
+    void fetchSchemaSnapshot(profileId, { refresh: true })
+      .then((snapshot) => {
+        if (metadataRequestRef.current !== requestId) return;
+        applySchemaSnapshot(profileId, snapshot);
+      })
+      .catch((error: unknown) => {
+        console.warn("Background metadata refresh failed", error);
+      });
+  }, [applySchemaSnapshot, fetchSchemaSnapshot]);
 
   const invalidateSchemaSnapshot = useCallback(async (profileId: string) => {
     queryClient.removeQueries({ queryKey: schemaSnapshotQueryKey(profileId) });
@@ -224,7 +258,10 @@ export function useDataPanelState() {
       });
   }, [queryClient]);
 
-  const prefetchWorkspaceMetadata = useCallback(async (profilesToPrefetch: ConnectionProfile[]) => {
+  const prefetchWorkspaceMetadata = useCallback(async (
+    profilesToPrefetch: ConnectionProfile[],
+    options: PrefetchMetadataOptions = {},
+  ) => {
     const queuedProfiles = profilesToPrefetch.filter((profile) => profile.id);
     if (queuedProfiles.length === 0) return;
 
@@ -234,13 +271,13 @@ export function useDataPanelState() {
       async (profile) => {
         try {
           const cached = await readSchemaSnapshotCache(profile.id);
-          if (cached) return;
+          if (cached && !options.refresh) return;
           await connectionService.connect({
             profileId: profile.id,
             password: "",
             reconnectKeychain: false,
           });
-          await fetchSchemaSnapshot(profile.id, { refresh: false });
+          await fetchSchemaSnapshot(profile.id, { refresh: Boolean(options.refresh) });
         } catch (error) {
           console.warn(`Workspace metadata prefetch failed for ${profile.name}`, error);
         }
@@ -277,6 +314,7 @@ export function useDataPanelState() {
       reconnectKeychain: Boolean(options.reconnectKeychain),
     });
     const now = new Date().toISOString();
+    activeConnectionIdRef.current = profileId;
     setActiveConnectionId(profileId);
     clearSelectedTable();
     setStatus({ tone: "success", text: result.message });
@@ -286,9 +324,24 @@ export function useDataPanelState() {
       lastPingAt: now,
       connectedAt: now,
     });
+    if (options.backgroundRefresh) {
+      const cached = await readSchemaSnapshotCache(profileId);
+      if (cached) {
+        metadataRequestRef.current += 1;
+        applySchemaSnapshot(profileId, cached);
+        refreshMetadataInBackground(profileId);
+        return result;
+      }
+    }
     await loadMetadata(profileId, options);
     return result;
-  }, [clearSelectedTable, loadMetadata]);
+  }, [
+    applySchemaSnapshot,
+    clearSelectedTable,
+    loadMetadata,
+    readSchemaSnapshotCache,
+    refreshMetadataInBackground,
+  ]);
 
   const loadProfiles = useCallback(async () => {
     const nextProfiles = await connectionService.list();
@@ -319,9 +372,7 @@ export function useDataPanelState() {
           await connectAndLoadMetadata(firstProfileId, "", {
             refresh: false,
           });
-          void prefetchWorkspaceMetadata(
-            nextProfiles.filter((profile) => profile.id !== firstProfileId),
-          );
+          void prefetchWorkspaceMetadata(nextProfiles, { refresh: true });
         }
       })
       .catch((error: unknown) => {
@@ -472,8 +523,10 @@ export function useDataPanelState() {
     }
     setBusy(true);
     try {
+      const refresh = options.refresh ?? (settings?.autoRefreshMetadata ?? true);
       const result = await connectAndLoadMetadata(profileId, password, {
-        refresh: options.refresh ?? (settings?.autoRefreshMetadata ?? true),
+        refresh,
+        backgroundRefresh: switchingWorkspace && refresh,
         reconnectKeychain: options.reconnectKeychain,
       });
       const profile = profiles.find((item) => item.id === profileId);
@@ -502,6 +555,7 @@ export function useDataPanelState() {
       });
     }
     await connectionService.disconnect(activeConnectionId);
+    activeConnectionIdRef.current = "";
     setActiveConnectionId("");
     setSchemas([]);
     setTablesBySchema({});
@@ -546,6 +600,7 @@ export function useDataPanelState() {
             refresh: false,
           });
         } else {
+          activeConnectionIdRef.current = "";
           setActiveConnectionId("");
           setStatus({ tone: "neutral", text: "No workspace selected" });
         }

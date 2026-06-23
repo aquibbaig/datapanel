@@ -58,6 +58,15 @@ func (a *Adapter) Test(ctx context.Context, profile connections.ConnectionProfil
 }
 
 func (a *Adapter) Connect(ctx context.Context, profile connections.ConnectionProfile, password string) error {
+	if strings.TrimSpace(password) == "" {
+		a.mu.RLock()
+		current := a.clients[profile.ID]
+		a.mu.RUnlock()
+		if current != nil && sameBigQueryProfile(current.profile, profile) {
+			return nil
+		}
+	}
+
 	client, err := newClient(ctx, profile, password)
 	if err != nil {
 		return err
@@ -80,6 +89,14 @@ func (a *Adapter) Connect(ctx context.Context, profile connections.ConnectionPro
 		_ = old.client.Close()
 	}
 	return nil
+}
+
+func sameBigQueryProfile(left connections.ConnectionProfile, right connections.ConnectionProfile) bool {
+	return strings.TrimSpace(left.ID) == strings.TrimSpace(right.ID) &&
+		strings.TrimSpace(left.Host) == strings.TrimSpace(right.Host) &&
+		strings.TrimSpace(left.Database) == strings.TrimSpace(right.Database) &&
+		strings.TrimSpace(left.Username) == strings.TrimSpace(right.Username) &&
+		strings.TrimSpace(left.Endpoint) == strings.TrimSpace(right.Endpoint)
 }
 
 func (a *Adapter) Disconnect(ctx context.Context, profileID string) error {
@@ -151,7 +168,8 @@ func (a *Adapter) DescribeTable(ctx context.Context, connectionID string, schema
 }
 
 func (a *Adapter) SchemaFingerprint(ctx context.Context, connectionID string) (postgres.SchemaFingerprint, error) {
-	if _, err := a.client(connectionID); err != nil {
+	state, err := a.client(connectionID)
+	if err != nil {
 		return postgres.SchemaFingerprint{}, err
 	}
 
@@ -162,28 +180,18 @@ func (a *Adapter) SchemaFingerprint(ctx context.Context, connectionID string) (p
 	}
 	for _, schema := range schemas {
 		lines = append(lines, "schema\x1f"+schema.Name)
-		tables, err := a.ListTables(ctx, connectionID, schema.Name)
+		tables, err := state.listInformationSchemaTables(ctx, schema.Name)
 		if err != nil {
 			return postgres.SchemaFingerprint{}, err
 		}
 		for _, table := range tables {
 			lines = append(lines, strings.Join([]string{"table", schema.Name, table.Name, table.Type}, "\x1f"))
-			details, err := a.DescribeTable(ctx, connectionID, schema.Name, table.Name)
-			if err != nil {
-				return postgres.SchemaFingerprint{}, err
-			}
-			for _, column := range details.Columns {
-				lines = append(lines, strings.Join([]string{
-					"column",
-					schema.Name,
-					table.Name,
-					fmt.Sprintf("%d", column.Position),
-					column.Name,
-					column.DataType,
-					fmt.Sprintf("%t", column.Nullable),
-				}, "\x1f"))
-			}
 		}
+		columnLines, err := state.listInformationSchemaColumnFingerprintLines(ctx, schema.Name)
+		if err != nil {
+			return postgres.SchemaFingerprint{}, err
+		}
+		lines = append(lines, columnLines...)
 	}
 
 	sort.Strings(lines)
@@ -466,6 +474,56 @@ func (s *clientState) listInformationSchemaTables(ctx context.Context, schema st
 		})
 	}
 	return tables, nil
+}
+
+func (s *clientState) listInformationSchemaColumnFingerprintLines(ctx context.Context, schema string) ([]string, error) {
+	projectID, err := quoteBigQueryIdentifier(s.projectID())
+	if err != nil {
+		return nil, err
+	}
+	datasetID, err := quoteBigQueryIdentifier(schema)
+	if err != nil {
+		return nil, err
+	}
+
+	q := s.client.Query(fmt.Sprintf(
+		"SELECT table_name, ordinal_position, column_name, data_type, is_nullable FROM %s.%s.INFORMATION_SCHEMA.COLUMNS ORDER BY table_name, ordinal_position",
+		projectID,
+		datasetID,
+	))
+	q.UseLegacySQL = false
+	it, err := q.Read(ctx)
+	if err != nil {
+		return nil, apperrors.New(apperrors.CodeDatabase, fmt.Sprintf("could not fingerprint BigQuery columns for dataset %q: %s", schema, sanitizeError(err)))
+	}
+
+	lines := []string{}
+	for {
+		var row []gcbigquery.Value
+		if err := it.Next(&row); err == iterator.Done {
+			break
+		} else if err != nil {
+			return nil, apperrors.New(apperrors.CodeDatabase, fmt.Sprintf("could not fingerprint BigQuery columns for dataset %q: %s", schema, sanitizeError(err)))
+		}
+		tableName, _ := rowString(row, 0)
+		position, _ := rowString(row, 1)
+		columnName, _ := rowString(row, 2)
+		dataType, _ := rowString(row, 3)
+		isNullable, _ := rowString(row, 4)
+		if tableName == "" || columnName == "" {
+			continue
+		}
+		lines = append(lines, strings.Join([]string{
+			"column",
+			schema,
+			tableName,
+			position,
+			columnName,
+			dataType,
+			isNullable,
+		}, "\x1f"))
+	}
+	return lines, nil
 }
 
 func (s *clientState) describeInformationSchemaTable(ctx context.Context, schema string, table string) (postgres.TableDetails, error) {
