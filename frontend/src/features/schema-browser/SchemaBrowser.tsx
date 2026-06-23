@@ -333,8 +333,8 @@ function BrowserRow({
 }) {
   if (row.kind === "schema") {
     return (
-      <div className="flex h-10 items-end border-t border-line/60 px-2 text-[11px] font-bold uppercase tracking-wide text-zinc-400">
-        <Database className="mr-1.5 text-zinc-600" size={12} />
+      <div className="flex h-10 mt-2 items-center border-t border-line/60 px-2 text-[11px] font-bold uppercase tracking-wide text-zinc-400">
+        <Database className="mr-1.5 -mt-0.5 text-zinc-600" size={14} />
         <span className="min-w-0 truncate">{row.schema.name}</span>
       </div>
     );
