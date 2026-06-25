@@ -6,16 +6,16 @@ export function WorkspaceLoader() {
     <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center bg-surface-900 text-muted">
       <div className="flex items-center gap-2 text-sm">
         <Loader2 size={14} className="animate-spin" />
-        Loading workspace
+        Loading connection
       </div>
     </div>
   );
 }
 
 export function WorkspaceSwitchOverlay({
-  workspaceName,
+  connectionName,
 }: {
-  workspaceName: string;
+  connectionName: string;
 }) {
   return (
     <div
@@ -32,10 +32,10 @@ export function WorkspaceSwitchOverlay({
           <Loader2 className="animate-spin text-zinc-100" size={18} />
           <span className="min-w-0">
             <span className="block text-sm font-medium text-zinc-100">
-              Switching workspace
+              Loading connection
             </span>
             <span className="block max-w-[220px] truncate text-xs text-muted">
-              {workspaceName}
+              {connectionName}
             </span>
           </span>
         </div>

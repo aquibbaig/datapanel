@@ -292,7 +292,7 @@ function QueryWorkspaceTabs({
               </button>
               <button
                 className="mr-1 grid h-6 w-6 shrink-0 place-items-center rounded-full text-zinc-500 opacity-0 transition hover:bg-selection-hover hover:text-zinc-100 group-hover:opacity-100 focus:opacity-100"
-                title="Delete query workspace"
+                title="Delete query tab"
                 type="button"
                 onClick={(event) => {
                   event.stopPropagation();
@@ -308,7 +308,7 @@ function QueryWorkspaceTabs({
       <button
         className="sticky right-0 grid h-8 w-8 shrink-0 place-items-center rounded-md bg-surface-950 text-zinc-500 transition hover:bg-surface-850 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-35"
         disabled={workspaces.length >= 3}
-        title="New query workspace"
+        title="New query tab"
         type="button"
         onClick={onCreateWorkspace}
       >

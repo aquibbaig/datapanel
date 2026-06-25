@@ -23,7 +23,7 @@ import { useSidebar } from "./ui/sidebar";
 interface Props {
   activeConnectionId: string;
   activeProfile: ConnectionProfile | null;
-  switchingWorkspaceName?: string;
+  switchingConnectionName?: string;
   profiles: ConnectionProfile[];
   schemas: SchemaSummary[];
   inspectingTable: TableSummary | null;
@@ -41,7 +41,7 @@ interface Props {
 export function AppSidebar({
   activeConnectionId,
   activeProfile,
-  switchingWorkspaceName,
+  switchingConnectionName,
   profiles,
   schemas,
   inspectingTable,
@@ -69,7 +69,7 @@ export function AppSidebar({
           <WorkspaceSelector
             activeConnectionId={activeConnectionId}
             activeProfile={activeProfile}
-            switchingWorkspaceName={switchingWorkspaceName}
+            switchingConnectionName={switchingConnectionName}
             profiles={profiles}
             onAddConnection={onAddConnection}
             onConnect={onConnect}
@@ -95,7 +95,7 @@ export function AppSidebar({
 function WorkspaceSelector({
   activeConnectionId,
   activeProfile,
-  switchingWorkspaceName,
+  switchingConnectionName,
   profiles,
   onAddConnection,
   onConnect,
@@ -103,7 +103,7 @@ function WorkspaceSelector({
 }: {
   activeConnectionId: string;
   activeProfile: ConnectionProfile | null;
-  switchingWorkspaceName?: string;
+  switchingConnectionName?: string;
   profiles: ConnectionProfile[];
   onAddConnection(): void;
   onConnect(profile: ConnectionProfile): Promise<void>;
@@ -112,11 +112,11 @@ function WorkspaceSelector({
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const displayName =
-    activeProfile?.name || switchingWorkspaceName || "No workspace";
+    activeProfile?.name || switchingConnectionName || "No connection";
   const displayDetail = activeProfile
     ? connectionDetail(activeProfile)
-    : switchingWorkspaceName
-      ? "Switching workspace"
+    : switchingConnectionName
+      ? "Loading connection"
       : "Select a connection";
   const normalizedQuery = query.trim().toLowerCase();
   const filteredProfiles = profiles.filter((profile) =>
@@ -160,7 +160,7 @@ function WorkspaceSelector({
           <DropdownMenu.Trigger asChild>
             <button
               className="ml-auto grid h-7 w-7 shrink-0 place-items-center rounded-md text-zinc-500 transition hover:bg-control/[0.03] hover:text-zinc-200"
-              title="Switch workspace"
+              title="Switch connection"
               type="button"
             >
               <ChevronsUpDown size={13} />
@@ -181,7 +181,7 @@ function WorkspaceSelector({
                 {...textInputBehaviorProps}
                 autoFocus
                 className="h-8 rounded-md border-line bg-surface-900 pl-8 pr-2 text-sm text-zinc-200 placeholder:text-zinc-600"
-                placeholder="Search workspaces"
+                placeholder="Search connections"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 onClick={(event) => event.stopPropagation()}
@@ -215,7 +215,7 @@ function WorkspaceSelector({
               })}
               {filteredProfiles.length === 0 ? (
                 <div className="px-2 py-6 text-center text-xs text-muted">
-                  No matching workspaces.
+                  No matching connections.
                 </div>
               ) : null}
             </div>
@@ -226,7 +226,7 @@ function WorkspaceSelector({
               onSelect={onAddConnection}
             >
               <Plus size={14} className="text-zinc-500" />
-              Add workspace
+              Add connection
             </DropdownMenu.Item>
             {activeProfile ? (
               <DropdownMenu.Item
@@ -234,7 +234,7 @@ function WorkspaceSelector({
                 onSelect={onEditActive}
               >
                 <Settings size={14} className="text-zinc-500" />
-                Edit current workspace
+                Edit current connection
               </DropdownMenu.Item>
             ) : null}
           </DropdownMenu.Content>

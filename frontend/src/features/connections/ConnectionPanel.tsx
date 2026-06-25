@@ -319,7 +319,7 @@ export function ConnectionPanel({
             onClick={() => onDelete(initialProfile)}
           >
             <Trash2 size={14} />
-            Delete workspace
+            Delete connection
           </Button>
         ) : null}
         <div className="flex justify-end gap-2">

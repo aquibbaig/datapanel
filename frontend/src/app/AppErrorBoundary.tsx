@@ -37,7 +37,7 @@ export class AppErrorBoundary extends Component<Props, State> {
             </h1>
             <p className="text-sm leading-5 text-muted">
               The app hit a rendering error. Reloading will restore the
-              workspace.
+              connection.
             </p>
           </div>
           <div className="flex justify-end">

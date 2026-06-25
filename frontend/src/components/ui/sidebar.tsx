@@ -32,10 +32,13 @@ export function SidebarInset({
   children: ReactNode;
   className?: string;
 }) {
+  const sidebar = useSidebar();
+
   return (
     <main
       className={cn(
-        "my-2 mr-2 grid min-w-0 flex-1 overflow-hidden rounded-xl border border-line bg-surface-950",
+        "grid min-w-0 flex-1 overflow-hidden rounded-xl border border-line bg-surface-950",
+        sidebar.open ? "my-2 mr-2" : "m-2",
         className,
       )}
     >

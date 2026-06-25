@@ -630,7 +630,7 @@ export function App() {
         <AppSidebar
           activeConnectionId={model.activeConnectionId}
           activeProfile={model.activeProfile}
-          switchingWorkspaceName={model.workspaceSwitching?.name}
+          switchingConnectionName={model.workspaceSwitching?.name}
           profiles={model.profiles}
           inspectingTable={model.inspectingTable}
           schemas={model.schemas}
@@ -646,12 +646,12 @@ export function App() {
         />
 
         <SidebarInset
-          className={cn("grid grid-rows-[48px_minmax(0,1fr)_28px]")}
+          className={cn("grid grid-rows-[56px_minmax(0,1fr)_28px]")}
         >
-          <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-line bg-surface-950 px-3">
+          <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-line bg-surface-950 px-3">
             <div className="flex min-w-0 items-center gap-2">
               <SidebarTrigger className="-ml-1" />
-              <Separator orientation="vertical" className="mr-1 bg-line" />
+              {/* <Separator orientation="vertical" className="mr-1 bg-line" />
               <Breadcrumb>
                 <BreadcrumbList>
                   <BreadcrumbItem>
@@ -660,7 +660,7 @@ export function App() {
                     </BreadcrumbPage>
                   </BreadcrumbItem>
                 </BreadcrumbList>
-              </Breadcrumb>
+              </Breadcrumb> */}
             </div>
 
             <div className="flex min-w-0 items-center gap-2">
@@ -960,7 +960,7 @@ export function App() {
         </Modal>
 
         <Modal
-          title="Delete Workspace"
+          title="Delete Connection"
           open={Boolean(deletingProfile)}
           onClose={() => setDeletingProfile(null)}
         >
@@ -992,7 +992,7 @@ export function App() {
                 variant="danger"
                 onClick={() => void confirmDeleteConnection()}
               >
-                Delete workspace
+                Delete connection
               </Button>
             </div>
           </div>
@@ -1011,7 +1011,7 @@ export function App() {
       </SidebarProvider>
       {model.workspaceSwitching ? (
         <WorkspaceSwitchOverlay
-          workspaceName={model.workspaceSwitching.name}
+          connectionName={model.workspaceSwitching.name}
         />
       ) : null}
     </div>

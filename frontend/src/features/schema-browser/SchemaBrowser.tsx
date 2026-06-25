@@ -162,7 +162,7 @@ export function SchemaBrowser({
         {!activeConnectionId ? (
           <div className="mx-3 flex items-center gap-2 rounded-ui border border-dashed border-line bg-surface-850 p-3 text-sm text-muted">
             <Database size={14} />
-            <p>Choose a workspace above to browse tables.</p>
+            <p>Choose a connection above to browse tables.</p>
           </div>
         ) : null}
 
@@ -399,7 +399,7 @@ function BrowserRow({
       <button
         aria-expanded={hasTables ? row.expanded : undefined}
         className={cn(
-          "flex h-8 w-full appearance-none items-center gap-1 rounded-md border-0 bg-transparent px-2 pr-1 text-left text-sm font-semibold transition",
+          "flex h-8 w-full appearance-none items-center gap-1 rounded-md border-0 bg-transparent px-2 text-left text-sm font-semibold transition",
           hasTables
             ? "text-zinc-500 hover:bg-control/[0.04] hover:text-zinc-200"
             : "cursor-default text-zinc-500/55 opacity-70",
@@ -421,11 +421,11 @@ function BrowserRow({
         />
         <span className="min-w-0 truncate">{row.schema.name}</span>
         {hasTables ? (
-          <DisclosureTriangle expanded={row.expanded} className="ml-1" />
+          <DisclosureTriangle expanded={row.expanded} className="ml-1 mt-0.5" />
         ) : null}
         <span className="min-w-0 flex-1" />
         {row.tableCount > 0 ? (
-          <span className="ml-2 text-[10px] font-semibold text-muted">
+          <span className="ml-2 mr-1 text-[10px] font-semibold text-muted">
             {row.tableCount}
           </span>
         ) : null}

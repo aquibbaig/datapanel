@@ -33,6 +33,11 @@ export interface WorkspaceSwitchState {
   name: string;
 }
 
+interface QueryResultSnapshot {
+  result: QueryResult | null;
+  mode: "query" | "explain";
+}
+
 interface QueryToastOptions {
   successMessage?: string;
   successTitle?: string;
@@ -89,7 +94,7 @@ function saveLastActiveWorkspaceId(profileId: string) {
       localStorage.removeItem(activeWorkspaceStorageKey);
     }
   } catch {
-    // The selected workspace still changes for the current session.
+    // The selected connection still changes for the current session.
   }
 }
 
@@ -153,6 +158,9 @@ export function useDataPanelState() {
   const updateCheckStartedRef = useRef(false);
   const profilesRef = useRef<ConnectionProfile[]>([]);
   const activeConnectionIdRef = useRef("");
+  const queryResultRef = useRef<QueryResult | null>(null);
+  const queryResultModeRef = useRef<"query" | "explain">("query");
+  const queryResultByConnectionRef = useRef<Record<string, QueryResultSnapshot>>({});
 
   const activeProfile = useMemo(
     () => profiles.find((profile) => profile.id === activeConnectionId) || null,
@@ -167,10 +175,23 @@ export function useDataPanelState() {
     activeConnectionIdRef.current = activeConnectionId;
   }, [activeConnectionId]);
 
-  const readSchemaSnapshotCache = useCallback(async (profileId: string) => {
+  useEffect(() => {
+    queryResultRef.current = queryResult;
+  }, [queryResult]);
+
+  useEffect(() => {
+    queryResultModeRef.current = queryResultMode;
+  }, [queryResultMode]);
+
+  const readMemorySchemaSnapshotCache = useCallback((profileId: string) => {
     const cached = queryClient.getQueryData<SchemaSnapshot>(
       schemaSnapshotQueryKey(profileId),
     );
+    return cached && schemaSnapshotHasTables(cached) ? cached : null;
+  }, [queryClient]);
+
+  const readSchemaSnapshotCache = useCallback(async (profileId: string) => {
+    const cached = readMemorySchemaSnapshotCache(profileId);
     if (cached && schemaSnapshotHasTables(cached)) return cached;
 
     const persisted = await appDataService
@@ -191,7 +212,7 @@ export function useDataPanelState() {
     }
 
     return null;
-  }, [queryClient]);
+  }, [queryClient, readMemorySchemaSnapshotCache]);
 
   const fetchSchemaSnapshot = useCallback(async (profileId: string, options: MetadataLoadOptions = {}) => {
     const cached = options.refresh ? null : await readSchemaSnapshotCache(profileId);
@@ -308,7 +329,7 @@ export function useDataPanelState() {
           });
           await fetchSchemaSnapshot(profile.id, { refresh: Boolean(options.refresh) });
         } catch (error) {
-          console.warn(`Workspace metadata prefetch failed for ${profile.name}`, error);
+          console.warn(`Connection metadata prefetch failed for ${profile.name}`, error);
         }
       },
     );
@@ -329,6 +350,22 @@ export function useDataPanelState() {
     if (toastId) {
       toast.dismiss(toastId);
     }
+  }, []);
+
+  const saveActiveQueryResultSnapshot = useCallback((connectionId: string) => {
+    if (!connectionId) return;
+    queryResultByConnectionRef.current[connectionId] = {
+      result: queryResultRef.current,
+      mode: queryResultModeRef.current,
+    };
+  }, []);
+
+  const restoreQueryResultSnapshot = useCallback((connectionId: string) => {
+    const snapshot = queryResultByConnectionRef.current[connectionId];
+    queryRequestRef.current += 1;
+    setQueryResult(snapshot?.result ?? null);
+    setQueryResultMode(snapshot?.mode ?? "query");
+    setRunningRequestId("");
   }, []);
 
   const connectAndLoadMetadata = useCallback(async (
@@ -542,29 +579,40 @@ export function useDataPanelState() {
     password = "",
     options: ConnectOptions = {},
   ) => {
-    const switchingWorkspace = profileId !== activeConnectionId;
-    if (switchingWorkspace) {
-      const profile = profiles.find((item) => item.id === profileId);
-      resetQueryState(runningRequestId);
+    const switchingConnection = profileId !== activeConnectionId;
+    const profile = profiles.find((item) => item.id === profileId);
+    let switchingOverlayVisible = false;
+    const showSwitchingOverlay = () => {
+      switchingOverlayVisible = true;
       setWorkspaceSwitching({
         profileId,
-        name: profile?.name || "Workspace",
+        name: profile?.name || "Connection",
       });
-      if (runningRequestId) {
-        void queryService.cancel(runningRequestId).catch(() => {
-          // The stale request guard below keeps old results out of the UI.
-        });
-      }
-    }
+    };
     setBusy(true);
     try {
       const refresh = options.refresh ?? (settings?.autoRefreshMetadata ?? true);
+      if (switchingConnection) {
+        saveActiveQueryResultSnapshot(activeConnectionId);
+        const cachedMetadata = readMemorySchemaSnapshotCache(profileId);
+        if (!cachedMetadata) {
+          resetQueryState(runningRequestId);
+          showSwitchingOverlay();
+        }
+        if (runningRequestId) {
+          void queryService.cancel(runningRequestId).catch(() => {
+            // The stale request guard below keeps old results out of the UI.
+          });
+        }
+      }
       const result = await connectAndLoadMetadata(profileId, password, {
         refresh,
-        backgroundRefresh: switchingWorkspace && refresh,
+        backgroundRefresh: switchingConnection && refresh,
         reconnectKeychain: options.reconnectKeychain,
       });
-      const profile = profiles.find((item) => item.id === profileId);
+      if (switchingConnection) {
+        restoreQueryResultSnapshot(profileId);
+      }
       notify("success", "Connected", profile?.name || result.message);
     } catch (error) {
       const message = errorMessage(error, "Could not connect");
@@ -576,11 +624,21 @@ export function useDataPanelState() {
       throw error;
     } finally {
       setBusy(false);
-      if (switchingWorkspace) {
+      if (switchingOverlayVisible) {
         setWorkspaceSwitching(null);
       }
     }
-  }, [activeConnectionId, connectAndLoadMetadata, profiles, resetQueryState, runningRequestId, settings?.autoRefreshMetadata]);
+  }, [
+    activeConnectionId,
+    connectAndLoadMetadata,
+    profiles,
+    readMemorySchemaSnapshotCache,
+    resetQueryState,
+    restoreQueryResultSnapshot,
+    runningRequestId,
+    saveActiveQueryResultSnapshot,
+    settings?.autoRefreshMetadata,
+  ]);
 
   const disconnect = useCallback(async () => {
     if (!activeConnectionId) return;
@@ -628,27 +686,40 @@ export function useDataPanelState() {
         setTableDetails(null);
         setConnectionHealth({ connected: false });
         if (fallbackProfile) {
-          setWorkspaceSwitching({
-            profileId: fallbackProfile.id,
-            name: fallbackProfile.name || "Workspace",
-          });
+          const cachedMetadata = readMemorySchemaSnapshotCache(fallbackProfile.id);
+          if (cachedMetadata) {
+            window.setTimeout(() => {
+              if (activeConnectionIdRef.current !== fallbackProfile.id) {
+                setWorkspaceSwitching({
+                  profileId: fallbackProfile.id,
+                  name: fallbackProfile.name || "Connection",
+                });
+              }
+            }, 160);
+          } else {
+            setWorkspaceSwitching({
+              profileId: fallbackProfile.id,
+              name: fallbackProfile.name || "Connection",
+            });
+          }
           await connectAndLoadMetadata(fallbackProfile.id, "", {
             refresh: false,
           });
+          restoreQueryResultSnapshot(fallbackProfile.id);
         } else {
           activeConnectionIdRef.current = "";
           saveLastActiveWorkspaceId("");
           setActiveConnectionId("");
-          setStatus({ tone: "neutral", text: "No workspace selected" });
+          setStatus({ tone: "neutral", text: "No connection selected" });
         }
       }
 
       setStatus({ tone: "success", text: `${profile.name} deleted` });
-      notify("success", "Workspace deleted", profile.name);
+      notify("success", "Connection deleted", profile.name);
     } catch (error) {
-      const message = errorMessage(error, "Could not delete workspace");
+      const message = errorMessage(error, "Could not delete connection");
       setStatus({ tone: "danger", text: message });
-      notify("danger", "Could not delete workspace", message);
+      notify("danger", "Could not delete connection", message);
       throw error;
     } finally {
       setBusy(false);
@@ -658,7 +729,9 @@ export function useDataPanelState() {
     activeConnectionId,
     connectAndLoadMetadata,
     loadProfiles,
+    readMemorySchemaSnapshotCache,
     resetQueryState,
+    restoreQueryResultSnapshot,
     runningRequestId,
   ]);
 
