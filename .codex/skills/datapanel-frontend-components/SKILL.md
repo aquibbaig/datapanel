@@ -36,6 +36,8 @@ Follow these rules whenever modifying DataPanel frontend components.
 
 - Use existing UI primitives from `frontend/src/components/ui` and local helpers such as `cn` and `textInputBehaviorProps`.
 - Use `lucide-react` icons already present in the app; prefer icon-only buttons with accessible labels for compact tools.
+- Use theme tokens for light/dark safety. Prefer semantic tokens such as `background`, `foreground`, `muted`, `accent`, `key`, `control`, `selection`, `line`, and this repo's CSS-variable-backed `zinc` scale. Do not use raw Tailwind palette colors like `text-yellow-200`, `text-sky-200`, or hardcoded hex/rgb values in components unless a new token is added first.
+- Use `text-key` for primary-key/key glyphs. Do not substitute `text-accent` for key glyphs; key indicators should stay yellow through the `key` theme token in both light and dark themes.
 - Avoid nested cards and decorative wrappers in operational UI. Results/editing surfaces should be dense, direct, and table-like.
 - Text must fit within cells, buttons, and controls without overlapping adjacent UI.
 

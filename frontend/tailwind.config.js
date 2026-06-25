@@ -22,6 +22,7 @@ export default {
           hover: "rgb(var(--color-accent-hover) / <alpha-value>)",
           foreground: "rgb(var(--color-accent-foreground) / <alpha-value>)"
         },
+        key: "rgb(var(--color-key) / <alpha-value>)",
         control: {
           DEFAULT: "rgb(var(--color-control) / <alpha-value>)",
           hover: "rgb(var(--color-control-hover) / <alpha-value>)",

@@ -18,6 +18,7 @@
   --color-accent: 94 106 210;
   --color-accent-hover: 112 121 223;
   --color-accent-foreground: 252 252 253;
+  --color-key: 250 204 21;
   --color-control: 252 252 253;
   --color-control-hover: 252 252 253;
   --color-control-active: 252 252 253;
@@ -58,6 +59,7 @@
   --color-accent: 82 93 190;
   --color-accent-hover: 94 106 210;
   --color-accent-foreground: 252 252 253;
+  --color-key: 202 138 4;
   --color-control: 24 24 27;
   --color-control-hover: 24 24 27;
   --color-control-active: 24 24 27;

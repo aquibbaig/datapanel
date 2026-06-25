@@ -18,7 +18,7 @@ export function SchemaColumnRow({ column, isForeign }: Props) {
   const displayType = formatDisplayDataType(column.dataType);
 
   return (
-    <div className="pl-10 pr-1">
+    <div className="ml-8 border-l border-line/70 pl-2 pr-1">
       <div
         className="grid h-8 w-full grid-cols-[minmax(0,1fr)_minmax(4.75rem,auto)] items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium text-zinc-400 hover:bg-control/[0.035] hover:text-zinc-100"
         title={`${column.name}: ${displayType}`}
@@ -28,14 +28,14 @@ export function SchemaColumnRow({ column, isForeign }: Props) {
           {column.isPrimary ? (
             <KeyRound
               aria-label="Primary key"
-              className="text-yellow-200"
+              className="text-key"
               size={8}
             />
           ) : null}
           {isForeign ? (
             <Link2
               aria-label="Foreign key"
-              className="text-sky-200"
+              className="text-muted"
               size={8}
             />
           ) : null}

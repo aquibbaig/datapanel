@@ -29,7 +29,7 @@ export function SchemaTableRow({
         )}
       >
         <button
-          className="flex min-w-0 flex-1 items-center gap-2 self-stretch rounded-md px-2 text-left text-sm font-medium"
+          className="flex min-w-0 flex-1 items-center gap-2 self-stretch rounded-md px-2 text-left text-sm"
           onClick={() => void onInspectTable(table)}
           title={`Inspect ${table.schema}.${table.name}`}
           type="button"
