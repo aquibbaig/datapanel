@@ -3,6 +3,7 @@ import {
   autocompletion,
   CompletionContext,
   CompletionResult,
+  moveCompletionSelection,
   startCompletion
 } from "@codemirror/autocomplete";
 import {
@@ -127,6 +128,14 @@ export function SqlCodeEditor({
         {
           key: "Tab",
           run: acceptCompletion
+        },
+        {
+          key: "Ctrl-n",
+          run: moveCompletionSelection(true)
+        },
+        {
+          key: "Ctrl-p",
+          run: moveCompletionSelection(false)
         },
         ...historyKeymap,
         ...defaultKeymap,
@@ -304,22 +313,29 @@ export function SqlCodeEditor({
 function sqlCompletion(schemaCompletions: CompletionOption[]) {
   return function completeSQL(context: CompletionContext): CompletionResult | null {
     const word = context.matchBefore(/[A-Za-z_][\w."]*/);
-    if (!word || (word.from === word.to && !context.explicit)) {
+    const from = word?.from ?? context.pos;
+    const fragment = word?.text.trim().toLowerCase() ?? "";
+    const tableContext = isTableReferenceCompletionContext(context, from);
+
+    if (!word && !tableContext) {
+      return null;
+    }
+    if (word && word.from === word.to && !context.explicit && !tableContext) {
+      return null;
+    }
+    if (!fragment && !context.explicit && !tableContext) {
       return null;
     }
 
-    const fragment = word.text.trim().toLowerCase();
-    if (!fragment && !context.explicit) {
-      return null;
-    }
-
-    const keywordOptions = sqlKeywords
-      .filter((keyword) => keyword.toLowerCase().startsWith(fragment))
-      .map((keyword) => ({
-        label: keyword,
-        type: "keyword",
-        apply: keyword
-      }));
+    const keywordOptions = tableContext
+      ? []
+      : sqlKeywords
+        .filter((keyword) => keyword.toLowerCase().startsWith(fragment))
+        .map((keyword) => ({
+          label: keyword,
+          type: "keyword",
+          apply: keyword
+        }));
 
     const schemaOptions = schemaCompletions.filter((option) =>
       matchesCompletion(option, fragment)
@@ -331,11 +347,22 @@ function sqlCompletion(schemaCompletions: CompletionOption[]) {
     }
 
     return {
-      from: word.from,
+      from,
       options,
       validFor: /^[A-Za-z_][\w."]*$/
     };
   };
+}
+
+function isTableReferenceCompletionContext(
+  context: CompletionContext,
+  fragmentFrom: number,
+) {
+  const lookBehindStart = Math.max(0, fragmentFrom - 200);
+  const beforeFragment = context.state.doc
+    .sliceString(lookBehindStart, fragmentFrom)
+    .toLowerCase();
+  return /\b(from|join)\s+$/.test(beforeFragment);
 }
 
 interface CompletionOption {

@@ -579,7 +579,8 @@ export function useDataPanelState() {
     password = "",
     options: ConnectOptions = {},
   ) => {
-    const switchingConnection = profileId !== activeConnectionId;
+    const previousConnectionId = activeConnectionId;
+    const switchingConnection = profileId !== previousConnectionId;
     const profile = profiles.find((item) => item.id === profileId);
     let switchingOverlayVisible = false;
     const showSwitchingOverlay = () => {
@@ -593,12 +594,12 @@ export function useDataPanelState() {
     try {
       const refresh = options.refresh ?? (settings?.autoRefreshMetadata ?? true);
       if (switchingConnection) {
-        saveActiveQueryResultSnapshot(activeConnectionId);
-        const cachedMetadata = readMemorySchemaSnapshotCache(profileId);
-        if (!cachedMetadata) {
-          resetQueryState(runningRequestId);
-          showSwitchingOverlay();
-        }
+        saveActiveQueryResultSnapshot(previousConnectionId);
+        activeConnectionIdRef.current = profileId;
+        saveLastActiveWorkspaceId(profileId);
+        setActiveConnectionId(profileId);
+        resetQueryState(runningRequestId);
+        showSwitchingOverlay();
         if (runningRequestId) {
           void queryService.cancel(runningRequestId).catch(() => {
             // The stale request guard below keeps old results out of the UI.
@@ -616,6 +617,12 @@ export function useDataPanelState() {
       notify("success", "Connected", profile?.name || result.message);
     } catch (error) {
       const message = errorMessage(error, "Could not connect");
+      if (switchingConnection) {
+        activeConnectionIdRef.current = previousConnectionId;
+        saveLastActiveWorkspaceId(previousConnectionId);
+        setActiveConnectionId(previousConnectionId);
+        restoreQueryResultSnapshot(previousConnectionId);
+      }
       setStatus({ tone: "danger", text: message });
       setConnectionHealth({ connected: false, error: message });
       if (!options.suppressErrorToast) {
@@ -632,7 +639,6 @@ export function useDataPanelState() {
     activeConnectionId,
     connectAndLoadMetadata,
     profiles,
-    readMemorySchemaSnapshotCache,
     resetQueryState,
     restoreQueryResultSnapshot,
     runningRequestId,
