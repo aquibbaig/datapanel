@@ -1,0 +1,4 @@
+interface:
+  display_name: "DataPanel Frontend Components"
+  short_description: "Guidance for DataPanel React frontend component work."
+  default_prompt: "Use the DataPanel frontend component skill when modifying React UI components in this repository."

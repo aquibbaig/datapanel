@@ -116,6 +116,15 @@
   height: 0;
 }
 
+.datapanel-results-scroll {
+  scrollbar-width: none;
+}
+
+.datapanel-results-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
 html,
 body,
 #root {

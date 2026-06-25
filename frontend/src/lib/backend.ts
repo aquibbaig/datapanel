@@ -15,6 +15,8 @@ import type {
   QueryRequest,
   QueryResult,
   QueryWorkspaceDraftState,
+  SaveFileExportRequest,
+  SaveFileExportResult,
   SaveAIChatMessageRequest,
   SaveConnectionRequest,
   SaveAICredentialRequest,
@@ -33,10 +35,11 @@ import type {
   InstallUpdateResult,
   UpdateCheckResult,
 } from "./types";
-import { ai } from "../../wailsjs/go/models";
+import { ai, fileexport } from "../../wailsjs/go/models";
 import * as AIBindings from "../../wailsjs/go/ai/Service";
 import * as AppDataBindings from "../../wailsjs/go/appdata/Service";
 import * as ConnectionBindings from "../../wailsjs/go/connections/Service";
+import * as FileExportBindings from "../../wailsjs/go/fileexport/Service";
 import * as SchemaBindings from "../../wailsjs/go/postgres/SchemaService";
 import * as QueryBindings from "../../wailsjs/go/query/Service";
 import * as SettingsBindings from "../../wailsjs/go/settings/Service";
@@ -67,6 +70,7 @@ const defaultSettings: AppSettings = {
   sidebarWidth: 304,
   inspectorWidth: 360,
   autoRefreshMetadata: true,
+  exportDirectory: "",
   chatResponsePrompt: "",
   cursorMode: "default",
   telemetryEnabled: false,
@@ -647,10 +651,25 @@ function normalizeSettings(settings: AppSettings): AppSettings {
   return {
     ...defaultSettings,
     ...settings,
+    exportDirectory: settings.exportDirectory || "",
     telemetryEnabled: Boolean(settings.telemetryEnabled),
     telemetryInstallId: settings.telemetryInstallId || "",
   };
 }
+
+export const fileExportService = {
+  async save(input: SaveFileExportRequest): Promise<SaveFileExportResult | null> {
+    const bridge = window.go as
+      | {
+          fileexport?: { Service?: { SaveExport?: unknown } };
+        }
+      | undefined;
+    if (!bridge?.fileexport?.Service?.SaveExport) return null;
+    return FileExportBindings.SaveExport(
+      fileexport.SaveExportRequest.createFrom(input),
+    );
+  },
+};
 
 export const settingsService = {
   async get(): Promise<AppSettings> {

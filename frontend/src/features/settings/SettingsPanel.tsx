@@ -129,6 +129,36 @@ export function SettingsPanel({ settings, onUpdate }: Props) {
             />
             <span>Refresh metadata after connect</span>
           </label>
+          <label className="grid gap-2">
+            <span className="text-xs text-muted">Export folder</span>
+            <div className="flex items-center gap-2">
+              <input
+                {...textInputBehaviorProps}
+                className="min-w-0 flex-1"
+                placeholder="~/Downloads"
+                value={draft.exportDirectory || ""}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    exportDirectory: event.target.value,
+                  })
+                }
+              />
+              <Button
+                disabled={!draft.exportDirectory}
+                size="icon"
+                title="Use system Downloads folder"
+                type="button"
+                onClick={() => setDraft({ ...draft, exportDirectory: "" })}
+              >
+                <RotateCcw size={14} />
+              </Button>
+            </div>
+            <span className="text-xs leading-5 text-muted">
+              Leave blank to save to your system Downloads folder. Exports show
+              the exact saved path.
+            </span>
+          </label>
           <label className="grid grid-cols-[18px_minmax(0,1fr)] items-start gap-2 text-sm text-zinc-300">
             <input
               className="mt-0.5"

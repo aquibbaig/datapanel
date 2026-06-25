@@ -69,8 +69,37 @@ const schemaSnapshotQueryKey = (profileId: string) =>
 const tableDetailsQueryKey = (connectionId: string, schema: string, table: string) =>
   ["tableDetails", connectionId, schema, table] as const;
 
+const activeWorkspaceStorageKey = "datapanel.activeWorkspaceId";
 const maxBackgroundWorkspacePrefetches = 5;
 const maxToastDescriptionLength = 260;
+
+function loadLastActiveWorkspaceId() {
+  try {
+    return localStorage.getItem(activeWorkspaceStorageKey) || "";
+  } catch {
+    return "";
+  }
+}
+
+function saveLastActiveWorkspaceId(profileId: string) {
+  try {
+    if (profileId) {
+      localStorage.setItem(activeWorkspaceStorageKey, profileId);
+    } else {
+      localStorage.removeItem(activeWorkspaceStorageKey);
+    }
+  } catch {
+    // The selected workspace still changes for the current session.
+  }
+}
+
+function preferredWorkspaceId(profiles: ConnectionProfile[]) {
+  const savedProfileId = loadLastActiveWorkspaceId();
+  if (savedProfileId && profiles.some((profile) => profile.id === savedProfileId)) {
+    return savedProfileId;
+  }
+  return profiles[0]?.id || "";
+}
 
 async function applyTelemetrySettings(
   nextSettings: AppSettings,
@@ -315,6 +344,7 @@ export function useDataPanelState() {
     });
     const now = new Date().toISOString();
     activeConnectionIdRef.current = profileId;
+    saveLastActiveWorkspaceId(profileId);
     setActiveConnectionId(profileId);
     clearSelectedTable();
     setStatus({ tone: "success", text: result.message });
@@ -345,8 +375,13 @@ export function useDataPanelState() {
 
   const loadProfiles = useCallback(async () => {
     const nextProfiles = await connectionService.list();
+    const initialProfileId = preferredWorkspaceId(nextProfiles);
     setProfiles(nextProfiles);
-    setActiveConnectionId((current) => current || nextProfiles[0]?.id || "");
+    setActiveConnectionId((current) =>
+      current && nextProfiles.some((profile) => profile.id === current)
+        ? current
+        : initialProfileId,
+    );
     return nextProfiles;
   }, []);
 
@@ -367,9 +402,9 @@ export function useDataPanelState() {
       }),
     ])
       .then(async ([nextProfiles]) => {
-        const firstProfileId = nextProfiles[0]?.id;
-        if (firstProfileId) {
-          await connectAndLoadMetadata(firstProfileId, "", {
+        const initialProfileId = preferredWorkspaceId(nextProfiles);
+        if (initialProfileId) {
+          await connectAndLoadMetadata(initialProfileId, "", {
             refresh: false,
           });
           void prefetchWorkspaceMetadata(nextProfiles, { refresh: true });
@@ -556,6 +591,7 @@ export function useDataPanelState() {
     }
     await connectionService.disconnect(activeConnectionId);
     activeConnectionIdRef.current = "";
+    saveLastActiveWorkspaceId("");
     setActiveConnectionId("");
     setSchemas([]);
     setTablesBySchema({});
@@ -601,6 +637,7 @@ export function useDataPanelState() {
           });
         } else {
           activeConnectionIdRef.current = "";
+          saveLastActiveWorkspaceId("");
           setActiveConnectionId("");
           setStatus({ tone: "neutral", text: "No workspace selected" });
         }

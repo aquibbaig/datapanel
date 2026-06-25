@@ -1,4 +1,13 @@
-import type { ai, appdata, connections, postgres, query, settings, updater } from "../../wailsjs/go/models";
+import type {
+  ai,
+  appdata,
+  connections,
+  fileexport,
+  postgres,
+  query,
+  settings,
+  updater,
+} from "../../wailsjs/go/models";
 
 export type AICredentialStatus = ai.CredentialStatus;
 export interface AIChatTurn {
@@ -129,6 +138,8 @@ export interface AppSettings extends settings.AppSettings {
   telemetryEnabled: boolean;
   telemetryInstallId: string;
 }
+export type SaveFileExportRequest = fileexport.SaveExportRequest;
+export type SaveFileExportResult = fileexport.SaveExportResult;
 export type ReleaseState = updater.ReleaseState;
 export type UpdateCheckResult = updater.UpdateCheckResult;
 export type InstallUpdateRequest = updater.InstallUpdateRequest;

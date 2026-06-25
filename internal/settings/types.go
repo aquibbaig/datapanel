@@ -8,6 +8,7 @@ type AppSettings struct {
 	SidebarWidth          int    `json:"sidebarWidth"`
 	InspectorWidth        int    `json:"inspectorWidth"`
 	AutoRefreshMetadata   bool   `json:"autoRefreshMetadata"`
+	ExportDirectory       string `json:"exportDirectory"`
 	ChatResponsePrompt    string `json:"chatResponsePrompt"`
 	CursorMode            string `json:"cursorMode"`
 	TelemetryEnabled      bool   `json:"telemetryEnabled"`
@@ -23,6 +24,7 @@ func DefaultSettings() AppSettings {
 		SidebarWidth:          304,
 		InspectorWidth:        360,
 		AutoRefreshMetadata:   true,
+		ExportDirectory:       "",
 		ChatResponsePrompt:    "",
 		CursorMode:            "default",
 		TelemetryEnabled:      false,

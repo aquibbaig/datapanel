@@ -10,8 +10,11 @@ type QueryRequest struct {
 }
 
 type QueryColumn struct {
-	Name     string `json:"name"`
-	DataType string `json:"dataType"`
+	Name         string `json:"name"`
+	DataType     string `json:"dataType"`
+	SourceSchema string `json:"sourceSchema,omitempty"`
+	SourceTable  string `json:"sourceTable,omitempty"`
+	SourceColumn string `json:"sourceColumn,omitempty"`
 }
 
 type QueryResult struct {

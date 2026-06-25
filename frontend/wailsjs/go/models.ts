@@ -874,6 +874,41 @@ export namespace connections {
 
 }
 
+export namespace fileexport {
+	
+	export class SaveExportRequest {
+	    filename: string;
+	    contents: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SaveExportRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.filename = source["filename"];
+	        this.contents = source["contents"];
+	    }
+	}
+	export class SaveExportResult {
+	    filename: string;
+	    directory: string;
+	    path: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SaveExportResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.filename = source["filename"];
+	        this.directory = source["directory"];
+	        this.path = source["path"];
+	    }
+	}
+
+}
+
 export namespace postgres {
 	
 	export class ColumnSummary {
@@ -1089,6 +1124,9 @@ export namespace query {
 	export class QueryColumn {
 	    name: string;
 	    dataType: string;
+	    sourceSchema?: string;
+	    sourceTable?: string;
+	    sourceColumn?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new QueryColumn(source);
@@ -1098,6 +1136,9 @@ export namespace query {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
 	        this.dataType = source["dataType"];
+	        this.sourceSchema = source["sourceSchema"];
+	        this.sourceTable = source["sourceTable"];
+	        this.sourceColumn = source["sourceColumn"];
 	    }
 	}
 	export class QueryHistoryItem {
@@ -1213,6 +1254,7 @@ export namespace settings {
 	    sidebarWidth: number;
 	    inspectorWidth: number;
 	    autoRefreshMetadata: boolean;
+	    exportDirectory: string;
 	    chatResponsePrompt: string;
 	    cursorMode: string;
 	    telemetryEnabled: boolean;
@@ -1231,6 +1273,7 @@ export namespace settings {
 	        this.sidebarWidth = source["sidebarWidth"];
 	        this.inspectorWidth = source["inspectorWidth"];
 	        this.autoRefreshMetadata = source["autoRefreshMetadata"];
+	        this.exportDirectory = source["exportDirectory"];
 	        this.chatResponsePrompt = source["chatResponsePrompt"];
 	        this.cursorMode = source["cursorMode"];
 	        this.telemetryEnabled = source["telemetryEnabled"];

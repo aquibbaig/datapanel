@@ -85,6 +85,7 @@ func normalize(settings AppSettings) AppSettings {
 	if settings.CursorMode != "pointer" {
 		settings.CursorMode = defaults.CursorMode
 	}
+	settings.ExportDirectory = strings.TrimSpace(settings.ExportDirectory)
 	settings.ChatResponsePrompt = strings.TrimSpace(settings.ChatResponsePrompt)
 	settings.TelemetryInstallID = strings.TrimSpace(settings.TelemetryInstallID)
 	return settings

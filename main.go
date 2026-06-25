@@ -11,6 +11,7 @@ import (
 	"datapanel/internal/bigquery"
 	"datapanel/internal/connections"
 	"datapanel/internal/database"
+	"datapanel/internal/fileexport"
 	"datapanel/internal/mysql"
 	"datapanel/internal/postgres"
 	"datapanel/internal/query"
@@ -62,6 +63,7 @@ func main() {
 	aiService := ai.NewService(secretStore, secretStorage)
 	schemaService := postgres.NewSchemaService(databaseRouter)
 	queryService := query.NewService(databaseRouter, settingsService)
+	fileExportService := fileexport.NewService(settingsService)
 	updateService := updater.NewService(paths.CacheDir)
 	application := appcore.NewApplication(paths, appcore.MultiCloser{databaseRouter, appDataService})
 
@@ -93,6 +95,7 @@ func main() {
 			aiService,
 			schemaService,
 			queryService,
+			fileExportService,
 			settingsService,
 			updateService,
 		},

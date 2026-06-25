@@ -34,7 +34,7 @@ import { ResultsGrid } from "../features/results-grid/ResultsGrid";
 import { SettingsPanel } from "../features/settings/SettingsPanel";
 import { appDataService } from "../lib/backend";
 import { cn } from "../lib/cn";
-import type { ConnectionProfile, TableDetails, TableSummary } from "../lib/types";
+import type { ConnectionProfile, QueryResult, TableDetails, TableSummary } from "../lib/types";
 import type { AISQLAssistantRequest } from "../features/ai-assistant/AiAssistantPanel";
 import { CommandPalette } from "./CommandPalette";
 import { RightActionPanel, type RightPanel } from "./RightActionPanel";
@@ -372,7 +372,7 @@ export function App() {
   }
 
   async function runTypedSQL(sql: string, confirmDestructive = false) {
-    const editableTarget = resolveEditableSelectTable(
+    const editableTarget = resolveEditableQueryTarget(
       sql,
       model.tablesBySchema,
     );
@@ -387,12 +387,12 @@ export function App() {
     setBottomPanelExpanded(true);
 
     if (editableTarget && !isExplainSQL(sql)) {
-      editableTable = editableTarget;
-      editableDetailsPromise = model.loadTableDetails(editableTarget, { force: true }).catch(
+      editableTable = editableTarget.table;
+      editableDetailsPromise = model.loadTableDetails(editableTarget.table, { force: true }).catch(
         () => null,
       );
-      if (driver === "postgres" && isPostgresBaseTable(editableTarget.type)) {
-        sqlToRun = addPostgresRowLocator(sql);
+      if (driver === "postgres" && isPostgresBaseTable(editableTarget.table.type)) {
+        sqlToRun = addPostgresRowLocator(sql, editableTarget.rowLocatorPlacement);
       }
     }
 
@@ -401,6 +401,19 @@ export function App() {
       historyMode: "query",
       recordHistory: true,
     });
+    if (result && !editableTable && driver === "postgres" && !result.error) {
+      const inferredTable = resolveEditableResultTableFromSources(
+        result,
+        model.tablesBySchema,
+      );
+      if (inferredTable) {
+        editableTable = inferredTable;
+        editableDetailsPromise = model.loadTableDetails(inferredTable, { force: true }).catch(
+          () => null,
+        );
+      }
+    }
+
     if (result) {
       const editableDetails = editableDetailsPromise
         ? await editableDetailsPromise
@@ -1073,13 +1086,31 @@ function isExplainSQL(sql: string) {
   return sql.trim().toLowerCase().startsWith("explain");
 }
 
-function resolveEditableSelectTable(
+interface EditableQueryTarget {
+  table: TableSummary;
+  rowLocatorPlacement: "select" | "returning";
+}
+
+function resolveEditableQueryTarget(
   sql: string,
   tablesBySchema: Record<string, TableSummary[]>,
-) {
-  const target = parseSimpleSelectStarTarget(sql);
+): EditableQueryTarget | null {
+  const target =
+    parseSingleTableSelectTarget(sql) || parseReturningMutationTarget(sql);
   if (!target) return null;
 
+  const table = resolveTableTarget(target, tablesBySchema);
+  if (!table) return null;
+  return {
+    table,
+    rowLocatorPlacement: target.kind === "returning" ? "returning" : "select",
+  };
+}
+
+function resolveTableTarget(
+  target: { schema: string; table: string },
+  tablesBySchema: Record<string, TableSummary[]>,
+) {
   if (target.schema) {
     return findTableInSchema(tablesBySchema, target.schema, target.table);
   }
@@ -1094,28 +1125,163 @@ function resolveEditableSelectTable(
   return matches.length === 1 ? matches[0].table : null;
 }
 
-function parseSimpleSelectStarTarget(sql: string) {
+function resolveEditableResultTableFromSources(
+  result: QueryResult,
+  tablesBySchema: Record<string, TableSummary[]>,
+) {
+  const sourceKeys = new Map<string, { schema: string; table: string }>();
+  for (const column of result.columns) {
+    if (!column.sourceTable || !column.sourceColumn) continue;
+    const schema = column.sourceSchema || "";
+    sourceKeys.set(`${schema}.${column.sourceTable}`.toLowerCase(), {
+      schema,
+      table: column.sourceTable,
+    });
+  }
+  if (sourceKeys.size !== 1) return null;
+  const [target] = Array.from(sourceKeys.values());
+  return resolveTableTarget(target, tablesBySchema);
+}
+
+function parseSingleTableSelectTarget(sql: string) {
   const identifier = String.raw`(?:"(?:[^"]|"")+"|[A-Za-z_][\w$]*)`;
   const pattern = new RegExp(
-    String.raw`^\s*select\s+\*\s+from\s+(${identifier})(?:\s*\.\s*(${identifier}))?([\s\S]*)$`,
+    String.raw`^\s*select\s+([\s\S]+?)\s+from\s+(${identifier})(?:\s*\.\s*(${identifier}))?([\s\S]*)$`,
     "i",
   );
   const match = sql.match(pattern);
   if (!match) return null;
 
-  const rest = match[3].trimStart().toLowerCase();
-  if (/^(,|join\b|inner\b|left\b|right\b|full\b|cross\b)/.test(rest)) {
+  if (!isSimpleEditableSelectList(match[1])) return null;
+
+  const rest = match[4].trimStart().toLowerCase();
+  if (!isSimpleEditableSelectRemainder(rest)) {
     return null;
   }
 
+  if (match[3]) {
+    return {
+      kind: "select" as const,
+      schema: unquoteIdentifier(match[2]),
+      table: unquoteIdentifier(match[3]),
+    };
+  }
+
+  return {
+    kind: "select" as const,
+    schema: "",
+    table: unquoteIdentifier(match[2]),
+  };
+}
+
+function parseReturningMutationTarget(sql: string) {
+  return (
+    parseInsertReturningTarget(sql) ||
+    parseUpdateReturningTarget(sql)
+  );
+}
+
+function parseInsertReturningTarget(sql: string) {
+  const identifier = String.raw`(?:"(?:[^"]|"")+"|[A-Za-z_][\w$]*)`;
+  const pattern = new RegExp(
+    String.raw`^\s*insert\s+into\s+(?:only\s+)?(${identifier})(?:\s*\.\s*(${identifier}))?[\s\S]*?\breturning\s+([\s\S]+?)\s*;?\s*$`,
+    "i",
+  );
+  const match = sql.match(pattern);
+  if (!match || !isSimpleEditableSelectList(match[3])) return null;
+
   if (match[2]) {
     return {
+      kind: "returning" as const,
       schema: unquoteIdentifier(match[1]),
       table: unquoteIdentifier(match[2]),
     };
   }
 
-  return { schema: "", table: unquoteIdentifier(match[1]) };
+  return {
+    kind: "returning" as const,
+    schema: "",
+    table: unquoteIdentifier(match[1]),
+  };
+}
+
+function parseUpdateReturningTarget(sql: string) {
+  const identifier = String.raw`(?:"(?:[^"]|"")+"|[A-Za-z_][\w$]*)`;
+  const pattern = new RegExp(
+    String.raw`^\s*update\s+(?:only\s+)?(${identifier})(?:\s*\.\s*(${identifier}))?(?:\s+(?:as\s+)?${identifier})?\s+set\s+[\s\S]*?\breturning\s+([\s\S]+?)\s*;?\s*$`,
+    "i",
+  );
+  const match = sql.match(pattern);
+  if (!match || !isSimpleEditableSelectList(match[3])) return null;
+
+  if (match[2]) {
+    return {
+      kind: "returning" as const,
+      schema: unquoteIdentifier(match[1]),
+      table: unquoteIdentifier(match[2]),
+    };
+  }
+
+  return {
+    kind: "returning" as const,
+    schema: "",
+    table: unquoteIdentifier(match[1]),
+  };
+}
+
+function isSimpleEditableSelectList(selectList: string) {
+  const trimmed = selectList.trim();
+  if (!trimmed) return false;
+  if (trimmed === "*") return true;
+  return splitSelectList(trimmed).every(isColumnSelectItem);
+}
+
+function splitSelectList(selectList: string) {
+  const items: string[] = [];
+  let item = "";
+  let quoted = false;
+
+  for (let index = 0; index < selectList.length; index += 1) {
+    const char = selectList[index];
+    if (char === '"') {
+      item += char;
+      if (quoted && selectList[index + 1] === '"') {
+        item += selectList[index + 1];
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (char === "," && !quoted) {
+      items.push(item.trim());
+      item = "";
+    } else {
+      item += char;
+    }
+  }
+
+  items.push(item.trim());
+  return items.filter(Boolean);
+}
+
+function isColumnSelectItem(item: string) {
+  const identifier = String.raw`(?:"(?:[^"]|"")+"|[A-Za-z_][\w$]*)`;
+  const qualifiedColumn = new RegExp(
+    String.raw`^${identifier}(?:\s*\.\s*${identifier}){0,2}$`,
+    "i",
+  );
+  const qualifiedStar = new RegExp(
+    String.raw`^${identifier}(?:\s*\.\s*${identifier}){0,1}\s*\.\s*\*$`,
+    "i",
+  );
+  return qualifiedColumn.test(item) || qualifiedStar.test(item);
+}
+
+function isSimpleEditableSelectRemainder(rest: string) {
+  if (rest === "" || rest.startsWith(";")) return true;
+  if (/^(,|join\b|inner\b|left\b|right\b|full\b|cross\b)/.test(rest)) {
+    return false;
+  }
+  return /^(where\b|order\s+by\b|limit\b|offset\b|fetch\b|for\b)/.test(rest);
 }
 
 function findTableInSchema(
@@ -1131,10 +1297,20 @@ function findTableInSchema(
   );
 }
 
-function addPostgresRowLocator(sql: string) {
+function addPostgresRowLocator(
+  sql: string,
+  placement: EditableQueryTarget["rowLocatorPlacement"],
+) {
+  if (sql.includes(postgresRowLocatorColumn)) return sql;
+  if (placement === "returning") {
+    return sql.replace(
+      /\breturning\s+/i,
+      `RETURNING ctid::text as "${postgresRowLocatorColumn}", `,
+    );
+  }
   return sql.replace(
-    /^(\s*select\s+)\*(\s+from\s+)/i,
-    `$1ctid::text as "${postgresRowLocatorColumn}", *$2`,
+    /^(\s*select\s+)/i,
+    `$1ctid::text as "${postgresRowLocatorColumn}", `,
   );
 }
 

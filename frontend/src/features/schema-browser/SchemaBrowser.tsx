@@ -1,21 +1,11 @@
-import {
-  Braces,
-  Calendar,
-  Database,
-  Hash,
-  KeyRound,
-  Link2,
-  Loader2,
-  Search,
-  Table2,
-  ToggleLeft,
-  Type,
-} from "lucide-react";
+import { Database, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Button } from "../../components/ui/Button";
 import { cn } from "../../lib/cn";
 import { textInputBehaviorProps } from "../../lib/text-input";
+import { DisclosureTriangle } from "./components/DisclosureTriangle";
+import { SchemaColumnRow } from "./components/SchemaColumnRow";
+import { SchemaTableRow } from "./components/SchemaTableRow";
 import type {
   SchemaSummary,
   TableDetails,
@@ -51,18 +41,28 @@ export function SchemaBrowser({
     viewportSize: 0,
   });
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [expandedSchemaKeys, setExpandedSchemaKeys] = useState<Set<string>>(
+    () => new Set([schemaKey("public")]),
+  );
+  const orderedSchemas = useMemo(() => orderSchemas(schemas), [schemas]);
+  const schemaNamesKey = useMemo(
+    () => orderedSchemas.map((schema) => schema.name).join("|"),
+    [orderedSchemas],
+  );
   const filteredSchemas = useMemo(
-    () => filterSchemas(schemas, tablesBySchema, filter),
-    [filter, schemas, tablesBySchema],
+    () => filterSchemas(orderedSchemas, tablesBySchema, filter),
+    [filter, orderedSchemas, tablesBySchema],
   );
   const rows = useMemo(
     () =>
       buildBrowserRows({
+        expandedSchemaKeys,
         filteredSchemas,
+        filter,
         selectedTable,
         tableDetails,
       }),
-    [filteredSchemas, selectedTable, tableDetails],
+    [expandedSchemaKeys, filter, filteredSchemas, selectedTable, tableDetails],
   );
   const selectedForeignKeys = useMemo(
     () => (tableDetails ? foreignKeyColumns(tableDetails) : new Set<string>()),
@@ -95,7 +95,8 @@ export function SchemaBrowser({
 
   useEffect(() => {
     setFilter("");
-  }, [activeConnectionId]);
+    setExpandedSchemaKeys(defaultExpandedSchemaKeys(orderedSchemas));
+  }, [activeConnectionId, orderedSchemas, schemaNamesKey]);
 
   useEffect(() => {
     if (!activeConnectionId || visibleTableRows.length === 0) return;
@@ -142,7 +143,7 @@ export function SchemaBrowser({
         </Button>
       </div> */}
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 py-3 pl-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 pb-3 pt-2 pl-3">
         <label className="relative mr-3 block">
           <Search
             className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500"
@@ -159,7 +160,7 @@ export function SchemaBrowser({
         </label>
 
         {!activeConnectionId ? (
-          <div className="mr-3 flex items-center gap-2 rounded-ui border border-dashed border-line bg-surface-850 p-3 text-sm text-muted">
+          <div className="mx-3 flex items-center gap-2 rounded-ui border border-dashed border-line bg-surface-850 p-3 text-sm text-muted">
             <Database size={14} />
             <p>Choose a workspace above to browse tables.</p>
           </div>
@@ -191,6 +192,11 @@ export function SchemaBrowser({
                       inspectingTable={inspectingTable}
                       selectedTable={selectedTable}
                       onInspectTable={onInspectTable}
+                      onToggleSchema={(schemaName) =>
+                        setExpandedSchemaKeys((current) =>
+                          toggleSchemaExpansion(current, schemaName),
+                        )
+                      }
                     />
                   </div>
                 );
@@ -230,7 +236,13 @@ export function SchemaBrowser({
 }
 
 type BrowserRow =
-  | { kind: "schema"; key: string; schema: SchemaSummary }
+  | {
+      kind: "schema";
+      key: string;
+      schema: SchemaSummary;
+      expanded: boolean;
+      tableCount: number;
+    }
   | {
       kind: "table";
       key: string;
@@ -244,6 +256,41 @@ type BrowserRow =
     };
 
 const maxPrefetchTablesPerRange = 36;
+
+function orderSchemas(schemas: SchemaSummary[]) {
+  return schemas
+    .map((schema, index) => ({ schema, index }))
+    .sort((left, right) => {
+      const leftIsPublic = schemaKey(left.schema.name) === schemaKey("public");
+      const rightIsPublic = schemaKey(right.schema.name) === schemaKey("public");
+      if (leftIsPublic && !rightIsPublic) return -1;
+      if (!leftIsPublic && rightIsPublic) return 1;
+      return left.index - right.index;
+    })
+    .map(({ schema }) => schema);
+}
+
+function defaultExpandedSchemaKeys(schemas: SchemaSummary[]) {
+  const publicSchema = schemas.find(
+    (schema) => schemaKey(schema.name) === schemaKey("public"),
+  );
+  return new Set([schemaKey(publicSchema?.name || "public")]);
+}
+
+function toggleSchemaExpansion(current: Set<string>, schemaName: string) {
+  const next = new Set(current);
+  const key = schemaKey(schemaName);
+  if (next.has(key)) {
+    next.delete(key);
+  } else {
+    next.add(key);
+  }
+  return next;
+}
+
+function schemaKey(schemaName: string) {
+  return schemaName.toLowerCase();
+}
 
 function sidebarScrollbarThumbHeight(totalSize: number, viewportSize: number) {
   if (totalSize <= viewportSize || viewportSize <= 0) return 0;
@@ -263,17 +310,30 @@ function sidebarScrollbarThumbOffset(
 }
 
 function buildBrowserRows({
+  expandedSchemaKeys,
   filteredSchemas,
+  filter,
   selectedTable,
   tableDetails,
 }: {
+  expandedSchemaKeys: Set<string>;
   filteredSchemas: Array<{ schema: SchemaSummary; tables: TableSummary[] }>;
+  filter: string;
   selectedTable: TableSummary | null;
   tableDetails: TableDetails | null;
 }) {
   const rows: BrowserRow[] = [];
+  const searching = filter.trim() !== "";
   for (const { schema, tables } of filteredSchemas) {
-    rows.push({ kind: "schema", key: `schema:${schema.name}`, schema });
+    const expanded = searching || expandedSchemaKeys.has(schemaKey(schema.name));
+    rows.push({
+      kind: "schema",
+      key: `schema:${schema.name}`,
+      schema,
+      expanded,
+      tableCount: tables.length,
+    });
+    if (!expanded) continue;
     for (const [index, table] of tables.entries()) {
       rows.push({
         kind: "table",
@@ -301,8 +361,6 @@ function buildBrowserRows({
 
 function estimatedRowHeight(row: BrowserRow | undefined) {
   if (!row) return 32;
-  if (row.kind === "schema") return 40;
-  if (row.kind === "table" && row.firstInSchema) return 38;
   return 32;
 }
 
@@ -326,25 +384,58 @@ function BrowserRow({
   inspectingTable,
   selectedTable,
   onInspectTable,
+  onToggleSchema,
 }: {
   row: BrowserRow;
   selectedForeignKeys: Set<string>;
   inspectingTable: TableSummary | null;
   selectedTable: TableSummary | null;
   onInspectTable(table: TableSummary): Promise<TableDetails | null>;
+  onToggleSchema(schemaName: string): void;
 }) {
   if (row.kind === "schema") {
+    const hasTables = row.tableCount > 0;
     return (
-      <div className="flex h-10 mt-2 items-center border-t border-line/60 px-2 text-[11px] font-bold uppercase tracking-wide text-zinc-400">
-        <Database className="mr-1.5 -mt-0.5 text-zinc-600" size={14} />
+      <button
+        aria-expanded={hasTables ? row.expanded : undefined}
+        className={cn(
+          "flex h-8 w-full appearance-none items-center gap-1 rounded-md border-0 bg-transparent px-2 pr-1 text-left text-sm font-semibold transition",
+          hasTables
+            ? "text-zinc-500 hover:bg-control/[0.04] hover:text-zinc-200"
+            : "cursor-default text-zinc-500/55 opacity-70",
+        )}
+        disabled={!hasTables}
+        onClick={() => {
+          if (hasTables) onToggleSchema(row.schema.name);
+        }}
+        title={
+          hasTables
+            ? `${row.expanded ? "Collapse" : "Expand"} ${row.schema.name}`
+            : `${row.schema.name} has no tables`
+        }
+        type="button"
+      >
+        <Database
+          className={cn("shrink-0", hasTables ? "text-zinc-500" : "text-zinc-500/55")}
+          size={14}
+        />
         <span className="min-w-0 truncate">{row.schema.name}</span>
-      </div>
+        {hasTables ? (
+          <DisclosureTriangle expanded={row.expanded} className="ml-1" />
+        ) : null}
+        <span className="min-w-0 flex-1" />
+        {row.tableCount > 0 ? (
+          <span className="ml-2 text-[10px] font-semibold text-muted">
+            {row.tableCount}
+          </span>
+        ) : null}
+      </button>
     );
   }
 
   if (row.kind === "column") {
     return (
-      <ColumnRow
+      <SchemaColumnRow
         column={row.column}
         isForeign={selectedForeignKeys.has(row.column.name)}
       />
@@ -359,33 +450,12 @@ function BrowserRow({
     inspectingTable.name === table.name;
 
   return (
-    <div className={cn("pb-0.5 pl-4 pr-1", row.firstInSchema ? "pt-2" : "pt-0.5")}>
-      <div className="border-l border-line/70 pl-2">
-        <Button
-          size="row"
-          className={cn(
-            "w-full justify-start rounded-md text-left",
-            active
-              ? "bg-selection text-selection-foreground"
-              : "text-zinc-500 hover:bg-selection-hover hover:text-zinc-200",
-          )}
-          onClick={() => void onInspectTable(table)}
-        >
-          <Table2 size={14} />
-          <span className="min-w-0 flex-1 truncate">{table.name}</span>
-          <span className="text-[11px] text-muted">
-            {table.type.replace("BASE ", "")}
-          </span>
-          {loading ? (
-            <Loader2
-              aria-label="Loading table metadata"
-              className="animate-spin text-zinc-300"
-              size={14}
-            />
-          ) : null}
-        </Button>
-      </div>
-    </div>
+    <SchemaTableRow
+      active={active}
+      loading={loading}
+      table={table}
+      onInspectTable={onInspectTable}
+    />
   );
 }
 
@@ -419,76 +489,6 @@ function filterSchemas(
         entry.tables.length > 0 ||
         entry.schema.name.toLowerCase().includes(query),
     );
-}
-
-function ColumnRow({
-  column,
-  isForeign,
-}: {
-  column: TableDetails["columns"][number];
-  isForeign: boolean;
-}) {
-  const displayType = formatDisplayDataType(column.dataType);
-
-  return (
-    <div className="ml-12 border-l border-line/70 py-0.5 pl-2">
-      <div
-        className="grid h-7 w-full grid-cols-[minmax(0,1fr)_minmax(4.75rem,auto)] items-center gap-2 rounded-md px-2 text-left text-xs font-medium text-zinc-400 hover:bg-control/[0.05] hover:text-zinc-100"
-        title={`${column.name}: ${displayType}`}
-      >
-        <span className="flex min-w-0 items-center gap-1.5">
-          <ColumnTypeIcon dataType={column.dataType} />
-          {column.isPrimary ? (
-            <KeyRound
-              className="text-yellow-200"
-              size={8}
-              aria-label="Primary key"
-            />
-          ) : null}
-          {isForeign ? (
-            <Link2
-              className="text-sky-200"
-              size={8}
-              aria-label="Foreign key"
-            />
-          ) : null}
-          <span className="min-w-0 truncate">{column.name}</span>
-        </span>
-        <code className="min-w-0 truncate text-right text-[11px] text-muted">
-          {displayType}
-        </code>
-      </div>
-    </div>
-  );
-}
-
-function formatDisplayDataType(dataType: string) {
-  return dataType
-    .replace(/^character varying(\s*\([^)]*\))?/i, "varchar$1")
-    .replace(/^timestamp(\s*\([^)]*\))?\s+with\s+time\s+zone$/i, "timestamptz$1")
-    .replace(
-      /^timestamp(\s*\([^)]*\))?\s+without\s+time\s+zone$/i,
-      "timestamp$1",
-    );
-}
-
-function ColumnTypeIcon({ dataType }: { dataType: string }) {
-  const normalized = dataType.toLowerCase();
-  if (
-    /\b(int|serial|decimal|numeric|float|double|real|bit)\b/.test(normalized)
-  ) {
-    return <Hash className="text-zinc-500" size={12} />;
-  }
-  if (/\b(bool|boolean|tinyint\(1\))\b/.test(normalized)) {
-    return <ToggleLeft className="text-zinc-500" size={12} />;
-  }
-  if (/\b(date|time|timestamp|year)\b/.test(normalized)) {
-    return <Calendar className="text-zinc-500" size={12} />;
-  }
-  if (/\b(json|jsonb|array)\b/.test(normalized)) {
-    return <Braces className="text-zinc-500" size={12} />;
-  }
-  return <Type className="text-zinc-500" size={12} />;
 }
 
 function foreignKeyColumns(tableDetails: TableDetails) {

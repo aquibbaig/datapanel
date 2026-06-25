@@ -17,6 +17,7 @@ import (
 	"datapanel/internal/query"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -290,12 +291,19 @@ func (a *Adapter) Execute(ctx context.Context, request query.QueryRequest) (quer
 	defer rows.Close()
 
 	fields := rows.FieldDescriptions()
+	columnSources := loadQueryColumnSources(ctx, pool, fields)
 	columns := make([]query.QueryColumn, 0, len(fields))
 	for _, field := range fields {
-		columns = append(columns, query.QueryColumn{
+		column := query.QueryColumn{
 			Name:     string(field.Name),
 			DataType: strconv.FormatUint(uint64(field.DataTypeOID), 10),
-		})
+		}
+		if source, ok := columnSources[columnSourceKey(field.TableOID, field.TableAttributeNumber)]; ok {
+			column.SourceSchema = source.schema
+			column.SourceTable = source.table
+			column.SourceColumn = source.column
+		}
+		columns = append(columns, column)
 	}
 
 	limit := request.MaxRows
@@ -330,6 +338,65 @@ func (a *Adapter) Execute(ctx context.Context, request query.QueryRequest) (quer
 		DurationMS:   time.Since(started).Milliseconds(),
 		Truncated:    truncated,
 	}, nil
+}
+
+type queryColumnSource struct {
+	schema string
+	table  string
+	column string
+}
+
+func loadQueryColumnSources(ctx context.Context, pool *pgxpool.Pool, fields []pgconn.FieldDescription) map[string]queryColumnSource {
+	tableOIDs := make([]uint32, 0)
+	seen := map[uint32]bool{}
+	for _, field := range fields {
+		if field.TableOID == 0 || field.TableAttributeNumber == 0 || seen[field.TableOID] {
+			continue
+		}
+		seen[field.TableOID] = true
+		tableOIDs = append(tableOIDs, field.TableOID)
+	}
+	if len(tableOIDs) == 0 {
+		return map[string]queryColumnSource{}
+	}
+
+	rows, err := pool.Query(ctx, `
+		select
+			c.oid::int8,
+			a.attnum::int2,
+			n.nspname,
+			c.relname,
+			a.attname
+		from pg_catalog.pg_attribute a
+		join pg_catalog.pg_class c on c.oid = a.attrelid
+		join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+		where c.oid = any($1::oid[])
+		  and a.attnum > 0
+		  and not a.attisdropped
+	`, tableOIDs)
+	if err != nil {
+		return map[string]queryColumnSource{}
+	}
+	defer rows.Close()
+
+	sources := map[string]queryColumnSource{}
+	for rows.Next() {
+		var tableOID uint64
+		var attributeNumber int16
+		var source queryColumnSource
+		if err := rows.Scan(&tableOID, &attributeNumber, &source.schema, &source.table, &source.column); err != nil {
+			return map[string]queryColumnSource{}
+		}
+		sources[columnSourceKey(uint32(tableOID), uint16(attributeNumber))] = source
+	}
+	if rows.Err() != nil {
+		return map[string]queryColumnSource{}
+	}
+	return sources
+}
+
+func columnSourceKey(tableOID uint32, attributeNumber uint16) string {
+	return fmt.Sprintf("%d:%d", tableOID, attributeNumber)
 }
 
 func (a *Adapter) pool(connectionID string) (*pgxpool.Pool, error) {

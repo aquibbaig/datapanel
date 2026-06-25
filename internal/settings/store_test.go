@@ -37,6 +37,7 @@ func TestFileStoreSavesAndNormalizesSettings(t *testing.T) {
 		SidebarWidth:          260,
 		InspectorWidth:        320,
 		AutoRefreshMetadata:   true,
+		ExportDirectory:       "  ~/exports  ",
 	}
 
 	if err := store.Save(input); err != nil {
@@ -51,6 +52,9 @@ func TestFileStoreSavesAndNormalizesSettings(t *testing.T) {
 	}
 	if got.CursorMode != DefaultSettings().CursorMode {
 		t.Fatalf("expected cursor mode to default, got %q", got.CursorMode)
+	}
+	if got.ExportDirectory != "~/exports" {
+		t.Fatalf("expected export directory to be trimmed, got %q", got.ExportDirectory)
 	}
 }
 

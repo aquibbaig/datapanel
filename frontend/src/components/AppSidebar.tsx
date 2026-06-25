@@ -133,7 +133,7 @@ function WorkspaceSelector({
   );
 
   return (
-    <div className="flex shrink-0 items-center px-1 py-2">
+    <div className="flex shrink-0 items-center px-1 pb-0 pt-2">
       <DropdownMenu.Root
         open={open}
         onOpenChange={(nextOpen) => {

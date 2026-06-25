@@ -5,7 +5,12 @@ import {
   CompletionResult,
   startCompletion
 } from "@codemirror/autocomplete";
-import { defaultKeymap, indentWithTab } from "@codemirror/commands";
+import {
+  defaultKeymap,
+  history,
+  historyKeymap,
+  indentWithTab,
+} from "@codemirror/commands";
 import { PostgreSQL, sql } from "@codemirror/lang-sql";
 import { Compartment, EditorState, Extension } from "@codemirror/state";
 import {
@@ -110,6 +115,7 @@ export function SqlCodeEditor({
     () => [
       lineNumbers(),
       highlightActiveLine(),
+      history(),
       keymap.of([
         {
           key: "Mod-Enter",
@@ -122,6 +128,7 @@ export function SqlCodeEditor({
           key: "Tab",
           run: acceptCompletion
         },
+        ...historyKeymap,
         ...defaultKeymap,
         indentWithTab,
         {

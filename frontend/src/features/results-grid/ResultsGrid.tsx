@@ -1,27 +1,74 @@
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
-  Check,
-  ChevronDown,
-  Download,
-  FileJson,
-  FileSpreadsheet,
   KeyRound,
   Loader2,
-  RotateCcw,
   TableProperties,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Button } from "../../components/ui/Button";
 import { cn } from "../../lib/cn";
-import { textInputBehaviorProps } from "../../lib/text-input";
 import type {
-  ColumnSummary,
   ConnectionProfile,
   QueryResult,
   TableDetails,
   TableSummary,
 } from "../../lib/types";
+import { ChangeReviewPanel } from "./components/ChangeReviewPanel";
+import { CellEditor } from "./components/CellEditor";
+import { CellValue } from "./components/CellValue";
+import { FinderBar } from "./components/FinderBar";
+import { ResultsToolbar } from "./components/ResultsToolbar";
+import { ValueInspector } from "./components/ValueInspector";
+import {
+  postgresRowLocatorColumn,
+  resultColumnWidth,
+  resultHeaderHeight,
+  resultRowHeight,
+} from "./constants";
+import {
+  columnBelongsToSelectedTable,
+  columnKey,
+  columnTitle,
+  isWritableColumn,
+  mutationColumnName,
+} from "./lib/columns";
+import {
+  readClipboardText,
+  writeClipboardText,
+} from "./lib/clipboard";
+import {
+  draftValue,
+  isNullDraft,
+  sameDraft,
+  toDraft,
+} from "./lib/drafts";
+import {
+  exportCSV,
+  exportJSON,
+  serializeRowsAsTSV,
+} from "./lib/export";
+import {
+  cloneEditSnapshot,
+  createPendingInsertId,
+  insertedRowToResultRow,
+  insertRowKey,
+  parseClipboardRows,
+  summarizeChanges,
+} from "./lib/rows";
+import { buildFindMatches } from "./lib/search";
+import {
+  buildMutationSQL,
+  getRowKey,
+  normalizeDriver,
+} from "./lib/sql";
+import { isInspectableValue } from "./lib/value-format";
+import type {
+  CellDraft,
+  ChangeMap,
+  ChangeSummary,
+  EditSnapshot,
+  PendingInsertRow,
+} from "./types";
 
 interface Props {
   result: QueryResult | null;
@@ -31,30 +78,6 @@ interface Props {
   tableDetails?: TableDetails | null;
   onCommitSQL?(sql: string, summary: ChangeSummary): Promise<unknown>;
 }
-
-interface CellDraft {
-  value: string;
-  isNull: boolean;
-  typedNull?: boolean;
-}
-
-type RowChanges = Record<string, CellDraft>;
-type ChangeMap = Record<string, RowChanges>;
-
-interface ChangeSummary {
-  cells: number;
-  rows: number;
-  total: number;
-  items: ChangeItem[];
-}
-
-interface ChangeItem {
-  rowKey: string;
-  label: string;
-  columns: string[];
-}
-
-const postgresRowLocatorColumn = "__datapanel_internal_ctid__";
 
 export function ResultsGrid({
   activeProfile,
@@ -66,20 +89,79 @@ export function ResultsGrid({
 }: Props) {
   const [displayRows, setDisplayRows] = useState<unknown[][]>([]);
   const [changes, setChanges] = useState<ChangeMap>({});
+  const [deletedRowKeys, setDeletedRowKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [insertedRows, setInsertedRows] = useState<PendingInsertRow[]>([]);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [editingCell, setEditingCell] = useState<{
+    rowKey: string;
+    columnName: string;
+  } | null>(null);
+  const [finderOpen, setFinderOpen] = useState(false);
+  const [finderQuery, setFinderQuery] = useState("");
+  const [activeFindIndex, setActiveFindIndex] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
+  const [inspectedCell, setInspectedCell] = useState<{
+    columnName: string;
+    value: unknown;
+  } | null>(null);
   const [saving, setSaving] = useState(false);
+  const gridRef = useRef<HTMLElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const finderInputRef = useRef<HTMLInputElement | null>(null);
+  const changesRef = useRef<ChangeMap>({});
+  const deletedRowKeysRef = useRef<Set<string>>(new Set());
+  const insertedRowsRef = useRef<PendingInsertRow[]>([]);
+  const selectedRowKeysRef = useRef<Set<string>>(new Set());
+  const undoStackRef = useRef<EditSnapshot[]>([]);
+  const redoStackRef = useRef<EditSnapshot[]>([]);
 
   useEffect(() => {
     setDisplayRows(result?.rows || []);
     setChanges({});
+    setDeletedRowKeys(new Set());
+    setInsertedRows([]);
+    setSelectedRowKeys(new Set());
+    setEditingCell(null);
+    setFinderOpen(false);
+    setFinderQuery("");
+    setActiveFindIndex(0);
+    setInspectedCell(null);
+    changesRef.current = {};
+    deletedRowKeysRef.current = new Set();
+    insertedRowsRef.current = [];
+    selectedRowKeysRef.current = new Set();
+    undoStackRef.current = [];
+    redoStackRef.current = [];
   }, [result]);
+
+  useEffect(() => {
+    changesRef.current = changes;
+  }, [changes]);
+
+  useEffect(() => {
+    deletedRowKeysRef.current = deletedRowKeys;
+  }, [deletedRowKeys]);
+
+  useEffect(() => {
+    insertedRowsRef.current = insertedRows;
+  }, [insertedRows]);
+
+  useEffect(() => {
+    selectedRowKeysRef.current = selectedRowKeys;
+  }, [selectedRowKeys]);
 
   const driver = normalizeDriver(activeProfile?.driver);
   const primaryColumns = useMemo(
     () => (tableDetails?.columns || []).filter((column) => column.isPrimary),
     [tableDetails],
   );
-  const primaryKeyColumnSet = new Set(
-    primaryColumns.map((column) => column.name.toLowerCase()),
+  const primaryKeyColumnSet = useMemo(
+    () => new Set(primaryColumns.map((column) => column.name.toLowerCase())),
+    [primaryColumns],
   );
   const columnDetails = useMemo(() => {
     return new Map(
@@ -99,44 +181,136 @@ export function ResultsGrid({
     [result],
   );
   const rowLocatorIndex = columnIndexes.get(postgresRowLocatorColumn);
+  const sourceColumnIndexes = useMemo(() => {
+    const indexes = new Map<string, number>();
+    if (!result || !selectedTable) return indexes;
+    result.columns.forEach((column, index) => {
+      if (!columnBelongsToSelectedTable(column, selectedTable)) return;
+      const sourceColumnName = mutationColumnName(column);
+      if (!sourceColumnName || indexes.has(sourceColumnName.toLowerCase())) {
+        return;
+      }
+      indexes.set(sourceColumnName.toLowerCase(), index);
+    });
+    return indexes;
+  }, [result, selectedTable]);
   const hasPrimaryKeyLocator =
     primaryColumns.length > 0 &&
-    primaryColumns.every((column) => columnIndexes.has(column.name));
+    primaryColumns.every((column) =>
+      sourceColumnIndexes.has(column.name.toLowerCase()),
+    );
   const hasPostgresRowLocator =
     driver === "postgres" && rowLocatorIndex !== undefined;
-  const editable = Boolean(
+  const mutationEnabled = Boolean(
     result &&
     selectedTable &&
     tableDetails &&
     tableDetails.type.toUpperCase().includes("TABLE") &&
+    onCommitSQL,
+  );
+  const editable = Boolean(
+    mutationEnabled &&
     (hasPrimaryKeyLocator || hasPostgresRowLocator) &&
     onCommitSQL,
   );
-  const pendingChanges = useMemo(() => summarizeChanges(changes), [changes]);
-  const showChangeReview = editable && pendingChanges.total > 0;
+  const pendingChanges = useMemo(
+    () => summarizeChanges(changes, deletedRowKeys, insertedRows),
+    [changes, deletedRowKeys, insertedRows],
+  );
+  const showChangeReview = mutationEnabled && pendingChanges.total > 0;
+  const rowEntries = useMemo(
+    () => [
+      ...displayRows.map((row, rowIndex) => ({
+        kind: "result" as const,
+        row,
+        rowIndex,
+        rowKey: getRowKey(
+          row,
+          primaryColumns,
+          sourceColumnIndexes,
+          rowIndex,
+          rowLocatorIndex,
+        ),
+      })),
+      ...insertedRows.map((insertedRow, insertIndex) => ({
+        kind: "insert" as const,
+        insertedRow,
+        row: insertedRowToResultRow(insertedRow, result?.columns || []),
+        rowIndex: displayRows.length + insertIndex,
+        rowKey: insertRowKey(insertedRow),
+      })),
+    ],
+    [
+      displayRows,
+      insertedRows,
+      primaryColumns,
+      result?.columns,
+      rowLocatorIndex,
+      sourceColumnIndexes,
+    ],
+  );
+  const selectedRowEntries = useMemo(
+    () => rowEntries.filter(({ rowKey }) => selectedRowKeys.has(rowKey)),
+    [rowEntries, selectedRowKeys],
+  );
+  const selectedRowCount = selectedRowEntries.length;
+  const selectedExistingRowsWithoutLocator =
+    selectedRowEntries.some((entry) => entry.kind === "result") && !editable;
+  const selectedExistingRowKeys = useMemo(
+    () =>
+      selectedRowEntries
+        .filter((entry) => entry.kind === "result")
+        .map((entry) => entry.rowKey),
+    [selectedRowEntries],
+  );
+  const selectedRowsAreStagedForDelete =
+    selectedExistingRowKeys.length > 0 &&
+    selectedExistingRowKeys.every((rowKey) => deletedRowKeys.has(rowKey));
+  const canAddRow = mutationEnabled && !saving && visibleColumns.length > 0;
+  const canDeleteSelectedRows =
+    mutationEnabled &&
+    !saving &&
+    selectedRowCount > 0 &&
+    !selectedExistingRowsWithoutLocator;
+  const editUnavailableTitle = !mutationEnabled
+    ? "Run a single-table SELECT or open a table to stage row edits"
+    : undefined;
+  const deleteUnavailableTitle = selectedExistingRowsWithoutLocator
+    ? "This result cannot identify selected rows to delete"
+    : editUnavailableTitle;
+  const deleteButtonTitle = selectedRowsAreStagedForDelete
+    ? "Restore selected row"
+    : deleteUnavailableTitle || "Delete selected row";
   const generatedSQL = useMemo(() => {
-    if (!editable || !result || !selectedTable) return "";
+    if (!mutationEnabled || !result || !selectedTable) return "";
     return buildMutationSQL({
       changes,
       columnDetails,
-      columnIndexes,
+      deletedRowKeys,
       driver,
+      insertedRows,
       primaryColumns,
       rowLocatorIndex,
       rows: displayRows,
       selectedTable,
+      sourceColumnIndexes,
+      visibleColumns,
     });
   }, [
     changes,
     columnDetails,
     columnIndexes,
+    deletedRowKeys,
     displayRows,
     driver,
-    editable,
+    insertedRows,
+    mutationEnabled,
     primaryColumns,
     result,
     rowLocatorIndex,
     selectedTable,
+    sourceColumnIndexes,
+    visibleColumns,
   ]);
 
   function updateCell(
@@ -146,10 +320,11 @@ export function ResultsGrid({
     draft: CellDraft,
   ) {
     if (!result) return;
+    pushUndoSnapshot();
     const rowKey = getRowKey(
       row,
       primaryColumns,
-      columnIndexes,
+      sourceColumnIndexes,
       rowIndex,
       rowLocatorIndex,
     );
@@ -168,6 +343,30 @@ export function ResultsGrid({
       } else {
         next[rowKey] = rowChanges;
       }
+      changesRef.current = next;
+      return next;
+    });
+  }
+
+  function updateInsertedCell(
+    rowId: string,
+    columnName: string,
+    draft: CellDraft,
+  ) {
+    pushUndoSnapshot();
+    setInsertedRows((current) => {
+      const next = current.map((row) =>
+        row.id === rowId
+          ? {
+              ...row,
+              values: {
+                ...row.values,
+                [columnName]: draft,
+              },
+            }
+          : row,
+      );
+      insertedRowsRef.current = next;
       return next;
     });
   }
@@ -178,16 +377,17 @@ export function ResultsGrid({
     try {
       await onCommitSQL(generatedSQL, pendingChanges);
       setDisplayRows((current) =>
-        current.map((row, rowIndex) => {
+        current.flatMap((row, rowIndex) => {
           const rowKey = getRowKey(
             row,
             primaryColumns,
-            columnIndexes,
+            sourceColumnIndexes,
             rowIndex,
             rowLocatorIndex,
           );
+          if (deletedRowKeys.has(rowKey)) return [];
           const rowChanges = changes[rowKey];
-          if (!rowChanges) return row;
+          if (!rowChanges) return [row];
           const next = [...row];
           for (const [columnName, draft] of Object.entries(rowChanges)) {
             const index = columnIndexes.get(columnName);
@@ -195,10 +395,26 @@ export function ResultsGrid({
               next[index] = isNullDraft(draft) ? null : draft.value;
             }
           }
-          return next;
+          return [next];
         }),
       );
+      setDisplayRows((current) => [
+        ...current,
+        ...insertedRows.map((row) =>
+          insertedRowToResultRow(row, result?.columns || []),
+        ),
+      ]);
       setChanges({});
+      setDeletedRowKeys(new Set());
+      setInsertedRows([]);
+      setSelectedRowKeys(new Set());
+      setEditingCell(null);
+      changesRef.current = {};
+      deletedRowKeysRef.current = new Set();
+      insertedRowsRef.current = [];
+      selectedRowKeysRef.current = new Set();
+      undoStackRef.current = [];
+      redoStackRef.current = [];
     } catch {
       // The shared commit path already reports database permission/query errors.
     } finally {
@@ -207,16 +423,234 @@ export function ResultsGrid({
   }
 
   function discardChanges() {
+    if (pendingChanges.total > 0) {
+      pushUndoSnapshot();
+    }
     setChanges({});
+    setDeletedRowKeys(new Set());
+    setInsertedRows([]);
+    changesRef.current = {};
+    deletedRowKeysRef.current = new Set();
+    insertedRowsRef.current = [];
+  }
+
+  function deleteSelectedRows() {
+    if (selectedRowCount === 0) return;
+
+    const selectedInsertIds = new Set(
+      selectedRowEntries
+        .filter((entry) => entry.kind === "insert")
+        .map((entry) => entry.insertedRow.id),
+    );
+
+    if (selectedInsertIds.size === 0 && selectedExistingRowKeys.length === 0) {
+      return;
+    }
+    if (selectedExistingRowKeys.length > 0 && !editable) {
+      toast.error("This result cannot identify rows to delete");
+      return;
+    }
+
+    pushUndoSnapshot();
+
+    if (
+      selectedInsertIds.size === 0 &&
+      selectedExistingRowKeys.length > 0 &&
+      selectedExistingRowKeys.every((rowKey) => deletedRowKeys.has(rowKey))
+    ) {
+      setDeletedRowKeys((current) => {
+        const next = new Set(current);
+        for (const rowKey of selectedExistingRowKeys) {
+          next.delete(rowKey);
+        }
+        deletedRowKeysRef.current = next;
+        return next;
+      });
+      gridRef.current?.focus();
+      return;
+    }
+
+    if (selectedInsertIds.size > 0) {
+      setInsertedRows((current) => {
+        const next = current.filter((row) => !selectedInsertIds.has(row.id));
+        insertedRowsRef.current = next;
+        return next;
+      });
+    }
+
+    if (selectedExistingRowKeys.length > 0) {
+      setDeletedRowKeys((current) => {
+        const next = new Set(current);
+        for (const rowKey of selectedExistingRowKeys) {
+          next.add(rowKey);
+        }
+        deletedRowKeysRef.current = next;
+        return next;
+      });
+      setChanges((current) => {
+        const next = { ...current };
+        for (const rowKey of selectedExistingRowKeys) {
+          delete next[rowKey];
+        }
+        changesRef.current = next;
+        return next;
+      });
+    }
+
+    const nextSelection = new Set<string>();
+    selectedRowKeysRef.current = nextSelection;
+    setSelectedRowKeys(nextSelection);
+    setEditingCell(null);
+    gridRef.current?.focus();
+  }
+
+  async function copySelectedRows() {
+    if (!exportResult || selectedRowCount === 0) return;
+    const contents = serializeRowsAsTSV(exportResult);
+    try {
+      await writeClipboardText(contents);
+      toast("Rows copied", {
+        description: `${selectedRowCount} ${selectedRowCount === 1 ? "row" : "rows"} copied to the clipboard`,
+      });
+    } catch {
+      toast.error("Could not copy rows");
+    }
+  }
+
+  async function pasteRowsFromClipboard() {
+    if (!mutationEnabled || saving || visibleColumns.length === 0) return;
+    try {
+      const contents = await readClipboardText();
+      const nextRows = parseClipboardRows(
+        contents,
+        visibleColumns,
+        columnDetails,
+        primaryKeyColumnSet,
+      );
+      if (nextRows.length === 0) {
+        toast.error("Clipboard does not contain rows");
+        return;
+      }
+      pushUndoSnapshot();
+      setInsertedRows((current) => {
+        const next = [...current, ...nextRows];
+        insertedRowsRef.current = next;
+        return next;
+      });
+      const selectedRows = new Set(nextRows.map(insertRowKey));
+      selectedRowKeysRef.current = selectedRows;
+      setSelectedRowKeys(selectedRows);
+      gridRef.current?.focus();
+      toast("Rows pasted", {
+        description: `${nextRows.length} ${nextRows.length === 1 ? "row" : "rows"} staged for insert`,
+      });
+    } catch {
+      toast.error("Could not paste rows");
+    }
+  }
+
+  function addBlankRow() {
+    if (!mutationEnabled || saving || visibleColumns.length === 0) return;
+    const row: PendingInsertRow = {
+      id: createPendingInsertId(),
+      values: {},
+    };
+    pushUndoSnapshot();
+    setInsertedRows((current) => {
+      const next = [...current, row];
+      insertedRowsRef.current = next;
+      return next;
+    });
+    const nextSelection = new Set([insertRowKey(row)]);
+    selectedRowKeysRef.current = nextSelection;
+    setSelectedRowKeys(nextSelection);
+    gridRef.current?.focus();
+  }
+
+  function selectRow(rowKey: string) {
+    const next = new Set([rowKey]);
+    selectedRowKeysRef.current = next;
+    setSelectedRowKeys(next);
+    setEditingCell(null);
+    gridRef.current?.focus();
+  }
+
+  function editCell(rowKey: string, columnName: string) {
+    selectRow(rowKey);
+    setEditingCell({ rowKey, columnName });
+  }
+
+  function pushUndoSnapshot() {
+    undoStackRef.current = [
+      ...undoStackRef.current,
+      currentEditSnapshot(),
+    ].slice(-100);
+    redoStackRef.current = [];
+  }
+
+  function undoEdit() {
+    const previous = undoStackRef.current[undoStackRef.current.length - 1];
+    if (!previous) return;
+    undoStackRef.current = undoStackRef.current.slice(0, -1);
+    redoStackRef.current = [...redoStackRef.current, currentEditSnapshot()];
+    applyEditSnapshot(previous);
+  }
+
+  function redoEdit() {
+    const next = redoStackRef.current[redoStackRef.current.length - 1];
+    if (!next) return;
+    redoStackRef.current = redoStackRef.current.slice(0, -1);
+    undoStackRef.current = [...undoStackRef.current, currentEditSnapshot()];
+    applyEditSnapshot(next);
+  }
+
+  function currentEditSnapshot(): EditSnapshot {
+    return cloneEditSnapshot({
+      changes: changesRef.current,
+      deletedRowKeys: Array.from(deletedRowKeysRef.current),
+      insertedRows: insertedRowsRef.current,
+      selectedRowKeys: Array.from(selectedRowKeysRef.current),
+    });
+  }
+
+  function applyEditSnapshot(snapshot: EditSnapshot) {
+    const next = cloneEditSnapshot(snapshot);
+    const nextDeletedRows = new Set(next.deletedRowKeys);
+    const nextSelectedRows = new Set(next.selectedRowKeys);
+    changesRef.current = next.changes;
+    deletedRowKeysRef.current = nextDeletedRows;
+    insertedRowsRef.current = next.insertedRows;
+    selectedRowKeysRef.current = nextSelectedRows;
+    setChanges(next.changes);
+    setDeletedRowKeys(nextDeletedRows);
+    setInsertedRows(next.insertedRows);
+    setSelectedRowKeys(nextSelectedRows);
+    gridRef.current?.focus();
+  }
+
+  function openFinder() {
+    setFinderOpen(true);
+    window.setTimeout(() => finderInputRef.current?.select(), 0);
+  }
+
+  function moveFindMatch(direction: 1 | -1) {
+    if (findMatches.length === 0) return;
+    setActiveFindIndex((current) =>
+      (current + direction + findMatches.length) % findMatches.length,
+    );
   }
 
   const rows = displayRows;
+  const rowsForExport =
+    selectedRowCount > 0
+      ? selectedRowEntries.map(({ row }) => row)
+      : rows;
 
   const exportResult = result
     ? {
         ...result,
         columns: visibleColumns,
-        rows: rows.map((row) =>
+        rows: rowsForExport.map((row) =>
           visibleColumns.map((column) => {
             const index = columnIndexes.get(column.name);
             return index === undefined ? null : row[index];
@@ -224,6 +658,151 @@ export function ResultsGrid({
         ),
       }
     : null;
+  const rowVirtualizer = useVirtualizer({
+    count: rowEntries.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => resultRowHeight,
+    overscan: 18,
+  });
+  const columnVirtualizer = useVirtualizer({
+    count: visibleColumns.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => resultColumnWidth,
+    horizontal: true,
+    overscan: 4,
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const virtualColumns = columnVirtualizer.getVirtualItems();
+  const totalColumnWidth = columnVirtualizer.getTotalSize();
+  const totalGridHeight = rowVirtualizer.getTotalSize();
+  const normalizedFinderQuery = finderQuery.trim().toLowerCase();
+  const findMatches = useMemo(
+    () =>
+      buildFindMatches({
+        query: normalizedFinderQuery,
+        rows: rowEntries,
+        visibleColumns,
+        columnIndexes,
+      }),
+    [columnIndexes, normalizedFinderQuery, rowEntries, visibleColumns],
+  );
+  const activeFindMatch =
+    findMatches.length > 0
+      ? findMatches[Math.min(activeFindIndex, findMatches.length - 1)]
+      : null;
+  const activeColumnMatchIndexes = useMemo(
+    () =>
+      new Set(
+        findMatches
+          .filter((match) => match.kind === "column")
+          .map((match) => match.columnIndex),
+      ),
+    [findMatches],
+  );
+
+  useEffect(() => {
+    setActiveFindIndex(0);
+  }, [normalizedFinderQuery]);
+
+  useEffect(() => {
+    if (finderOpen) {
+      window.setTimeout(() => finderInputRef.current?.focus(), 0);
+    }
+  }, [finderOpen]);
+
+  useEffect(() => {
+    if (!activeFindMatch) return;
+    if (activeFindMatch.kind === "cell") {
+      rowVirtualizer.scrollToIndex(activeFindMatch.rowIndex, {
+        align: "center",
+      });
+      columnVirtualizer.scrollToIndex(activeFindMatch.columnIndex, {
+        align: "center",
+      });
+      return;
+    }
+    columnVirtualizer.scrollToIndex(activeFindMatch.columnIndex, {
+      align: "center",
+    });
+  }, [activeFindMatch, columnVirtualizer, rowVirtualizer]);
+
+  useEffect(() => {
+    function handleResultsGridShortcut(event: KeyboardEvent) {
+      const activeElement = document.activeElement;
+      if (
+        activeElement &&
+        activeElement !== document.body &&
+        gridRef.current &&
+        !gridRef.current.contains(activeElement)
+      ) {
+        return;
+      }
+      const selection = window.getSelection();
+      if (selection && selection.toString() !== "") return;
+
+      const key = event.key.toLowerCase();
+      if ((event.metaKey || event.ctrlKey) && key === "f") {
+        event.preventDefault();
+        openFinder();
+        return;
+      }
+
+      if (isEditableTarget(event.target)) return;
+      if (
+        !event.metaKey &&
+        !event.ctrlKey &&
+        (key === "delete" || key === "backspace")
+      ) {
+        event.preventDefault();
+        deleteSelectedRows();
+        return;
+      }
+
+      if (!(event.metaKey || event.ctrlKey)) {
+        return;
+      }
+
+      if (key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          redoEdit();
+        } else {
+          undoEdit();
+        }
+        return;
+      }
+      if (key === "y") {
+        event.preventDefault();
+        redoEdit();
+        return;
+      }
+
+      if (key === "c" && selectedRowCount > 0) {
+        event.preventDefault();
+        void copySelectedRows();
+      }
+      if (key === "v") {
+        event.preventDefault();
+        void pasteRowsFromClipboard();
+      }
+    }
+
+    window.addEventListener("keydown", handleResultsGridShortcut);
+    return () =>
+      window.removeEventListener("keydown", handleResultsGridShortcut);
+  }, [
+    columnDetails,
+    editable,
+    exportResult,
+    findMatches.length,
+    mutationEnabled,
+    primaryKeyColumnSet,
+    saving,
+    selectedExistingRowKeys,
+    selectedRowCount,
+    selectedRowEntries,
+    visibleColumns,
+  ]);
 
   if (isLoading) {
     return (
@@ -261,99 +840,87 @@ export function ResultsGrid({
 
   return (
     <section
+      ref={gridRef}
+      tabIndex={-1}
       className={cn(
-        "grid min-h-0 overflow-hidden bg-surface-900",
+        "grid min-h-0 overflow-hidden bg-surface-900 outline-none focus:outline-none focus-visible:outline-none",
         showChangeReview
           ? "grid-cols-[minmax(0,1fr)_minmax(260px,300px)]"
           : "grid-cols-[minmax(0,1fr)]",
       )}
     >
-      <div className="min-h-0 min-w-0 overflow-hidden">
-        <div className="flex h-8 items-center justify-between gap-4 border-b border-line px-2 text-xs text-zinc-300">
-          <div className="flex min-w-0 items-center gap-4">
-            <span>{rows.length} rows</span>
-            <span>{result.affectedRows} affected</span>
-            <span>{result.durationMs}ms</span>
-            {editable ? <span>{pendingChanges.total} pending</span> : null}
-            {result.truncated ? (
-              <span className="text-yellow-200">truncated</span>
-            ) : null}
-          </div>
-          <div className="flex items-center gap-1">
-            {pendingChanges.total > 0 ? (
-              <>
-                <Button
-                  aria-label="Discard changes"
-                  disabled={saving}
-                  onClick={discardChanges}
-                  size="icon"
-                  className="!h-5"
-                >
-                  <RotateCcw size={13} />
-                </Button>
-                <Button
-                  aria-label="Save changes"
-                  disabled={saving}
-                  onClick={() => void commitChanges()}
-                  size="icon"
-                  variant="primary"
-                  className="!h-5"
-                >
-                  <Check size={13} />
-                </Button>
-              </>
-            ) : null}
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger asChild>
-                <button
-                  className="inline-flex h-6 items-center justify-center gap-1.5 rounded-md border border-transparent bg-transparent px-2 text-xs font-medium text-zinc-500 transition hover:bg-surface-700 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-65 [&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:shrink-0"
-                  disabled={visibleColumns.length === 0 || !exportResult}
-                  title="Export results"
-                >
-                  <Download size={13} />
-                  Export as
-                  <ChevronDown size={12} />
-                </button>
-              </DropdownMenu.Trigger>
-              <DropdownMenu.Portal>
-                <DropdownMenu.Content
-                  align="end"
-                  className="z-[1000] min-w-36 overflow-hidden rounded-ui border border-line bg-surface-800 py-1 shadow-xl"
-                  sideOffset={6}
-                >
-                  <DropdownMenu.Item
-                    className="flex cursor-pointer select-none items-center gap-2 px-2.5 py-1.5 text-xs text-zinc-300 outline-none hover:bg-surface-700 hover:text-zinc-100 data-[highlighted]:bg-surface-700 data-[highlighted]:text-zinc-100"
-                    onSelect={() => exportResult && exportCSV(exportResult)}
-                  >
-                    <FileSpreadsheet size={13} />
-                    CSV
-                  </DropdownMenu.Item>
-                  <DropdownMenu.Item
-                    className="flex cursor-pointer select-none items-center gap-2 px-2.5 py-1.5 text-xs text-zinc-300 outline-none hover:bg-surface-700 hover:text-zinc-100 data-[highlighted]:bg-surface-700 data-[highlighted]:text-zinc-100"
-                    onSelect={() => exportResult && exportJSON(exportResult)}
-                  >
-                    <FileJson size={13} />
-                    JSON
-                  </DropdownMenu.Item>
-                </DropdownMenu.Content>
-              </DropdownMenu.Portal>
-            </DropdownMenu.Root>
-          </div>
-        </div>
-        <div className="h-[calc(100%-32px)] overflow-auto">
-          <table className="text-xs">
-            <thead>
-              <tr>
-                {visibleColumns.map((column) => (
-                  <th
+      <div className="grid min-h-0 min-w-0 grid-rows-[32px_auto_minmax(0,1fr)] overflow-hidden">
+        <ResultsToolbar
+          affectedRows={result.affectedRows}
+          canAddRow={canAddRow}
+          canDeleteSelectedRows={canDeleteSelectedRows}
+          deleteButtonTitle={deleteButtonTitle}
+          durationMs={result.durationMs}
+          editUnavailableTitle={editUnavailableTitle}
+          exportResult={exportResult}
+          mutationEnabled={mutationEnabled}
+          pendingChanges={pendingChanges}
+          rowCount={rowEntries.length}
+          saving={saving}
+          selectedRowCount={selectedRowCount}
+          truncated={result.truncated}
+          visibleColumnCount={visibleColumns.length}
+          onAddRow={addBlankRow}
+          onCommitChanges={() => void commitChanges()}
+          onDeleteSelectedRows={deleteSelectedRows}
+          onDiscardChanges={discardChanges}
+          onExportCSV={exportCSV}
+          onExportJSON={exportJSON}
+          onOpenFinder={openFinder}
+        />
+        {finderOpen ? (
+          <FinderBar
+            activeIndex={activeFindIndex}
+            inputRef={finderInputRef}
+            matchCount={findMatches.length}
+            query={finderQuery}
+            onChange={setFinderQuery}
+            onClose={() => {
+              setFinderOpen(false);
+              gridRef.current?.focus();
+            }}
+            onMoveMatch={moveFindMatch}
+          />
+        ) : null}
+        <div className="grid min-h-0 grid-rows-[34px_minmax(0,1fr)] overflow-hidden">
+          <div className="relative overflow-hidden border-b border-line bg-surface-800 text-xs">
+            <div
+              className="relative"
+              style={{
+                height: resultHeaderHeight,
+                minWidth: totalColumnWidth,
+                width: totalColumnWidth,
+              }}
+            >
+              {virtualColumns.map((virtualColumn) => {
+                const column = visibleColumns[virtualColumn.index];
+                const highlighted =
+                  activeColumnMatchIndexes.has(virtualColumn.index) ||
+                  (activeFindMatch?.kind === "cell" &&
+                    activeFindMatch.columnIndex === virtualColumn.index);
+                return (
+                  <div
                     className={cn(
-                      "sticky top-0 bg-surface-800 py-2 text-left font-medium text-zinc-300",
-                      editable ? "px-5" : "px-3",
+                      "absolute top-0 flex items-center border-r border-line px-3 font-medium text-zinc-300",
+                      highlighted && "bg-accent/20 text-zinc-50",
                     )}
-                    key={column.name}
+                    key={columnKey(column, virtualColumn.index)}
+                    style={{
+                      height: resultHeaderHeight,
+                      left: virtualColumn.start - scrollLeft,
+                      width: virtualColumn.size,
+                    }}
+                    title={columnTitle(column)}
                   >
                     <span className="flex min-w-0 items-center gap-1.5">
-                      {primaryKeyColumnSet.has(column.name.toLowerCase()) ? (
+                      {primaryKeyColumnSet.has(
+                        mutationColumnName(column).toLowerCase(),
+                      ) ? (
                         <KeyRound
                           aria-label="Primary key"
                           className="text-yellow-200"
@@ -362,274 +929,166 @@ export function ResultsGrid({
                       ) : null}
                       <span className="truncate">{column.name}</span>
                     </span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, rowIndex) => {
-                const rowKey = getRowKey(
-                  row,
-                  primaryColumns,
-                  columnIndexes,
-                  rowIndex,
-                  rowLocatorIndex,
+                  </div>
                 );
-                const rowChanged = Boolean(changes[rowKey]);
+              })}
+            </div>
+          </div>
+          <div
+            ref={scrollRef}
+            className="datapanel-results-scroll min-h-0 overflow-auto"
+            onScroll={(event) => setScrollLeft(event.currentTarget.scrollLeft)}
+          >
+            <div
+              className="relative text-xs"
+              style={{
+                height: totalGridHeight,
+                minWidth: totalColumnWidth,
+                width: totalColumnWidth,
+              }}
+            >
+              {virtualRows.map((virtualRow) => {
+                const rowEntry = rowEntries[virtualRow.index];
+                if (!rowEntry) return null;
+                const { row, rowIndex, rowKey } = rowEntry;
+                const rowChanges =
+                  rowEntry.kind === "insert"
+                    ? rowEntry.insertedRow.values
+                    : changes[rowKey] || {};
+                const rowChanged = Object.keys(rowChanges).length > 0;
+                const rowInserted = rowEntry.kind === "insert";
+                const rowDeleted = deletedRowKeys.has(rowKey);
+                const rowSelected = selectedRowKeys.has(rowKey);
                 return (
-                  <tr
-                    className={cn(rowChanged && "bg-yellow-900/20")}
+                  <div
+                    className={cn(
+                      "absolute left-0 cursor-default border-b border-line",
+                      rowSelected &&
+                        "bg-accent/10 ring-1 ring-inset ring-accent/50",
+                      rowChanged && "bg-yellow-900/20",
+                      rowInserted && "bg-amber-900/25",
+                      rowDeleted && "bg-red-950/45 text-red-100",
+                    )}
                     key={rowKey || rowIndex}
+                    onMouseDown={(event) => {
+                      if (isInteractiveTarget(event.target)) return;
+                      selectRow(rowKey);
+                    }}
+                    style={{
+                      height: virtualRow.size,
+                      transform: `translateY(${virtualRow.start}px)`,
+                      width: totalColumnWidth,
+                    }}
                   >
-                    {visibleColumns.map((column) => {
+                    {virtualColumns.map((virtualColumn) => {
+                      const column = visibleColumns[virtualColumn.index];
                       const cellIndex = columnIndexes.get(column.name);
                       const cell =
                         cellIndex === undefined ? null : row[cellIndex];
-                      const rowChanges = changes[rowKey] || {};
                       const draft =
                         rowChanges[column.name] ||
                         getOriginalDraft(row, column.name, columnIndexes);
                       const changed = Boolean(rowChanges[column.name]);
+                      const canEditCell =
+                        !rowDeleted &&
+                        (rowInserted ||
+                          (editable && isWritableColumn(column, selectedTable)));
+                      const isEditing =
+                        editingCell?.rowKey === rowKey &&
+                        editingCell.columnName === column.name;
+                      const displayedValue =
+                        changed || rowInserted ? draftValue(draft) : cell;
+                      const activeCellMatch =
+                        activeFindMatch?.kind === "cell" &&
+                        activeFindMatch.rowIndex === virtualRow.index &&
+                        activeFindMatch.columnIndex === virtualColumn.index;
                       return (
-                        <td
-                          className="px-3 py-2 text-zinc-300"
-                          key={column.name}
+                        <div
+                          className={cn(
+                            "absolute top-0 flex cursor-default items-center border-r border-line px-3 py-1 align-middle text-zinc-300",
+                            changed &&
+                              !isEditing &&
+                              "bg-yellow-900/30 text-yellow-50",
+                            rowInserted &&
+                              !isEditing &&
+                              "bg-amber-900/30 text-amber-50",
+                            rowDeleted &&
+                              "bg-red-950/30 text-red-100 line-through",
+                            activeCellMatch && "bg-accent/25 text-zinc-50",
+                          )}
+                          key={columnKey(column, virtualColumn.index)}
+                          onDoubleClick={() => {
+                            if (canEditCell) editCell(rowKey, column.name);
+                          }}
+                          style={{
+                            height: virtualRow.size,
+                            left: virtualColumn.start,
+                            width: virtualColumn.size,
+                          }}
                         >
-                          {editable ? (
+                          {isEditing ? (
                             <CellEditor
-                              changed={changed}
+                              autoFocus
+                              changed={changed || rowInserted}
                               disabled={saving}
                               draft={draft}
-                              onChange={(nextDraft) =>
+                              onCancel={() => setEditingCell(null)}
+                              onCommit={(nextDraft) => {
+                                setEditingCell(null);
+                                if (rowEntry.kind === "insert") {
+                                  updateInsertedCell(
+                                    rowEntry.insertedRow.id,
+                                    column.name,
+                                    nextDraft,
+                                  );
+                                  return;
+                                }
                                 updateCell(row, rowIndex, column.name, {
                                   value: nextDraft.value,
                                   isNull: nextDraft.isNull,
-                                })
-                              }
+                                  typedNull: nextDraft.typedNull,
+                                });
+                              }}
                             />
                           ) : (
-                            formatCell(cell)
+                            <CellValue
+                              value={displayedValue}
+                              onInspect={
+                                isInspectableValue(displayedValue)
+                                  ? () =>
+                                      setInspectedCell({
+                                        columnName: column.name,
+                                        value: displayedValue,
+                                      })
+                                  : undefined
+                              }
+                            />
                           )}
-                        </td>
+                        </div>
                       );
                     })}
-                  </tr>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
+            </div>
+          </div>
         </div>
       </div>
+      {inspectedCell ? (
+        <ValueInspector
+          columnName={inspectedCell.columnName}
+          value={inspectedCell.value}
+          onClose={() => setInspectedCell(null)}
+        />
+      ) : null}
       {showChangeReview ? (
-        <aside className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_minmax(120px,36%)] border-l border-line bg-surface-950">
-          <div className="border-b border-line p-3">
-            <div className="mb-2 text-sm font-medium text-zinc-200">
-              Changed rows
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div>
-                <div className="text-lg font-semibold text-zinc-100">
-                  {pendingChanges.rows}
-                </div>
-                <div className="text-muted">rows</div>
-              </div>
-              <div>
-                <div className="text-lg font-semibold text-zinc-100">
-                  {pendingChanges.cells}
-                </div>
-                <div className="text-muted">cells</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="min-h-0 overflow-auto border-b border-line p-3">
-            <div className="flex flex-col gap-2">
-              {pendingChanges.items.map((item) => (
-                <div
-                  className="rounded-ui border border-line bg-surface-900 p-2 text-xs"
-                  key={item.rowKey}
-                >
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <span className="font-medium text-zinc-200">Update</span>
-                    <code className="truncate text-muted">{item.label}</code>
-                  </div>
-                  <div className="truncate text-muted">
-                    {item.columns.join(", ")}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid min-h-0 grid-rows-[28px_minmax(0,1fr)] p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-zinc-200">
-                SQL preview
-              </span>
-              <span className="text-xs text-muted">
-                {generatedSQL ? "ready" : "empty"}
-              </span>
-            </div>
-            <textarea
-              {...textInputBehaviorProps}
-              className="min-h-0 resize-none rounded-ui border-line bg-background p-2 text-xs text-zinc-300"
-              readOnly
-              value={generatedSQL}
-            />
-          </div>
-        </aside>
+        <ChangeReviewPanel
+          generatedSQL={generatedSQL}
+          pendingChanges={pendingChanges}
+        />
       ) : null}
     </section>
   );
-}
-
-function CellEditor({
-  changed,
-  disabled,
-  draft,
-  onChange,
-}: {
-  changed: boolean;
-  disabled: boolean;
-  draft: CellDraft;
-  onChange(draft: CellDraft): void;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex h-7 min-w-[176px] items-center rounded-md border border-transparent bg-transparent transition focus-within:border-accent focus-within:bg-surface-850",
-        changed &&
-          "border-yellow-700/60 bg-yellow-900/35 text-yellow-50 focus-within:border-yellow-500 focus-within:bg-yellow-900/45",
-      )}
-    >
-      <input
-        {...textInputBehaviorProps}
-        className="h-full min-w-0 flex-1 border-0 bg-transparent px-2 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-transparent focus:shadow-none"
-        disabled={disabled}
-        onChange={(event) =>
-          onChange({
-            value: event.target.value,
-            isNull: false,
-            typedNull: isTypedNull(event.target.value),
-          })
-        }
-        placeholder={draft.isNull ? "NULL" : ""}
-        value={draft.isNull ? "" : draft.value}
-      />
-    </div>
-  );
-}
-
-function summarizeChanges(changes: ChangeMap): ChangeSummary {
-  const items = Object.entries(changes)
-    .map(([rowKey, rowChanges]) => ({
-      rowKey,
-      label: rowKey,
-      columns: Object.keys(rowChanges),
-    }))
-    .filter((item) => item.columns.length > 0);
-  const cells = items.reduce((total, item) => total + item.columns.length, 0);
-  return { cells, rows: items.length, total: items.length, items };
-}
-
-function buildMutationSQL({
-  changes,
-  columnDetails,
-  columnIndexes,
-  driver,
-  primaryColumns,
-  rowLocatorIndex,
-  rows,
-  selectedTable,
-}: {
-  changes: ChangeMap;
-  columnDetails: Map<string, ColumnSummary>;
-  columnIndexes: Map<string, number>;
-  driver: SQLDriver;
-  primaryColumns: ColumnSummary[];
-  rowLocatorIndex?: number;
-  rows: unknown[][];
-  selectedTable: TableSummary;
-}) {
-  const statements: string[] = [];
-  const tableName = qualifiedName(
-    driver,
-    selectedTable.schema,
-    selectedTable.name,
-  );
-
-  rows.forEach((row, rowIndex) => {
-    const rowKey = getRowKey(
-      row,
-      primaryColumns,
-      columnIndexes,
-      rowIndex,
-      rowLocatorIndex,
-    );
-    const rowChanges = changes[rowKey];
-    if (!rowChanges || Object.keys(rowChanges).length === 0) return;
-
-    const assignments = Object.entries(rowChanges).map(
-      ([columnName, draft]) => {
-        const column = columnDetails.get(columnName);
-        return `${quoteIdentifier(driver, columnName)} = ${sqlValue(draft, column)}`;
-      },
-    );
-    statements.push(
-      `update ${tableName} set ${assignments.join(", ")} where ${whereClause(
-        row,
-        primaryColumns,
-        columnIndexes,
-        driver,
-        rowLocatorIndex,
-      )};`,
-    );
-  });
-
-  if (statements.length === 0) return "";
-  return `begin;\n${statements.join("\n")}\ncommit;`;
-}
-
-function getRowKey(
-  row: unknown[],
-  primaryColumns: ColumnSummary[],
-  columnIndexes: Map<string, number>,
-  rowIndex: number,
-  rowLocatorIndex?: number,
-) {
-  if (primaryColumns.length === 0) {
-    if (rowLocatorIndex !== undefined) {
-      return `ctid=${formatKeyValue(row[rowLocatorIndex])}`;
-    }
-    return `row:${rowIndex}`;
-  }
-  return primaryColumns
-    .map((column) => {
-      const index = columnIndexes.get(column.name);
-      const value = index === undefined ? "" : row[index];
-      return `${column.name}=${formatKeyValue(value)}`;
-    })
-    .join(";");
-}
-
-function whereClause(
-  row: unknown[],
-  primaryColumns: ColumnSummary[],
-  columnIndexes: Map<string, number>,
-  driver: SQLDriver,
-  rowLocatorIndex?: number,
-) {
-  if (primaryColumns.length === 0 && rowLocatorIndex !== undefined) {
-    return `ctid = ${sqlRowLocatorValue(row[rowLocatorIndex])}`;
-  }
-
-  return primaryColumns
-    .map((column) => {
-      const index = columnIndexes.get(column.name);
-      const value = index === undefined ? null : row[index];
-      return `${quoteIdentifier(driver, column.name)} = ${sqlValue(toDraft(value), column)}`;
-    })
-    .join(" and ");
 }
 
 function getOriginalDraft(
@@ -641,137 +1100,26 @@ function getOriginalDraft(
   return toDraft(index === undefined ? null : row[index]);
 }
 
-function toDraft(value: unknown): CellDraft {
-  if (value === null || value === undefined) {
-    return { value: "", isNull: true };
-  }
-  return {
-    value: typeof value === "object" ? JSON.stringify(value) : String(value),
-    isNull: false,
-  };
-}
-
-function sameDraft(left: CellDraft, right: CellDraft) {
-  if (isNullDraft(left) && isNullDraft(right)) return true;
-  return left.isNull === right.isNull && left.value === right.value;
-}
-
-function sqlValue(draft: CellDraft, column?: ColumnSummary) {
-  if (isNullDraft(draft)) return "null";
-  const value = draft.value;
-  const dataType = column?.dataType.toLowerCase() || "";
-
-  if (isNumericType(dataType) && /^[-+]?\d+(\.\d+)?$/.test(value.trim())) {
-    return value.trim();
-  }
-  if (isBooleanType(dataType)) {
-    const normalized = value.trim().toLowerCase();
-    if (["true", "t", "1", "yes"].includes(normalized)) return "true";
-    if (["false", "f", "0", "no"].includes(normalized)) return "false";
-  }
-  return `'${value.split("'").join("''")}'`;
-}
-
-function isNullDraft(draft: CellDraft) {
-  return draft.isNull || draft.typedNull === true;
-}
-
-function isTypedNull(value: string) {
-  return value.trim().toUpperCase() === "NULL";
-}
-
-function sqlRowLocatorValue(value: unknown) {
-  return `'${String(value ?? "")
-    .split("'")
-    .join("''")}'::tid`;
-}
-
-function isNumericType(dataType: string) {
-  return /\b(int|serial|decimal|numeric|float|double|real|bit)\b/.test(
-    dataType,
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  const tagName = target.tagName.toLowerCase();
+  return (
+    tagName === "input" ||
+    tagName === "textarea" ||
+    tagName === "select" ||
+    target.isContentEditable ||
+    Boolean(target.closest(".cm-editor"))
   );
 }
 
-function isBooleanType(dataType: string) {
-  return /\b(bool|boolean|tinyint\(1\))\b/.test(dataType);
-}
-
-function qualifiedName(
-  driver: SQLDriver,
-  schema: string,
-  table: string,
-) {
-  return `${quoteIdentifier(driver, schema)}.${quoteIdentifier(driver, table)}`;
-}
-
-type SQLDriver = "postgres" | "mysql" | "bigquery";
-
-function normalizeDriver(driver: string | undefined): SQLDriver {
-  if (driver === "mysql") return "mysql";
-  if (driver === "bigquery") return "bigquery";
-  return "postgres";
-}
-
-function quoteIdentifier(driver: SQLDriver, identifier: string) {
-  if (driver === "mysql" || driver === "bigquery") {
-    return `\`${identifier.split("`").join("``")}\``;
-  }
-  return `"${identifier.split('"').join('""')}"`;
-}
-
-function formatKeyValue(value: unknown) {
-  if (value === null || value === undefined) return "NULL";
-  return String(value);
-}
-
-function formatCell(value: unknown) {
-  if (value === null || value === undefined) return "NULL";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
-}
-
-function exportJSON(result: QueryResult) {
-  const columns = result.columns.map((column) => column.name);
-  const objects = result.rows.map((row) =>
-    Object.fromEntries(
-      columns.map((column, index) => [column, row[index] ?? null]),
-    ),
+function isInteractiveTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  const tagName = target.tagName.toLowerCase();
+  return (
+    tagName === "button" ||
+    tagName === "input" ||
+    tagName === "textarea" ||
+    tagName === "select" ||
+    target.isContentEditable
   );
-  downloadFile("json", JSON.stringify(objects, null, 2), "application/json");
-}
-
-function exportCSV(result: QueryResult) {
-  const headers = result.columns.map((column) => column.name);
-  const rows = result.rows.map((row) => row.map(csvCell).join(","));
-  downloadFile(
-    "csv",
-    [headers.map(csvCell).join(","), ...rows].join("\n"),
-    "text/csv;charset=utf-8",
-  );
-}
-
-function csvCell(value: unknown) {
-  if (value === null || value === undefined) return "";
-  const text =
-    typeof value === "object" ? JSON.stringify(value) : String(value);
-  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
-
-function downloadFile(
-  extension: "csv" | "json",
-  contents: string,
-  type: string,
-) {
-  const blob = new Blob([contents], { type });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `datapanel-results-${new Date().toISOString().replace(/[:.]/g, "-")}.${extension}`;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
-  toast("Export ready", {
-    description: `${extension.toUpperCase()} downloaded`,
-  });
 }
