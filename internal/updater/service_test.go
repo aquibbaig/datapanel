@@ -65,6 +65,12 @@ func TestSelectPlatformInstallableAssetPrefersLinuxDeb(t *testing.T) {
 	}
 }
 
+func TestLinuxPlatformInstallerUnavailable(t *testing.T) {
+	if platformInstallerAvailableFor("linux") {
+		t.Fatal("expected Linux automatic installer to be unavailable")
+	}
+}
+
 func TestParseChecksumDigest(t *testing.T) {
 	contents := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  other.zip\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  DataPanel-macOS.zip\n"
 	digest := parseChecksumDigest(contents, "DataPanel-macOS.zip")

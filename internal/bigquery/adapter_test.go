@@ -134,6 +134,43 @@ func TestUsesUnauthenticatedEndpoint(t *testing.T) {
 	}
 }
 
+func TestIsTrustedAuthenticatedBigQueryEndpoint(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint string
+		want     bool
+	}{
+		{name: "blank default", endpoint: "", want: true},
+		{name: "google default", endpoint: "https://bigquery.googleapis.com", want: true},
+		{name: "google regional", endpoint: "https://us-bigquery.googleapis.com", want: true},
+		{name: "http google", endpoint: "http://bigquery.googleapis.com", want: false},
+		{name: "lookalike", endpoint: "https://evil-bigquery.googleapis.com.evil.test", want: false},
+		{name: "localhost", endpoint: "http://localhost:9050", want: false},
+		{name: "custom https", endpoint: "https://bigquery.example.com", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isTrustedAuthenticatedBigQueryEndpoint(tt.endpoint); got != tt.want {
+				t.Fatalf("isTrustedAuthenticatedBigQueryEndpoint(%q) = %t, want %t", tt.endpoint, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBigQueryAuthOptionsRejectCredentialsForUntrustedEndpoint(t *testing.T) {
+	_, err := bigQueryAuthOptions(context.Background(), `{"type":"service_account"}`, "https://bigquery.example.com")
+	if err == nil {
+		t.Fatal("expected custom endpoint with credentials to be rejected")
+	}
+}
+
+func TestBigQueryAuthOptionsAllowsUnauthenticatedLocalEndpoint(t *testing.T) {
+	if _, err := bigQueryAuthOptions(context.Background(), "", "http://localhost:9050"); err != nil {
+		t.Fatalf("expected local unauthenticated endpoint to be allowed: %v", err)
+	}
+}
+
 func TestIntegrationGcloudAuthListSchemas(t *testing.T) {
 	projectID := os.Getenv("DATAPANEL_BIGQUERY_INTEGRATION_PROJECT")
 	if projectID == "" {

@@ -188,6 +188,49 @@ func TestConnectUsesSavedBigQuerySecretWhenPresent(t *testing.T) {
 	}
 }
 
+func TestTestConnectionDoesNotUseSavedSecret(t *testing.T) {
+	profile := ConnectionProfile{
+		ID:       "postgres-prod",
+		Driver:   "postgres",
+		Name:     "Production",
+		Host:     "db.example.com",
+		Port:     5432,
+		Database: "app",
+		Username: "postgres",
+		SSLMode:  "prefer",
+	}
+	secrets := NewMemorySecretStore()
+	if err := secrets.Save(context.Background(), profile.ID, "saved-password"); err != nil {
+		t.Fatalf("save secret: %v", err)
+	}
+	connector := &fakeConnector{}
+	service := NewService(
+		fakeProfileStore{profile: profile},
+		secrets,
+		connector,
+	)
+
+	status, err := service.TestConnection(TestConnectionRequest{
+		ProfileID: profile.ID,
+		Driver:    profile.Driver,
+		Name:      profile.Name,
+		Host:      profile.Host,
+		Port:      profile.Port,
+		Database:  profile.Database,
+		Username:  profile.Username,
+		SSLMode:   profile.SSLMode,
+	})
+	if err != nil {
+		t.Fatalf("expected test connection to succeed: %v", err)
+	}
+	if !status.Connected {
+		t.Fatal("expected connected status")
+	}
+	if connector.testPassword != "" {
+		t.Fatalf("expected saved password not to be used for tests, got %q", connector.testPassword)
+	}
+}
+
 func TestSaveConnectionClearsBlankBigQuerySecret(t *testing.T) {
 	profile := ConnectionProfile{
 		ID:     "local-bq",
@@ -218,6 +261,87 @@ func TestSaveConnectionClearsBlankBigQuerySecret(t *testing.T) {
 	}
 }
 
+func TestSaveConnectionDeletesSavedSecretWhenScopeChangesWithoutPassword(t *testing.T) {
+	profile := ConnectionProfile{
+		ID:       "postgres-prod",
+		Driver:   "postgres",
+		Name:     "Production",
+		Host:     "db.example.com",
+		Port:     5432,
+		Database: "app",
+		Username: "postgres",
+		SSLMode:  "prefer",
+	}
+	secrets := NewMemorySecretStore()
+	if err := secrets.Save(context.Background(), profile.ID, "saved-password"); err != nil {
+		t.Fatalf("save secret: %v", err)
+	}
+	service := NewService(
+		fakeProfileStore{profile: profile},
+		secrets,
+		&fakeConnector{},
+	)
+
+	if _, err := service.SaveConnection(SaveConnectionRequest{
+		ID:       profile.ID,
+		Driver:   profile.Driver,
+		Name:     profile.Name,
+		Host:     "attacker.example.com",
+		Port:     profile.Port,
+		Database: profile.Database,
+		Username: profile.Username,
+		SSLMode:  profile.SSLMode,
+	}); err != nil {
+		t.Fatalf("save connection: %v", err)
+	}
+	if _, err := secrets.Get(context.Background(), profile.ID); err == nil {
+		t.Fatal("expected retargeted profile to clear saved secret")
+	}
+}
+
+func TestSaveConnectionKeepsSavedSecretWhenOnlyMetadataChanges(t *testing.T) {
+	profile := ConnectionProfile{
+		ID:       "postgres-prod",
+		Driver:   "postgres",
+		Name:     "Production",
+		Host:     "db.example.com",
+		Port:     5432,
+		Database: "app",
+		Username: "postgres",
+		SSLMode:  "prefer",
+	}
+	secrets := NewMemorySecretStore()
+	if err := secrets.Save(context.Background(), profile.ID, "saved-password"); err != nil {
+		t.Fatalf("save secret: %v", err)
+	}
+	service := NewService(
+		fakeProfileStore{profile: profile},
+		secrets,
+		&fakeConnector{},
+	)
+
+	if _, err := service.SaveConnection(SaveConnectionRequest{
+		ID:       profile.ID,
+		Driver:   profile.Driver,
+		Name:     "Renamed Production",
+		Host:     profile.Host,
+		Port:     profile.Port,
+		Database: profile.Database,
+		Username: profile.Username,
+		SSLMode:  profile.SSLMode,
+		Color:    "#22c55e",
+	}); err != nil {
+		t.Fatalf("save connection: %v", err)
+	}
+	password, err := secrets.Get(context.Background(), profile.ID)
+	if err != nil {
+		t.Fatalf("expected saved secret to remain: %v", err)
+	}
+	if password != "saved-password" {
+		t.Fatalf("expected saved password to remain, got %q", password)
+	}
+}
+
 type fakeProfileStore struct {
 	profile ConnectionProfile
 }
@@ -239,10 +363,12 @@ func (s fakeProfileStore) Delete(id string) error {
 }
 
 type fakeConnector struct {
-	password string
+	password     string
+	testPassword string
 }
 
 func (c *fakeConnector) Test(ctx context.Context, profile ConnectionProfile, password string) error {
+	c.testPassword = password
 	return nil
 }
 

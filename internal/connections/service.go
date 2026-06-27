@@ -52,6 +52,8 @@ func (s *Service) SaveConnection(input SaveConnectionRequest) (ConnectionProfile
 		if err := s.secrets.Save(context.Background(), profile.ID, input.Password); err != nil {
 			return ConnectionProfile{}, apperrors.New(apperrors.CodeSecurity, "could not save password")
 		}
+	} else if err == nil && savedSecretScopeChanged(existing, profile) {
+		_ = s.secrets.Delete(context.Background(), profile.ID)
 	} else if profile.Driver == "bigquery" {
 		_ = s.secrets.Delete(context.Background(), profile.ID)
 	}
@@ -77,9 +79,6 @@ func (s *Service) TestConnection(input TestConnectionRequest) (ConnectionStatus,
 	}
 
 	password := input.Password
-	if password == "" && input.ProfileID != "" {
-		password, _ = s.secrets.Get(context.Background(), input.ProfileID)
-	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), defaultConnectTimeout)
 	defer cancel()
@@ -128,6 +127,16 @@ func (s *Service) Connect(input ConnectRequest) (ConnectionStatus, error) {
 
 func requiresSavedSecret(profile ConnectionProfile) bool {
 	return profile.Driver != "bigquery"
+}
+
+func savedSecretScopeChanged(left ConnectionProfile, right ConnectionProfile) bool {
+	return left.Driver != right.Driver ||
+		left.Host != right.Host ||
+		left.Port != right.Port ||
+		left.Database != right.Database ||
+		left.Username != right.Username ||
+		left.Endpoint != right.Endpoint ||
+		left.SSLMode != right.SSLMode
 }
 
 func (s *Service) Disconnect(profileID string) error {

@@ -306,15 +306,21 @@ func newClient(ctx context.Context, profile connections.ConnectionProfile, passw
 }
 
 func bigQueryAuthOptions(ctx context.Context, credentialsSource string, endpoint string) ([]option.ClientOption, error) {
+	if !isTrustedAuthenticatedBigQueryEndpoint(endpoint) {
+		if credentialsSource != "" {
+			return nil, apperrors.New(apperrors.CodeValidation, "credentials can only be used with trusted BigQuery endpoints")
+		}
+		if usesUnauthenticatedEndpoint(endpoint) {
+			return []option.ClientOption{option.WithoutAuthentication()}, nil
+		}
+		return nil, apperrors.New(apperrors.CodeValidation, "custom BigQuery endpoints must be unauthenticated or use a trusted Google BigQuery host")
+	}
+
 	if credentialsSource != "" {
 		if looksLikeCredentialsJSON(credentialsSource) {
 			return []option.ClientOption{option.WithCredentialsJSON([]byte(credentialsSource))}, nil
 		}
 		return []option.ClientOption{option.WithCredentialsFile(expandCredentialsFilePath(credentialsSource))}, nil
-	}
-
-	if usesUnauthenticatedEndpoint(endpoint) {
-		return []option.ClientOption{option.WithoutAuthentication()}, nil
 	}
 
 	tokenSource := &gcloudTokenSource{}
@@ -402,6 +408,24 @@ func normalizeBigQueryEndpoint(value string) string {
 		parsed.Path = "/bigquery/v2"
 	}
 	return strings.TrimRight(parsed.String(), "/") + "/"
+}
+
+func isTrustedAuthenticatedBigQueryEndpoint(endpoint string) bool {
+	trimmed := strings.TrimSpace(endpoint)
+	if trimmed == "" {
+		return true
+	}
+
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return false
+	}
+	if parsed.Scheme != "https" {
+		return false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	return host == "bigquery.googleapis.com" ||
+		strings.HasSuffix(host, "-bigquery.googleapis.com")
 }
 
 func usesUnauthenticatedEndpoint(endpoint string) bool {

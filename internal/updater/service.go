@@ -187,13 +187,7 @@ func (s *Service) InstallUpdate(input InstallUpdateRequest) (InstallUpdateResult
 			return InstallUpdateResult{}, err
 		}
 	case "linux":
-		currentExecutable, err := os.Executable()
-		if err != nil {
-			return InstallUpdateResult{}, err
-		}
-		if err := startLinuxDebInstallScript(os.Getpid(), downloadPath, currentExecutable, s.updatesDir); err != nil {
-			return InstallUpdateResult{}, err
-		}
+		return InstallUpdateResult{}, errors.New(platformInstallerUnavailableMessage())
 	default:
 		return InstallUpdateResult{}, errors.New("automatic installation is not supported on this platform")
 	}
@@ -462,17 +456,17 @@ func platformArchMatches(name string, goos string, goarch string) bool {
 }
 
 func platformInstallerAvailable() bool {
-	if runtime.GOOS != "linux" {
-		return runtime.GOOS == "darwin" || runtime.GOOS == "windows"
-	}
-	_, err := exec.LookPath("pkexec")
-	return err == nil
+	return platformInstallerAvailableFor(runtime.GOOS)
+}
+
+func platformInstallerAvailableFor(goos string) bool {
+	return goos == "darwin" || goos == "windows"
 }
 
 func platformInstallerUnavailableMessage() string {
 	switch runtime.GOOS {
 	case "linux":
-		return "A new release is available, but automatic Linux installation requires pkexec."
+		return "A new release is available, but automatic Linux installation is disabled until packages can be verified with a trusted signature."
 	case "darwin", "windows":
 		return "A new release is available, but automatic installation is not available on this device."
 	default:
@@ -902,36 +896,6 @@ rmdir /S /Q "%cleanup_dir%" >NUL 2>NUL
 		return err
 	}
 	command := exec.Command("cmd", "/C", "start", "", scriptPath, fmt.Sprintf("%d", pid), installerPath, cleanupDir)
-	return command.Start()
-}
-
-func startLinuxDebInstallScript(pid int, packagePath string, executablePath string, cleanupDir string) error {
-	scriptPath := filepath.Join(cleanupDir, "install-update.sh")
-	script := `#!/bin/sh
-set -eu
-pid="$1"
-package_path="$2"
-executable_path="$3"
-cleanup_dir="$4"
-
-while kill -0 "$pid" >/dev/null 2>&1; do
-  sleep 0.2
-done
-
-pkexec /usr/bin/dpkg -i "$package_path"
-
-if [ -n "$executable_path" ] && [ -x "$executable_path" ]; then
-  nohup "$executable_path" >/dev/null 2>&1 &
-fi
-rm -rf "$cleanup_dir"
-`
-	if err := os.MkdirAll(filepath.Dir(scriptPath), 0o700); err != nil {
-		return err
-	}
-	if err := os.WriteFile(scriptPath, []byte(script), 0o700); err != nil {
-		return err
-	}
-	command := exec.Command("/bin/sh", scriptPath, fmt.Sprintf("%d", pid), packagePath, executablePath, cleanupDir)
 	return command.Start()
 }
 
