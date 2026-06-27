@@ -35,6 +35,7 @@ func (s *Service) ListConnections() ([]ConnectionProfile, error) {
 }
 
 func (s *Service) SaveConnection(input SaveConnectionRequest) (ConnectionProfile, error) {
+	inputHadID := strings.TrimSpace(input.ID) != ""
 	profile, err := profileFromSaveInput(input)
 	if err != nil {
 		return ConnectionProfile{}, err
@@ -45,17 +46,21 @@ func (s *Service) SaveConnection(input SaveConnectionRequest) (ConnectionProfile
 		profile.CreatedAt = existing.CreatedAt
 	}
 
+	password := strings.TrimSpace(input.Password)
+	clearSavedSecret := password == "" && shouldClearSavedSecret(err == nil, inputHadID, existing, profile)
+	if clearSavedSecret {
+		if err := s.secrets.Delete(context.Background(), profile.ID); err != nil {
+			return ConnectionProfile{}, apperrors.New(apperrors.CodeSecurity, "could not clear saved password")
+		}
+	}
+
 	if err := s.store.Save(profile); err != nil {
 		return ConnectionProfile{}, err
 	}
-	if strings.TrimSpace(input.Password) != "" {
+	if password != "" {
 		if err := s.secrets.Save(context.Background(), profile.ID, input.Password); err != nil {
 			return ConnectionProfile{}, apperrors.New(apperrors.CodeSecurity, "could not save password")
 		}
-	} else if err == nil && savedSecretScopeChanged(existing, profile) {
-		_ = s.secrets.Delete(context.Background(), profile.ID)
-	} else if profile.Driver == "bigquery" {
-		_ = s.secrets.Delete(context.Background(), profile.ID)
 	}
 
 	return profile, nil
@@ -127,6 +132,16 @@ func (s *Service) Connect(input ConnectRequest) (ConnectionStatus, error) {
 
 func requiresSavedSecret(profile ConnectionProfile) bool {
 	return profile.Driver != "bigquery"
+}
+
+func shouldClearSavedSecret(foundExisting bool, inputHadID bool, existing ConnectionProfile, profile ConnectionProfile) bool {
+	if !foundExisting {
+		return inputHadID
+	}
+	if profile.Driver == "bigquery" {
+		return true
+	}
+	return savedSecretScopeChanged(existing, profile)
 }
 
 func savedSecretScopeChanged(left ConnectionProfile, right ConnectionProfile) bool {

@@ -299,6 +299,97 @@ func TestSaveConnectionDeletesSavedSecretWhenScopeChangesWithoutPassword(t *test
 	}
 }
 
+func TestSaveConnectionFailsWhenRetargetedSecretCannotBeCleared(t *testing.T) {
+	profile := ConnectionProfile{
+		ID:       "postgres-prod",
+		Driver:   "postgres",
+		Name:     "Production",
+		Host:     "db.example.com",
+		Port:     5432,
+		Database: "app",
+		Username: "postgres",
+		SSLMode:  "prefer",
+	}
+	store := &recordingProfileStore{profile: profile}
+	service := NewService(
+		store,
+		failingDeleteSecretStore{SecretStore: NewMemorySecretStore()},
+		&fakeConnector{},
+	)
+
+	if _, err := service.SaveConnection(SaveConnectionRequest{
+		ID:       profile.ID,
+		Driver:   profile.Driver,
+		Name:     profile.Name,
+		Host:     "attacker.example.com",
+		Port:     profile.Port,
+		Database: profile.Database,
+		Username: profile.Username,
+		SSLMode:  profile.SSLMode,
+	}); err == nil {
+		t.Fatal("expected save to fail when saved secret cannot be cleared")
+	}
+	if store.saved {
+		t.Fatal("expected profile not to be saved before stale secret is cleared")
+	}
+}
+
+func TestSaveConnectionClearsOrphanSecretForBlankPasswordNewProfile(t *testing.T) {
+	secrets := NewMemorySecretStore()
+	if err := secrets.Save(context.Background(), "chosen-id", "orphan-password"); err != nil {
+		t.Fatalf("save secret: %v", err)
+	}
+	service := NewService(
+		fakeProfileStore{},
+		secrets,
+		&fakeConnector{},
+	)
+
+	if _, err := service.SaveConnection(SaveConnectionRequest{
+		ID:       "chosen-id",
+		Driver:   "postgres",
+		Name:     "Imported",
+		Host:     "db.example.com",
+		Port:     5432,
+		Database: "app",
+		Username: "postgres",
+		SSLMode:  "prefer",
+	}); err != nil {
+		t.Fatalf("save connection: %v", err)
+	}
+	if _, err := secrets.Get(context.Background(), "chosen-id"); err == nil {
+		t.Fatal("expected blank-password save to clear orphaned secret")
+	}
+}
+
+func TestSaveConnectionGeneratedIDDoesNotRequireSecretDelete(t *testing.T) {
+	store := &recordingProfileStore{}
+	service := NewService(
+		store,
+		failingDeleteSecretStore{SecretStore: NewMemorySecretStore()},
+		&fakeConnector{},
+	)
+
+	profile, err := service.SaveConnection(SaveConnectionRequest{
+		Driver:   "postgres",
+		Name:     "New",
+		Host:     "db.example.com",
+		Port:     5432,
+		Database: "app",
+		Username: "postgres",
+		SSLMode:  "prefer",
+	})
+	if err != nil {
+		t.Fatalf("save connection: %v", err)
+	}
+	if profile.ID == "" {
+		t.Fatal("expected generated profile id")
+	}
+	if !store.saved {
+		t.Fatal("expected generated-id profile to be saved")
+	}
+}
+
 func TestSaveConnectionKeepsSavedSecretWhenOnlyMetadataChanges(t *testing.T) {
 	profile := ConnectionProfile{
 		ID:       "postgres-prod",
@@ -351,6 +442,9 @@ func (s fakeProfileStore) List() ([]ConnectionProfile, error) {
 }
 
 func (s fakeProfileStore) Find(id string) (ConnectionProfile, error) {
+	if s.profile.ID == "" || s.profile.ID != id {
+		return ConnectionProfile{}, assertAnError{}
+	}
 	return s.profile, nil
 }
 
@@ -360,6 +454,46 @@ func (s fakeProfileStore) Save(profile ConnectionProfile) error {
 
 func (s fakeProfileStore) Delete(id string) error {
 	return nil
+}
+
+type recordingProfileStore struct {
+	profile ConnectionProfile
+	saved   bool
+}
+
+func (s *recordingProfileStore) List() ([]ConnectionProfile, error) {
+	return []ConnectionProfile{s.profile}, nil
+}
+
+func (s *recordingProfileStore) Find(id string) (ConnectionProfile, error) {
+	if s.profile.ID == "" || s.profile.ID != id {
+		return ConnectionProfile{}, assertAnError{}
+	}
+	return s.profile, nil
+}
+
+func (s *recordingProfileStore) Save(profile ConnectionProfile) error {
+	s.saved = true
+	s.profile = profile
+	return nil
+}
+
+func (s *recordingProfileStore) Delete(id string) error {
+	return nil
+}
+
+type failingDeleteSecretStore struct {
+	SecretStore
+}
+
+func (s failingDeleteSecretStore) Delete(ctx context.Context, profileID string) error {
+	return assertAnError{}
+}
+
+type assertAnError struct{}
+
+func (assertAnError) Error() string {
+	return "delete failed"
 }
 
 type fakeConnector struct {
