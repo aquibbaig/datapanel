@@ -295,7 +295,9 @@ export function AiAssistantPanel({
         prompt: assistantRequest.prompt,
       };
       setChatPrompt(displayPrompt);
-      onAssistantRequestConsumed?.(assistantRequest.id);
+      if (!assistantRequest.autoSubmit) {
+        onAssistantRequestConsumed?.(assistantRequest.id);
+      }
     }
 
     if (
@@ -314,6 +316,7 @@ export function AiAssistantPanel({
       startNewThread: assistantRequest.startNewThread,
       threadTitle: assistantRequest.threadTitle,
     });
+    onAssistantRequestConsumed?.(assistantRequest.id);
   }, [assistantRequest, chatBusy, chatReady]);
 
   async function loadCredentialStatuses() {
