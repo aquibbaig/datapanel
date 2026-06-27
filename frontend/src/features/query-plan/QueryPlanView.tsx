@@ -63,7 +63,7 @@ export function QueryPlanView({ driver, result }: Props) {
 
   if (result.error) {
     return (
-      <section className="grid min-h-0 place-items-center bg-surface-900 text-red-100">
+      <section className="grid min-h-0 place-items-center bg-surface-900 text-danger">
         <p>{result.error}</p>
       </section>
     );
@@ -73,7 +73,7 @@ export function QueryPlanView({ driver, result }: Props) {
     return (
       <section className="grid min-h-0 place-items-center bg-surface-900 text-muted">
         <div className="flex max-w-md flex-col items-center justify-center gap-3 text-center">
-          <AlertTriangle className="text-yellow-200" size={24} />
+          <AlertTriangle className="text-warning" size={24} />
           <p className="text-sm text-zinc-300">No visual plan is available.</p>
           <p className="text-xs leading-5">
             {plan.unsupportedReason ||
@@ -181,14 +181,14 @@ function PlanNode({
     <div className="flex flex-col items-center">
       <button
         className={cn(
-          "w-[230px] rounded-md border bg-surface-850 text-left shadow-[0_10px_30px_rgba(0,0,0,0.18)] transition hover:border-accent focus:border-accent focus:outline-none",
+          "w-[230px] rounded-md border bg-surface-850 text-left shadow-[0_10px_30px_rgb(var(--color-overlay)/0.18)] transition hover:border-accent focus:border-accent focus:outline-none",
           selectedId === step.id && "border-accent ring-2 ring-accent/20",
           selectedId !== step.id &&
             step.tone === "danger" &&
-            "border-red-400/40",
+            "border-danger/45",
           selectedId !== step.id &&
             step.tone === "warning" &&
-            "border-yellow-400/35",
+            "border-warning/45",
           step.tone === "neutral" && selectedId !== step.id && "border-line",
         )}
         onClick={() => onSelect(step.id)}
@@ -208,9 +208,9 @@ function PlanNode({
           <span
             className={cn(
               "mt-0.5 h-2 w-2 shrink-0 rounded-full",
-              step.tone === "danger" && "bg-red-300",
-              step.tone === "warning" && "bg-yellow-300",
-              step.tone === "neutral" && "bg-emerald-300",
+              step.tone === "danger" && "bg-danger",
+              step.tone === "warning" && "bg-warning",
+              step.tone === "neutral" && "bg-success",
             )}
           />
         </div>

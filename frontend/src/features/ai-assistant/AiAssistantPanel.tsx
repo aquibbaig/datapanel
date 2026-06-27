@@ -78,6 +78,8 @@ export interface AISQLAssistantRequest {
   displayPrompt?: string;
   prompt: string;
   autoSubmit?: boolean;
+  startNewThread?: boolean;
+  threadTitle?: string;
 }
 
 interface SchemaSnapshot {
@@ -106,6 +108,13 @@ type TokenUsage = AIGenerateResponse["tokenUsage"];
 interface PreparedPrompt {
   displayPrompt: string;
   prompt: string;
+}
+
+interface AskAIOptions {
+  displayPrompt?: string;
+  prompt: string;
+  startNewThread?: boolean;
+  threadTitle?: string;
 }
 
 type RuntimeBridge = {
@@ -145,28 +154,6 @@ const modelsByProvider: Record<ProviderId, string[]> = {
     "claude-3-opus-latest",
   ],
   custom: ["openai-compatible"],
-};
-
-const contextWindowByModel: Record<string, string> = {
-  "gpt-5.5": "1M ctx",
-  "gpt-5.4": "1M ctx",
-  "gpt-5.4-mini": "400k ctx",
-  "gpt-5.4-nano": "ctx varies",
-  "claude-3-5-haiku-latest": "200k ctx",
-  "claude-3-5-sonnet-latest": "200k ctx",
-  "claude-3-opus-latest": "200k ctx",
-  "openai-compatible": "ctx varies",
-};
-
-const contextUsageByModel: Record<string, number> = {
-  "gpt-5.5": 0.18,
-  "gpt-5.4": 0.2,
-  "gpt-5.4-mini": 0.24,
-  "gpt-5.4-nano": 0.32,
-  "claude-3-5-haiku-latest": 0.24,
-  "claude-3-5-sonnet-latest": 0.24,
-  "claude-3-opus-latest": 0.24,
-  "openai-compatible": 0.42,
 };
 
 function defaultModelForProvider(provider: ProviderId) {
@@ -324,6 +311,8 @@ export function AiAssistantPanel({
     void askAI({
       displayPrompt: assistantRequest.displayPrompt,
       prompt: assistantRequest.prompt,
+      startNewThread: assistantRequest.startNewThread,
+      threadTitle: assistantRequest.threadTitle,
     });
   }, [assistantRequest, chatBusy, chatReady]);
 
@@ -573,11 +562,11 @@ export function AiAssistantPanel({
     }
   }
 
-  async function askAI(
-    promptOverride?: string | { displayPrompt?: string; prompt: string },
-  ) {
+  async function askAI(promptOverride?: string | AskAIOptions) {
     const preparedPrompt = preparedPromptRef.current;
     const chatPromptText = chatPrompt.trim();
+    const promptOptions =
+      typeof promptOverride === "object" ? promptOverride : null;
     const activePreparedPrompt =
       !promptOverride &&
       preparedPrompt &&
@@ -585,17 +574,18 @@ export function AiAssistantPanel({
         ? preparedPrompt
         : null;
     const prompt =
-      typeof promptOverride === "object"
-        ? promptOverride.prompt.trim()
+      promptOptions
+        ? promptOptions.prompt.trim()
         : activePreparedPrompt
           ? activePreparedPrompt.prompt.trim()
-          : (promptOverride ?? chatPrompt).trim();
+          : (typeof promptOverride === "string" ? promptOverride : chatPrompt).trim();
     const displayPrompt =
-      typeof promptOverride === "object"
-        ? (promptOverride.displayPrompt || promptOverride.prompt).trim()
+      promptOptions
+        ? (promptOptions.displayPrompt || promptOptions.prompt).trim()
         : activePreparedPrompt
           ? activePreparedPrompt.displayPrompt.trim()
         : prompt;
+    const startNewThread = Boolean(promptOptions?.startNewThread);
     if (!prompt || !chatReady) return;
     if (activePreparedPrompt) {
       preparedPromptRef.current = null;
@@ -604,16 +594,20 @@ export function AiAssistantPanel({
     if (requestModel !== selectedModel) {
       setSelectedModel(requestModel);
     }
-    let thread = activeThread;
+    let thread = startNewThread ? null : activeThread;
+    let createdThread = false;
     if (!thread) {
       thread = await appDataService.createThread({
         connectionId: connectionScopeId,
-        title: "New chat",
+        title: promptOptions?.threadTitle || "New chat",
         provider: selected.id,
         model: requestModel,
       });
-      setChatThreads((current) => [thread as AIChatThread, ...current]);
-      setActiveThreadId(thread.id);
+      createdThread = true;
+      if (!startNewThread) {
+        setChatThreads((current) => [thread as AIChatThread, ...current]);
+        setActiveThreadId(thread.id);
+      }
     }
 
     const userMessage = {
@@ -622,8 +616,12 @@ export function AiAssistantPanel({
       content: displayPrompt,
       createdAt: new Date().toISOString(),
     };
-    const conversation = buildConversationHistory(chatMessages);
-    setChatMessages((current) => [...current, userMessage]);
+    const conversation = startNewThread
+      ? []
+      : buildConversationHistory(chatMessages);
+    if (!startNewThread) {
+      setChatMessages((current) => [...current, userMessage]);
+    }
     setChatPrompt("");
     setChatBusy(true);
     try {
@@ -637,8 +635,13 @@ export function AiAssistantPanel({
         content: userMessage.content,
         createdAt: userMessage.createdAt,
       });
+      if (startNewThread && createdThread) {
+        setChatThreads((current) => [thread as AIChatThread, ...current]);
+        setActiveThreadId(thread.id);
+        setChatMessages([userMessage]);
+      }
       if (thread.title === "New chat") {
-        await renameThread(thread, prompt.slice(0, 48));
+        await renameThread(thread, displayPrompt.slice(0, 48));
       }
       const schemaSnapshot = onEnsureSchemaFresh
         ? await onEnsureSchemaFresh()
@@ -905,7 +908,7 @@ export function AiAssistantPanel({
                 void askAI();
               }}
             >
-              <div className="rounded-[22px] border border-line bg-surface-850 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+              <div className="rounded-[22px] border border-line bg-surface-850 p-3 shadow-[inset_0_1px_0_rgb(var(--color-control)/0.04)]">
                 <PromptInputTextarea
                   placeholder="Ask DataPanel to write, fix, or explain SQL..."
                   value={chatPrompt}
@@ -957,10 +960,7 @@ export function AiAssistantPanel({
                     </div>
                   </div>
                   <div className="ml-auto flex min-w-0 items-center justify-end gap-2">
-                    <ContextWindowMeter
-                      label={contextWindowByModel[selectedModel] || "ctx varies"}
-                      usage={contextUsageByModel[selectedModel] ?? 0.42}
-                    />
+                    <TokenUsageSummary usage={activeThread?.tokenUsage} />
                     <div className="relative min-w-0">
                       <select
                         className="h-8 max-w-[156px] min-w-0 appearance-none rounded-md border-transparent bg-transparent px-1 pr-5 text-xs font-medium text-zinc-300 shadow-none hover:bg-surface-700 focus:border-transparent focus:shadow-none"
@@ -1163,28 +1163,15 @@ export function AiAssistantPanel({
   );
 }
 
-function ContextWindowMeter({
-  label,
-  usage,
-}: {
-  label: string;
-  usage: number;
-}) {
-  const clamped = Math.max(0.04, Math.min(0.96, usage));
-  const degrees = Math.round(clamped * 360);
+function TokenUsageSummary({ usage }: { usage?: TokenUsage | null }) {
+  const normalizedUsage = normalizeTokenUsage(usage);
   return (
-    <div
-      className="grid h-8 w-8 shrink-0 place-items-center rounded-md transition hover:bg-surface-700"
-      title={`${label} context window`}
+    <span
+      className="shrink-0 whitespace-nowrap text-xs font-semibold text-accent"
+      title={`Tokens used: ${normalizedUsage.totalTokens} total (${normalizedUsage.promptTokens} prompt, ${normalizedUsage.completionTokens} completion).`}
     >
-      <span
-        aria-hidden="true"
-        className="h-4 w-4 rounded-full"
-        style={{
-          background: `conic-gradient(#8f97ff 0deg ${degrees}deg, #3a3a40 ${degrees}deg 360deg)`,
-        }}
-      />
-    </div>
+      {formatTokenCount(normalizedUsage.totalTokens)} tokens
+    </span>
   );
 }
 
@@ -1334,24 +1321,24 @@ function UserMessageContent({
   content: string;
   onCopySQL(sql: string): void;
 }) {
-  const explainPrompt = parseExplainQueryMessage(content);
-  if (!explainPrompt) {
+  const sqlActionPrompt = parseSQLActionQueryMessage(content);
+  if (!sqlActionPrompt) {
     return <MessageContent>{content}</MessageContent>;
   }
 
   return (
     <div className="grid min-w-0 gap-2">
-      <MessageContent>{explainPrompt.label}</MessageContent>
+      <MessageContent>{sqlActionPrompt.label}</MessageContent>
       <SQLCodeBlock
-        onCopySQL={() => onCopySQL(explainPrompt.sql)}
-        sql={explainPrompt.sql}
+        onCopySQL={() => onCopySQL(sqlActionPrompt.sql)}
+        sql={sqlActionPrompt.sql}
       />
     </div>
   );
 }
 
-function parseExplainQueryMessage(content: string) {
-  const match = content.match(/^\s*(explain this query:)\s*\n+([\s\S]+?)\s*$/i);
+function parseSQLActionQueryMessage(content: string) {
+  const match = content.match(/^\s*((?:explain|fix) this query:)\s*\n+([\s\S]+?)\s*$/i);
   if (!match) return null;
   const sql = stripMarkdownCodeFence(match[2]);
   if (!sql) return null;
@@ -1384,7 +1371,7 @@ function AIResponseView({
       <div className="min-w-0 max-w-[98%]">
         <div className="grid min-w-0 gap-3 text-zinc-200">
           {response.destructiveRisk ? (
-            <div className="rounded-ui border border-yellow-500/30 bg-yellow-500/10 p-2 text-xs leading-5 text-yellow-100">
+            <div className="rounded-ui border border-warning/35 bg-warning/10 p-2 text-xs leading-5 text-warning">
               Review carefully. The model marked this SQL as data-changing or
               destructive.
             </div>

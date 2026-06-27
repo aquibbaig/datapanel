@@ -832,7 +832,7 @@ export function ResultsGrid({
 
   if (result.error === "confirmation_required") {
     return (
-      <section className="grid min-h-0 place-items-center bg-surface-900 text-yellow-100">
+      <section className="grid min-h-0 place-items-center bg-surface-900 text-warning">
         <p>Destructive query confirmation is required before execution.</p>
       </section>
     );
@@ -923,7 +923,7 @@ export function ResultsGrid({
                       ) ? (
                         <KeyRound
                           aria-label="Primary key"
-                          className="text-yellow-200"
+                          className="text-key"
                           size={10}
                         />
                       ) : null}
@@ -965,9 +965,9 @@ export function ResultsGrid({
                       "absolute left-0 cursor-default border-b border-line",
                       rowSelected &&
                         "bg-accent/10 ring-1 ring-inset ring-accent/50",
-                      rowChanged && "bg-yellow-900/20",
-                      rowInserted && "bg-amber-900/25",
-                      rowDeleted && "bg-red-950/45 text-red-100",
+                      rowChanged && "bg-warning/10",
+                      rowInserted && "bg-success/10",
+                      rowDeleted && "bg-danger/15 text-danger",
                     )}
                     key={rowKey || rowIndex}
                     onMouseDown={(event) => {
@@ -1008,12 +1008,12 @@ export function ResultsGrid({
                             "absolute top-0 flex cursor-default items-center border-r border-line px-3 py-1 align-middle text-zinc-300",
                             changed &&
                               !isEditing &&
-                              "bg-yellow-900/30 text-yellow-50",
+                              "bg-warning/15 text-warning",
                             rowInserted &&
                               !isEditing &&
-                              "bg-amber-900/30 text-amber-50",
+                              "bg-success/15 text-success",
                             rowDeleted &&
-                              "bg-red-950/30 text-red-100 line-through",
+                              "bg-danger/15 text-danger line-through",
                             activeCellMatch && "bg-accent/25 text-zinc-50",
                           )}
                           key={columnKey(column, virtualColumn.index)}

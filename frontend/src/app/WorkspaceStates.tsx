@@ -56,7 +56,7 @@ export function EmptyWorkspace({
           {[0, 1, 2, 3].map((index) => (
             <div
               key={index}
-              className="grid h-12 w-12 place-items-center rounded-full border border-zinc-500/40 bg-surface-850 shadow-[inset_0_0_0_2px_rgba(255,255,255,0.06),0_0_0_1px_rgba(255,255,255,0.04)]"
+              className="grid h-12 w-12 place-items-center rounded-full border border-zinc-500/40 bg-surface-850 shadow-[inset_0_0_0_2px_rgb(var(--color-control)/0.06),0_0_0_1px_rgb(var(--color-control)/0.04)]"
             >
               <Database size={28} className="text-zinc-300" strokeWidth={1.6} />
             </div>

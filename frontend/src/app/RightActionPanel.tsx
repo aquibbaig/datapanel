@@ -136,9 +136,9 @@ function QueryHistoryList({
               {item.mode === "explain" ? "Explain" : "Query"}
             </span>
             {item.success ? (
-              <CheckCircle2 size={12} className="text-green-300" />
+              <CheckCircle2 size={12} className="text-success" />
             ) : (
-              <XCircle size={12} className="text-red-300" />
+              <XCircle size={12} className="text-danger" />
             )}
           </div>
           <pre className="line-clamp-3 whitespace-pre-wrap break-words font-mono text-[11px] leading-4 text-zinc-200">
@@ -151,7 +151,7 @@ function QueryHistoryList({
             </span>
             <span
               className={cn(
-                item.success ? "text-zinc-200" : "text-red-200",
+                item.success ? "text-zinc-200" : "text-danger",
                 "truncate",
               )}
             >

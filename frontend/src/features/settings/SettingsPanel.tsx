@@ -211,7 +211,7 @@ export function SettingsPanel({ settings, onUpdate }: Props) {
             />
           </label>
           {saveError ? (
-            <p className="text-xs leading-5 text-red-300">{saveError}</p>
+            <p className="text-xs leading-5 text-danger">{saveError}</p>
           ) : dirty ? (
             <p className="text-xs leading-5 text-muted">
               Settings have unsaved changes.

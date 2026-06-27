@@ -68,7 +68,7 @@ export function ResultsToolbar({
         <span>{durationMs}ms</span>
         {mutationEnabled ? <span>{pendingChanges.total} pending</span> : null}
         {truncated ? (
-          <span className="rounded border border-yellow-500/30 bg-yellow-500/10 px-1.5 py-0.5 font-medium text-yellow-700">
+          <span className="rounded border border-warning/35 bg-warning/10 px-1.5 py-0.5 font-medium text-warning">
             truncated
           </span>
         ) : null}
@@ -78,7 +78,7 @@ export function ResultsToolbar({
           aria-label="Find columns or cells"
           onClick={onOpenFinder}
           size="icon"
-          className="!h-6 !w-6 border-line bg-control/[0.04] text-zinc-600 hover:bg-control/[0.08] hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+          className="!h-6 !w-6 border-line bg-control/[0.04] text-zinc-500 hover:bg-control/[0.08] hover:text-zinc-100"
           title="Find columns or cells"
           type="button"
         >
@@ -89,7 +89,7 @@ export function ResultsToolbar({
           disabled={!canAddRow}
           onClick={onAddRow}
           size="icon"
-          className="!h-6 !w-6 border-line bg-control/[0.04] text-zinc-600 hover:bg-control/[0.08] hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+          className="!h-6 !w-6 border-line bg-control/[0.04] text-zinc-500 hover:bg-control/[0.08] hover:text-zinc-100"
           title={editUnavailableTitle || "Add row"}
           type="button"
         >
@@ -100,7 +100,7 @@ export function ResultsToolbar({
           disabled={!canDeleteSelectedRows}
           onClick={onDeleteSelectedRows}
           size="icon"
-          className="!h-6 !w-6 border-line bg-control/[0.04] text-zinc-600 hover:bg-control/[0.08] hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+          className="!h-6 !w-6 border-line bg-control/[0.04] text-zinc-500 hover:bg-control/[0.08] hover:text-zinc-100"
           title={deleteButtonTitle}
           type="button"
         >

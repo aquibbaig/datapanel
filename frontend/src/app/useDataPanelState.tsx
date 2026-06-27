@@ -1241,9 +1241,9 @@ function truncateToastDescription(description?: string) {
 
 function toastIcon(tone: "success" | "danger" | "warning" | "loading" | "neutral") {
   const className = "h-4 w-4";
-  if (tone === "success") return <Check className={`${className} text-green-300`} />;
-  if (tone === "danger") return <XCircle className={`${className} text-red-300`} />;
-  if (tone === "warning") return <AlertTriangle className={`${className} text-yellow-300`} />;
+  if (tone === "success") return <Check className={`${className} text-success`} />;
+  if (tone === "danger") return <XCircle className={`${className} text-danger`} />;
+  if (tone === "warning") return <AlertTriangle className={`${className} text-warning`} />;
   if (tone === "loading") return <Loader2 className={`${className} animate-spin text-zinc-300`} />;
   return <Info className={`${className} text-zinc-300`} />;
 }

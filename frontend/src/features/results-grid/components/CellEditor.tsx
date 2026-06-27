@@ -30,7 +30,7 @@ export function CellEditor({
       className={cn(
         "flex h-7 w-full min-w-0 items-center rounded-md border border-transparent bg-transparent transition focus-within:border-accent focus-within:bg-surface-850",
         changed &&
-          "border-yellow-700/60 bg-yellow-900/35 text-yellow-50 focus-within:border-yellow-500 focus-within:bg-yellow-900/45",
+          "border-warning/60 bg-warning/15 text-warning focus-within:border-warning focus-within:bg-warning/20",
       )}
     >
       <input

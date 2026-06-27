@@ -207,7 +207,7 @@ export function SqlCodeEditor({
           color: "rgb(var(--color-zinc-400))"
         },
         ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
-          backgroundColor: "rgba(94, 106, 210, 0.35)"
+          backgroundColor: "rgb(var(--color-accent) / 0.35)"
         },
         "&.cm-focused": {
           outline: "none"
@@ -217,7 +217,7 @@ export function SqlCodeEditor({
           borderRadius: "10px",
           backgroundColor: "rgb(var(--color-surface-700))",
           color: "rgb(var(--color-foreground))",
-          boxShadow: "0 18px 42px rgba(0, 0, 0, 0.35)",
+          boxShadow: "0 18px 42px rgb(var(--color-overlay) / 0.35)",
           overflow: "hidden"
         },
         ".cm-tooltip-autocomplete ul": {

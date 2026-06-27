@@ -22,6 +22,21 @@ export default {
           hover: "rgb(var(--color-accent-hover) / <alpha-value>)",
           foreground: "rgb(var(--color-accent-foreground) / <alpha-value>)"
         },
+        danger: {
+          DEFAULT: "rgb(var(--color-danger) / <alpha-value>)",
+          hover: "rgb(var(--color-danger-hover) / <alpha-value>)",
+          foreground: "rgb(var(--color-danger-foreground) / <alpha-value>)"
+        },
+        warning: {
+          DEFAULT: "rgb(var(--color-warning) / <alpha-value>)",
+          hover: "rgb(var(--color-warning-hover) / <alpha-value>)",
+          foreground: "rgb(var(--color-warning-foreground) / <alpha-value>)"
+        },
+        success: {
+          DEFAULT: "rgb(var(--color-success) / <alpha-value>)",
+          hover: "rgb(var(--color-success-hover) / <alpha-value>)",
+          foreground: "rgb(var(--color-success-foreground) / <alpha-value>)"
+        },
         key: "rgb(var(--color-key) / <alpha-value>)",
         control: {
           DEFAULT: "rgb(var(--color-control) / <alpha-value>)",

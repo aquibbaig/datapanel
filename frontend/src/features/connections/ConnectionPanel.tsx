@@ -208,7 +208,7 @@ export function ConnectionPanel({
               />
             </div>
             {urlError ? (
-              <p className="text-xs leading-5 text-red-300">{urlError}</p>
+              <p className="text-xs leading-5 text-danger">{urlError}</p>
             ) : null}
             <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 py-1">
               <span className="h-px bg-line" />
@@ -239,7 +239,7 @@ export function ConnectionPanel({
           />
         </label>
         {formError ? (
-          <p className="-mt-1 text-xs leading-5 text-red-300">{formError}</p>
+          <p className="-mt-1 text-xs leading-5 text-danger">{formError}</p>
         ) : null}
         <div className={form.driver === "bigquery" ? "grid gap-2" : "grid grid-cols-[minmax(0,1fr)_96px] gap-2"}>
           <label className="grid gap-2">

@@ -1,5 +1,16 @@
-import { AlertTriangle, Bot, GitBranch, Play, Plus, Square, X } from "lucide-react";
-import { useState, type MouseEvent as ReactMouseEvent } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import {
+  AlertTriangle,
+  Bot,
+  ChevronDown,
+  GitBranch,
+  Play,
+  Plus,
+  Square,
+  Wrench,
+  X,
+} from "lucide-react";
+import { useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { Button } from "../../components/ui/Button";
 import { queryService } from "../../lib/backend";
 import { textInputBehaviorProps } from "../../lib/text-input";
@@ -30,6 +41,7 @@ interface Props {
   onRun(sql: string, confirmDestructive?: boolean): Promise<unknown>;
   onExplain(sql: string): Promise<unknown>;
   onExplainWithAI(sql: string): void;
+  onFixWithAI(sql: string): void;
   onCancel(): Promise<void>;
   onCreateWorkspace(): void;
   onDeleteWorkspace(workspace: QueryWorkspace): void;
@@ -65,6 +77,7 @@ export function QueryEditor({
   onRun,
   onExplain,
   onExplainWithAI,
+  onFixWithAI,
   onCancel,
   onCreateWorkspace,
   onDeleteWorkspace,
@@ -77,6 +90,8 @@ export function QueryEditor({
   const [warnings, setWarnings] = useState<string[]>([]);
   const [pendingSQL, setPendingSQL] = useState("");
   const [selectedSQL, setSelectedSQL] = useState("");
+  const [aiActionMenuWidth, setAIActionMenuWidth] = useState<number | null>(null);
+  const aiActionRef = useRef<HTMLDivElement | null>(null);
   const selectedActionSQL = isRunnableSQLSelection(selectedSQL)
     ? selectedSQL.trim()
     : "";
@@ -114,6 +129,15 @@ export function QueryEditor({
     setWarnings([]);
     setPendingSQL("");
     onExplainWithAI(sqlToExplain);
+  }
+
+  function fixQueryWithAI() {
+    const sqlToFix = selectedActionSQL;
+    if (!sqlToFix) return;
+
+    setWarnings([]);
+    setPendingSQL("");
+    onFixWithAI(sqlToFix);
   }
 
   return (
@@ -157,12 +181,12 @@ export function QueryEditor({
 
       <div>
         {warnings.length > 0 ? (
-          <div className="grid grid-cols-[18px_minmax(0,1fr)_auto_auto] items-start gap-2 border-t border-yellow-500/30 bg-yellow-500/10 p-3">
-            <AlertTriangle size={14} className="text-yellow-200" />
+          <div className="grid grid-cols-[18px_minmax(0,1fr)_auto_auto] items-start gap-2 border-t border-warning/35 bg-warning/10 p-3">
+            <AlertTriangle size={14} className="text-warning" />
             <div className="flex flex-col gap-1">
-              <b className="text-sm text-yellow-100">Confirm destructive SQL</b>
+              <b className="text-sm text-warning">Confirm destructive SQL</b>
               {warnings.map((warning) => (
-                <p className="text-xs text-yellow-100/80" key={warning}>{warning}</p>
+                <p className="text-xs text-warning/80" key={warning}>{warning}</p>
               ))}
             </div>
             <Button variant="danger" onClick={() => void run(true)}>Run anyway</Button>
@@ -200,18 +224,61 @@ export function QueryEditor({
           <GitBranch size={14} />
           Plan
         </Button>
-        <Button
-          disabled={busy || !selectedActionSQL}
-          onClick={explainQueryWithAI}
-          title={
-            selectedActionSQL
-              ? "Ask AI to explain the selected SQL"
-              : "Select a SQL statement to explain"
-          }
-        >
-          <Bot size={14} />
-          Explain
-        </Button>
+        <div className="inline-flex" ref={aiActionRef}>
+          <Button
+            className="whitespace-nowrap rounded-r-none"
+            disabled={busy || !selectedActionSQL}
+            onClick={explainQueryWithAI}
+            title={
+              selectedActionSQL
+                ? "Ask AI to explain the selected SQL"
+                : "Select a SQL statement to explain"
+            }
+            type="button"
+          >
+            <Bot size={14} />
+            Explain query with AI
+          </Button>
+          <DropdownMenu.Root
+            onOpenChange={(open) => {
+              if (open) {
+                setAIActionMenuWidth(aiActionRef.current?.getBoundingClientRect().width ?? null);
+              }
+            }}
+          >
+            <DropdownMenu.Trigger asChild>
+              <button
+                aria-label="More AI query actions"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md rounded-l-none border border-l-0 border-line bg-control/[0.04] px-0 text-sm font-medium text-zinc-200 transition hover:bg-control/[0.07] disabled:cursor-not-allowed disabled:opacity-65 [&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:shrink-0"
+                disabled={busy || !selectedActionSQL}
+                title={
+                  selectedActionSQL
+                    ? "Show AI query actions"
+                    : "Select a SQL statement to use AI"
+                }
+                type="button"
+              >
+                <ChevronDown size={12} />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                align="end"
+                className="z-[1000] overflow-hidden rounded-ui border border-line bg-background py-1 shadow-xl"
+                sideOffset={6}
+                style={{ width: aiActionMenuWidth ?? undefined }}
+              >
+                <DropdownMenu.Item
+                  className="flex cursor-pointer select-none items-center gap-2 px-3 py-1.5 text-xs text-zinc-300 outline-none hover:bg-control/[0.06] hover:text-zinc-100 data-[highlighted]:bg-control/[0.06] data-[highlighted]:text-zinc-100"
+                  onSelect={fixQueryWithAI}
+                >
+                  <Wrench size={13} />
+                  Fix query with AI
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+        </div>
         <Button variant="primary" disabled={!activeConnectionId || busy} onClick={() => void run(false)}>
           <Play size={14} />
           Run

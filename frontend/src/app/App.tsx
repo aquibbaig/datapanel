@@ -8,10 +8,11 @@ import {
   RefreshCw,
   Search,
   Settings,
+  Star,
 } from "lucide-react";
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { Toaster } from "sonner";
-import { EventsOn } from "../../wailsjs/runtime/runtime";
+import { BrowserOpenURL, EventsOn } from "../../wailsjs/runtime/runtime";
 import { AppSidebar } from "../components/AppSidebar";
 import {
   Breadcrumb,
@@ -46,6 +47,7 @@ import {
 } from "./WorkspaceStates";
 
 const rightPanelStorageKey = "datapanel.rightPanel";
+const githubRepositoryUrl = "https://github.com/aquibbaig/datapanel";
 const multiQueryWorkspacesEnabled = true;
 const maxQueryWorkspaces = 3;
 const postgresRowLocatorColumn = "__datapanel_internal_ctid__";
@@ -63,6 +65,7 @@ interface QueryWorkspace {
 
 interface WailsRuntimeWindow extends Window {
   runtime?: {
+    BrowserOpenURL?: unknown;
     EventsOn?: unknown;
   };
 }
@@ -476,6 +479,32 @@ export function App() {
       displayPrompt: buildSQLExplanationDisplayPrompt(selectedSQL),
       prompt: buildSQLExplanationPrompt(selectedSQL, model.activeProfile?.driver),
       autoSubmit: true,
+      startNewThread: true,
+      threadTitle: "Explain query with AI",
+    });
+    openRightPanel("ai");
+  }
+
+  function openGitHubRepository(event: ReactMouseEvent<HTMLAnchorElement>) {
+    event.preventDefault();
+    if ((window as WailsRuntimeWindow).runtime?.BrowserOpenURL) {
+      BrowserOpenURL(githubRepositoryUrl);
+      return;
+    }
+    window.open(githubRepositoryUrl, "_blank", "noopener,noreferrer");
+  }
+
+  function fixSelectedSQLWithAI(sql: string) {
+    const selectedSQL = sql.trim();
+    if (!selectedSQL) return;
+
+    setAssistantRequest({
+      id: crypto.randomUUID(),
+      displayPrompt: buildSQLFixDisplayPrompt(selectedSQL),
+      prompt: buildSQLFixPrompt(selectedSQL, model.activeProfile?.driver),
+      autoSubmit: true,
+      startNewThread: true,
+      threadTitle: "Fix query with AI",
     });
     openRightPanel("ai");
   }
@@ -486,7 +515,7 @@ export function App() {
   }
 
   function loadSQL(sql: string) {
-    setSqlDraft(sql);
+    appendSqlDraft(sql);
   }
 
   const hasPlanResult =
@@ -500,6 +529,19 @@ export function App() {
       current.map((workspace) =>
         workspace.id === activeQueryWorkspaceId ? { ...workspace, sql } : workspace,
       ),
+    );
+  }
+
+  function appendSqlDraft(sql: string) {
+    const nextSql = sql.trim();
+    if (!nextSql) return;
+    setQueryWorkspaces((current) =>
+      current.map((workspace) => {
+        if (workspace.id !== activeQueryWorkspaceId) return workspace;
+        const currentSql = workspace.sql;
+        const separator = currentSql.trim() ? "\n\n" : "";
+        return { ...workspace, sql: `${currentSql}${separator}${nextSql}` };
+      }),
     );
   }
 
@@ -664,6 +706,17 @@ export function App() {
             </div>
 
             <div className="flex min-w-0 items-center gap-2">
+              <a
+                aria-label="Star DataPanel on GitHub"
+                className="hidden h-7 items-center gap-2 rounded-md border border-line bg-control/[0.04] px-3 text-sm font-medium text-zinc-200 transition hover:bg-control/[0.07] hover:text-zinc-100 lg:inline-flex [&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:shrink-0"
+                href={githubRepositoryUrl}
+                onClick={openGitHubRepository}
+                rel="noreferrer"
+                target="_blank"
+              >
+                <Star className="fill-key text-key" size={14} />
+                <span className="whitespace-nowrap">Star us on GitHub</span>
+              </a>
               <div
                 className="hidden h-7 w-[320px] cursor-pointer items-center gap-2 rounded-md border border-line bg-control/[0.03] px-2 text-sm text-muted transition hover:border-zinc-700 hover:bg-control/[0.05] hover:text-zinc-300 lg:flex"
                 role="button"
@@ -766,6 +819,7 @@ export function App() {
                   onChange={setSqlDraft}
                   onExplain={explainTypedSQL}
                   onExplainWithAI={explainSelectedSQLWithAI}
+                  onFixWithAI={fixSelectedSQLWithAI}
                   onRun={runTypedSQL}
                 />
                 <section
@@ -907,20 +961,20 @@ export function App() {
               </div>
               {activeKeychainAccessHint ? (
                 <button
-                  className="group relative grid h-5 w-5 shrink-0 place-items-center rounded text-yellow-200 transition hover:bg-yellow-500/10 hover:text-yellow-100"
+                  className="group relative grid h-5 w-5 shrink-0 place-items-center rounded text-warning transition hover:bg-warning/10 hover:text-warning-hover"
                   title="Reconnect Keychain"
                   type="button"
                   onClick={() => void reconnectKeychain()}
                 >
                   <KeyRound size={12} />
-                  <span className="pointer-events-none absolute bottom-6 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-yellow-500/25 bg-surface-800 px-2 py-1 text-[11px] font-medium text-yellow-100 shadow-xl group-hover:block">
+                  <span className="pointer-events-none absolute bottom-6 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-warning/30 bg-surface-800 px-2 py-1 text-[11px] font-medium text-warning shadow-xl group-hover:block">
                     Reconnect Keychain
                   </span>
                 </button>
               ) : null}
               {canRetryConnection(model) ? (
                 <button
-                  className="inline-flex h-5 shrink-0 items-center gap-1 rounded border border-red-400/30 bg-red-500/10 px-1.5 text-[11px] font-medium text-red-100 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-65 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:shrink-0"
+                  className="inline-flex h-5 shrink-0 items-center gap-1 rounded border border-danger/35 bg-danger/10 px-1.5 text-[11px] font-medium text-danger transition hover:bg-danger/20 disabled:cursor-not-allowed disabled:border-danger/30 disabled:bg-danger/10 disabled:text-danger [&>svg]:h-3 [&>svg]:w-3 [&>svg]:shrink-0"
                   disabled={model.busy}
                   onClick={() => void retryActiveConnection()}
                   title="Retry connection"
@@ -1019,9 +1073,9 @@ export function App() {
 }
 
 function statusDot(tone: string, connected: boolean) {
-  if (tone === "danger") return "bg-red-400";
-  if (tone === "warning") return "bg-yellow-300";
-  if (connected) return "bg-green-400";
+  if (tone === "danger") return "bg-danger";
+  if (tone === "warning") return "bg-warning";
+  if (connected) return "bg-success";
   return "bg-zinc-600";
 }
 
@@ -1372,6 +1426,29 @@ function buildSQLExplanationPrompt(sql: string, driver: string | undefined) {
 
 function buildSQLExplanationDisplayPrompt(sql: string) {
   return ["explain this query:", "", sql].join("\n");
+}
+
+function buildSQLFixPrompt(sql: string, driver: string | undefined) {
+  const dialect = driver || "the active database";
+  return [
+    `Fix this ${dialect} SQL query using the database schema context.`,
+    "Return the corrected SQL in the sql field when a fix is possible.",
+    "Fix both syntax and semantic issues: dialect syntax, aliases, table names, column names, joins, filters, grouping, ordering, aggregate usage, type casts, and date/function usage.",
+    "Use only tables, columns, data types, constraints, and relationships that appear in the provided schema context.",
+    "Prefer foreign keys and matching listed column names when repairing joins.",
+    "If a table or column reference appears misspelled, correct it only when the intended listed schema item is unambiguous.",
+    "If the intended fix is ambiguous or required schema metadata is missing, return an empty sql string and explain exactly what is missing or ambiguous.",
+    "If the query is already valid, keep the SQL unchanged unless a clearly beneficial schema-backed correction is needed.",
+    "",
+    "Original SQL:",
+    "```sql",
+    sql,
+    "```",
+  ].join("\n");
+}
+
+function buildSQLFixDisplayPrompt(sql: string) {
+  return ["fix this query:", "", sql].join("\n");
 }
 
 function connectionTooltip(model: ReturnType<typeof useDataPanelState>) {

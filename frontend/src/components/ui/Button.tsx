@@ -12,13 +12,13 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variants: Record<Variant, string> = {
   primary:
-    "border-accent bg-accent text-accent-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.14)] hover:bg-accent-hover",
+    "border-accent bg-accent text-accent-foreground shadow-[inset_0_1px_0_rgb(var(--color-control)/0.14)] hover:bg-accent-hover",
   secondary:
     "border-line bg-control/[0.04] text-zinc-200 hover:bg-control/[0.07]",
   ghost:
     "border-transparent bg-transparent text-zinc-500 hover:bg-control/[0.06] hover:text-zinc-200",
   danger:
-    "border-red-600 bg-red-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14)] hover:border-red-500 hover:bg-red-500 hover:text-white",
+    "border-danger bg-danger text-danger-foreground shadow-[inset_0_1px_0_rgb(var(--color-control)/0.14)] hover:border-danger-hover hover:bg-danger-hover hover:text-danger-foreground",
 };
 
 const sizes: Record<Size, string> = {

@@ -58,7 +58,7 @@ export function ProviderButton({
         </div>
       </button>
       {connected ? (
-        <CheckCircle2 size={14} className="shrink-0 text-emerald-300" />
+        <CheckCircle2 size={14} className="shrink-0 text-success" />
       ) : null}
       <Button
         aria-label={`Get ${provider.name} API key`}
@@ -95,14 +95,14 @@ export function StatusBadge({ status }: { status: "connected" | "error" }) {
       className={cn(
         "flex max-w-full shrink-0 items-center gap-1.5 rounded-full border px-2 py-1 text-[11px]",
         status === "connected"
-          ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
-          : "border-red-400/30 bg-red-500/10 text-red-100",
+          ? "border-success/35 bg-success/10 text-success"
+          : "border-danger/35 bg-danger/10 text-danger",
       )}
     >
       <span
         className={cn(
           "h-1.5 w-1.5 shrink-0 rounded-full",
-          status === "connected" ? "bg-emerald-300" : "bg-red-300",
+          status === "connected" ? "bg-success" : "bg-danger",
         )}
       />
       <span className="truncate">{labels[status]}</span>
