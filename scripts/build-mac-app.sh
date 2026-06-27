@@ -12,8 +12,6 @@ fi
 
 cd "$ROOT_DIR"
 
-"$ROOT_DIR/scripts/sync-app-icon.sh"
-
 echo "Building DataPanel for macOS..."
 release_version="${DATAPANEL_VERSION:-0.1.0}"
 origin_url="$(git remote get-url origin 2>/dev/null || true)"
