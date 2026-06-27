@@ -159,6 +159,7 @@ export interface QueryHistoryEntry {
 }
 
 export interface ConnectionHealth {
+  connectionId?: string;
   connected: boolean;
   latencyMs?: number;
   lastPingAt?: string;

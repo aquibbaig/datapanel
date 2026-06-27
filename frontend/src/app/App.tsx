@@ -1102,8 +1102,12 @@ function useResolvedTheme(theme = "system"): "dark" | "light" {
 
 function canRetryConnection(model: ReturnType<typeof useDataPanelState>) {
   const message = model.connectionHealth.error || model.status.text;
+  const healthBelongsToActiveConnection =
+    !model.connectionHealth.connectionId ||
+    model.connectionHealth.connectionId === model.activeConnectionId;
   return Boolean(
     model.activeProfile &&
+      healthBelongsToActiveConnection &&
       !model.connectionHealth.connected &&
       model.connectionHealth.error &&
       !isKeychainAccessIssue(message),

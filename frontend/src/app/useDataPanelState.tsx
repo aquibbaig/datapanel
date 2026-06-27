@@ -386,6 +386,7 @@ export function useDataPanelState() {
     clearSelectedTable();
     setStatus({ tone: "success", text: result.message });
     setConnectionHealth({
+      connectionId: profileId,
       connected: true,
       latencyMs: Math.max(0, Math.round(performance.now() - started)),
       lastPingAt: now,
@@ -553,20 +554,38 @@ export function useDataPanelState() {
 
   const testConnection = useCallback(async (input: TestConnectionRequest) => {
     setBusy(true);
+    const testingActiveConnection =
+      Boolean(input.profileId) && input.profileId === activeConnectionIdRef.current;
     try {
       const result = await connectionService.test(input);
-      setStatus({ tone: result.connected ? "success" : "danger", text: result.message });
+      if (testingActiveConnection) {
+        setStatus({ tone: result.connected ? "success" : "danger", text: result.message });
+      }
       if (result.connected) {
         notify("success", "Connection test passed", input.name || input.host);
       } else {
-        setConnectionHealth({ connected: false, error: result.message });
+        if (testingActiveConnection && input.profileId) {
+          setConnectionHealth({
+            connectionId: input.profileId,
+            connected: false,
+            error: result.message,
+          });
+        }
         notify("danger", "Connection test failed", result.message);
       }
       return result;
     } catch (error) {
       const message = errorMessage(error, "Connection failed");
-      setStatus({ tone: "danger", text: message });
-      setConnectionHealth({ connected: false, error: message });
+      if (testingActiveConnection) {
+        setStatus({ tone: "danger", text: message });
+      }
+      if (testingActiveConnection && input.profileId) {
+        setConnectionHealth({
+          connectionId: input.profileId,
+          connected: false,
+          error: message,
+        });
+      }
       notify("danger", "Connection test failed", message);
       throw error;
     } finally {
@@ -580,6 +599,8 @@ export function useDataPanelState() {
     options: ConnectOptions = {},
   ) => {
     const previousConnectionId = activeConnectionId;
+    const previousStatus = status;
+    const previousConnectionHealth = connectionHealth;
     const switchingConnection = profileId !== previousConnectionId;
     const profile = profiles.find((item) => item.id === profileId);
     let switchingOverlayVisible = false;
@@ -622,9 +643,16 @@ export function useDataPanelState() {
         saveLastActiveWorkspaceId(previousConnectionId);
         setActiveConnectionId(previousConnectionId);
         restoreQueryResultSnapshot(previousConnectionId);
+        setStatus(previousStatus);
+        setConnectionHealth(previousConnectionHealth);
+      } else {
+        setStatus({ tone: "danger", text: message });
+        setConnectionHealth({
+          connectionId: profileId,
+          connected: false,
+          error: message,
+        });
       }
-      setStatus({ tone: "danger", text: message });
-      setConnectionHealth({ connected: false, error: message });
       if (!options.suppressErrorToast) {
         notify("danger", "Could not connect", message);
       }
@@ -637,6 +665,7 @@ export function useDataPanelState() {
     }
   }, [
     activeConnectionId,
+    connectionHealth,
     connectAndLoadMetadata,
     profiles,
     resetQueryState,
@@ -644,6 +673,7 @@ export function useDataPanelState() {
     runningRequestId,
     saveActiveQueryResultSnapshot,
     settings?.autoRefreshMetadata,
+    status,
   ]);
 
   const disconnect = useCallback(async () => {
