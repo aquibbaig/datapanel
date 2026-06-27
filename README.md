@@ -1,6 +1,6 @@
 # DataPanel
 
-DataPanel is a modern, open source database manager with AI.
+Lightweight, open source database manager.
 
 <img width="1672" height="941" alt="datapanel_showcase" src="https://github.com/user-attachments/assets/35c9649c-d066-48e8-9363-db96c3d8ac29" />
 
