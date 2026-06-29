@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"log"
+	"runtime"
 
 	"datapanel/internal/ai"
 	appcore "datapanel/internal/app"
@@ -73,7 +74,7 @@ func main() {
 		Height:    920,
 		MinWidth:  1040,
 		MinHeight: 720,
-		Menu:      applicationMenu(application),
+		Menu:      applicationMenuForPlatform(application),
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
@@ -103,6 +104,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func applicationMenuForPlatform(application *appcore.Application) *menu.Menu {
+	if runtime.GOOS != "darwin" {
+		return nil
+	}
+	return applicationMenu(application)
 }
 
 func applicationMenu(application *appcore.Application) *menu.Menu {
