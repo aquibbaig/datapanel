@@ -68,6 +68,8 @@ build/linux/*
 !build/linux/datapanel_0.0.0_amd64/usr/
 !build/linux/datapanel_0.0.0_amd64/usr/share/
 !build/linux/datapanel_0.0.0_amd64/usr/share/applications/
+!build/linux/datapanel_0.0.0_amd64/usr/share/metainfo/
+!build/linux/datapanel_0.0.0_amd64/usr/share/metainfo/datapanel.metainfo.xml
 !build/linux/datapanel_0.0.0_amd64/usr/share/applications/datapanel.desktop
 frontend/wailsjs/runtime/package-lock.json
 

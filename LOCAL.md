@@ -56,8 +56,9 @@ macOS, Windows, and Linux builds are attached to GitHub Releases when a version 
 
 - macOS: DMG installer window and zipped `.app` bundle.
 - Windows: portable `.zip` and NSIS installer for `windows/amd64` and `windows/arm64`.
-- Linux: `.deb` and `.AppImage` for Ubuntu 22.04/WebKit 4.0 compatible systems.
-- Linux WebKit 4.1: `.deb` for Ubuntu 24.04 compatible systems.
+- Linux WebKit 4.0: `.deb` for Debian 12/Ubuntu 22.04 compatible systems, named `datapanel_*_linux_amd64_debian12_ubuntu22.04_webkit2_40.deb`.
+- Linux WebKit 4.1: `.deb` for Debian 13/Ubuntu 24.04 compatible systems, named `datapanel_*_linux_amd64_debian13_ubuntu24.04_webkit2_41.deb`.
+- Linux AppImage: portable build for systems where the matching WebKit `.deb` dependency is not available.
 
 Create a GitHub Release with a tag such as `v0.1.0`, or run the release workflows manually with an existing release tag.
 

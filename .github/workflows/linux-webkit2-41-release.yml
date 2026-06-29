@@ -123,6 +123,17 @@ jobs:
           content=$(echo "$content" | sed -e "s/{{.Info.Comments}}/$(jq -r '.info.comments' wails.json)/g")
           echo "$content" > "$desktop_path"
 
+      - name: Set up AppStream metadata
+        shell: bash
+        run: |
+          metainfo_path="build/linux/datapanel_0.0.0_amd64/usr/share/metainfo/datapanel.metainfo.xml"
+          content=$(cat "$metainfo_path")
+          content=$(echo "$content" | sed -e "s/{{.Info.ProductName}}/$(jq -r '.info.productName' wails.json)/g")
+          content=$(echo "$content" | sed -e "s/{{.Info.Comments}}/$(jq -r '.info.comments' wails.json)/g")
+          content=$(echo "$content" | sed -e "s/{{.Info.ProductVersion}}/$(jq -r '.info.productVersion' wails.json)/g")
+          content=$(echo "$content" | sed -e "s/{{.ReleaseDate}}/$(date -u +%F)/g")
+          echo "$content" > "$metainfo_path"
+
       - name: Package deb file
         shell: bash
         run: |
@@ -139,7 +150,7 @@ jobs:
         working-directory: ./build/linux
         shell: bash
         run: |
-          deb="datapanel_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}_webkit2_41.deb"
+          deb="datapanel_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}_debian13_ubuntu24.04_webkit2_41.deb"
           mv "datapanel_${{ steps.normalise_version.outputs.version }}_amd64.deb" "$deb"
           sha256sum "$deb" > "$deb.sha256"
 
@@ -148,6 +159,6 @@ jobs:
         with:
           tag_name: ${{ steps.normalise_version.outputs.tag }}
           files: |
-            ./build/linux/datapanel_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}_webkit2_41.deb
-            ./build/linux/datapanel_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}_webkit2_41.deb.sha256
+            ./build/linux/datapanel_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}_debian13_ubuntu24.04_webkit2_41.deb
+            ./build/linux/datapanel_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}_debian13_ubuntu24.04_webkit2_41.deb.sha256
           token: ${{ secrets.GITHUB_TOKEN }}

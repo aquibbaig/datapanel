@@ -18,4 +18,10 @@ Download the latest macOS, Windows, and Linux builds from the GitHub Releases pa
 
 https://github.com/aquibbaig/datapanel/releases/latest
 
+Linux `.deb` builds are WebKit-specific:
+
+- Debian 13 or Ubuntu 24.04: use `datapanel_*_linux_amd64_debian13_ubuntu24.04_webkit2_41.deb`.
+- Debian 12 or Ubuntu 22.04: use `datapanel_*_linux_amd64_debian12_ubuntu22.04_webkit2_40.deb`.
+- Other Linux distributions: use the `.AppImage` when the matching WebKit package is not available.
+
 For local setup, development commands, and project layout, see `LOCAL.md`.

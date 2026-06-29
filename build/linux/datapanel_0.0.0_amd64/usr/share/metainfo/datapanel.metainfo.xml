@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>datapanel.desktop</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <name>{{.Info.ProductName}}</name>
+  <summary>{{.Info.Comments}}</summary>
+  <icon type="stock">datapanel</icon>
+  <description>
+    <p>{{.Info.Comments}}</p>
+    <p>DataPanel saves database connection profiles, opens database connections, browses schemas, executes SQL, and keeps schema metadata structured for AI-assisted workflows.</p>
+  </description>
+  <launchable type="desktop-id">datapanel.desktop</launchable>
+  <categories>
+    <category>Development</category>
+    <category>Database</category>
+  </categories>
+  <url type="homepage">https://github.com/aquibbaig/datapanel</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>DataPanel database workspace</caption>
+      <image type="source">https://github.com/user-attachments/assets/35c9649c-d066-48e8-9363-db96c3d8ac29</image>
+    </screenshot>
+  </screenshots>
+  <releases>
+    <release version="{{.Info.ProductVersion}}" date="{{.ReleaseDate}}" />
+  </releases>
+  <content_rating type="oars-1.1" />
+</component>
