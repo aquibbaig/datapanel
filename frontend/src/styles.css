@@ -317,8 +317,8 @@ td {
 }
 
 .cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected] {
-  background-color: rgb(var(--color-selection));
-  color: rgb(var(--color-selection-foreground));
+  background-color: rgb(var(--color-accent));
+  color: rgb(var(--color-accent-foreground));
 }
 
 [cmdk-group-heading] {

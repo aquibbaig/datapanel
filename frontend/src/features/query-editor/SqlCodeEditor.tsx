@@ -1,8 +1,6 @@
 import {
   acceptCompletion,
   autocompletion,
-  CompletionContext,
-  CompletionResult,
   moveCompletionSelection,
   startCompletion
 } from "@codemirror/autocomplete";
@@ -26,9 +24,15 @@ import shiki from "codemirror-shiki";
 import { useEffect, useMemo, useRef } from "react";
 import { createHighlighterCore } from "shiki/core";
 import { createOnigurumaEngine } from "shiki/engine/oniguruma";
-import type { ConnectionProfile, SchemaSummary, TableSummary } from "../../lib/types";
+import type {
+  ConnectionProfile,
+  SchemaSummary,
+  TableSummary,
+} from "../../lib/types";
+import { buildSchemaCompletions, sqlCompletion } from "./sqlCompletion";
 
 interface Props {
+  activeConnectionId: string;
   activeProfile: ConnectionProfile | null;
   schemas: SchemaSummary[];
   tablesBySchema: Record<string, TableSummary[]>;
@@ -38,43 +42,6 @@ interface Props {
   onRun(sql: string): void;
   onSelectedSQLChange(sql: string): void;
 }
-
-const sqlKeywords = [
-  "SELECT",
-  "FROM",
-  "WHERE",
-  "JOIN",
-  "LEFT JOIN",
-  "RIGHT JOIN",
-  "INNER JOIN",
-  "GROUP BY",
-  "ORDER BY",
-  "LIMIT",
-  "OFFSET",
-  "INSERT INTO",
-  "UPDATE",
-  "DELETE FROM",
-  "CREATE TABLE",
-  "ALTER TABLE",
-  "DROP TABLE",
-  "COUNT",
-  "SUM",
-  "AVG",
-  "MIN",
-  "MAX",
-  "AND",
-  "OR",
-  "NULL",
-  "IS NULL",
-  "IS NOT NULL",
-  "DISTINCT",
-  "HAVING",
-  "RETURNING",
-  "EXPLAIN",
-  "BEGIN",
-  "COMMIT",
-  "ROLLBACK"
-];
 
 const shikiHighlighter = createHighlighterCore({
   langs: [import("@shikijs/langs/sql")],
@@ -86,6 +53,7 @@ const shikiHighlighter = createHighlighterCore({
 });
 
 export function SqlCodeEditor({
+  activeConnectionId,
   activeProfile,
   schemas,
   tablesBySchema,
@@ -161,7 +129,15 @@ export function SqlCodeEditor({
         theme: theme === "light" ? "github-light" : "github-dark-high-contrast",
       }),
       autocompletion({
-        override: [sqlCompletion(schemaCompletions)],
+        override: [
+          sqlCompletion({
+            activeConnectionId,
+            activeProfile,
+            schemas,
+            schemaCompletions,
+            tablesBySchema,
+          }),
+        ],
         activateOnTyping: true,
         icons: false
       }),
@@ -230,12 +206,12 @@ export function SqlCodeEditor({
           padding: "6px 8px"
         },
         ".cm-tooltip-autocomplete ul li[aria-selected]": {
-          backgroundColor: "rgb(var(--color-surface-800))",
-          color: "rgb(var(--color-foreground))"
+          backgroundColor: "rgb(var(--color-accent))",
+          color: "rgb(var(--color-accent-foreground))"
         }
       })
     ],
-    [schemaCompletions, theme]
+    [activeConnectionId, activeProfile, schemaCompletions, schemas, tablesBySchema, theme]
   );
 
   useEffect(() => {
@@ -310,127 +286,6 @@ export function SqlCodeEditor({
   return <div className="h-full min-h-0 w-full overflow-hidden" ref={containerRef} />;
 }
 
-function sqlCompletion(schemaCompletions: CompletionOption[]) {
-  return function completeSQL(context: CompletionContext): CompletionResult | null {
-    const word = context.matchBefore(/[A-Za-z_][\w."]*/);
-    const from = word?.from ?? context.pos;
-    const fragment = word?.text.trim().toLowerCase() ?? "";
-    const tableContext = isTableReferenceCompletionContext(context, from);
-
-    if (!word && !tableContext) {
-      return null;
-    }
-    if (word && word.from === word.to && !context.explicit && !tableContext) {
-      return null;
-    }
-    if (!fragment && !context.explicit && !tableContext) {
-      return null;
-    }
-
-    const keywordOptions = tableContext
-      ? []
-      : sqlKeywords
-        .filter((keyword) => keyword.toLowerCase().startsWith(fragment))
-        .map((keyword) => ({
-          label: keyword,
-          type: "keyword",
-          apply: keyword
-        }));
-
-    const schemaOptions = schemaCompletions.filter((option) =>
-      matchesCompletion(option, fragment)
-    );
-    const options = [...keywordOptions, ...schemaOptions].slice(0, 80);
-
-    if (options.length === 0) {
-      return null;
-    }
-
-    return {
-      from,
-      options,
-      validFor: /^[A-Za-z_][\w."]*$/
-    };
-  };
-}
-
-function isTableReferenceCompletionContext(
-  context: CompletionContext,
-  fragmentFrom: number,
-) {
-  const lookBehindStart = Math.max(0, fragmentFrom - 200);
-  const beforeFragment = context.state.doc
-    .sliceString(lookBehindStart, fragmentFrom)
-    .toLowerCase();
-  return /\b(from|join)\s+$/.test(beforeFragment);
-}
-
-interface CompletionOption {
-  label: string;
-  type: string;
-  apply: string;
-  detail?: string;
-  matchText: string;
-  boost?: number;
-}
-
-function buildSchemaCompletions(
-  activeProfile: ConnectionProfile | null,
-  schemas: SchemaSummary[],
-  tablesBySchema: Record<string, TableSummary[]>,
-): CompletionOption[] {
-  const quote =
-    activeProfile?.driver === "mysql" || activeProfile?.driver === "bigquery"
-      ? quoteBacktick
-      : quotePostgres;
-  const options: CompletionOption[] = [];
-
-  for (const schema of schemas) {
-    const schemaTables = tablesBySchema[schema.name] || [];
-    for (const table of schemaTables) {
-      const qualified = `${schema.name}.${table.name}`;
-      options.push({
-        label: table.name,
-        type: "variable",
-        apply: quote(table.name),
-        detail: `${schema.name} ${table.type.replace("BASE ", "")}`,
-        matchText: table.name.toLowerCase(),
-        boost: 80,
-      });
-      options.push({
-        label: qualified,
-        type: "variable",
-        apply: `${quote(schema.name)}.${quote(table.name)}`,
-        detail: table.type.replace("BASE ", ""),
-        matchText: qualified.toLowerCase(),
-        boost: 60,
-      });
-    }
-  }
-
-  return options;
-}
-
-function matchesCompletion(option: CompletionOption, fragment: string) {
-  if (option.matchText.startsWith(fragment)) return true;
-  return camelCasePrefix(option.label, fragment);
-}
-
-function camelCasePrefix(label: string, fragment: string) {
-  const capitals = label
-    .replace(/[^A-Za-z0-9]+/g, " ")
-    .split(/\s+/)
-    .flatMap((part) => {
-      const upperLetters = part.match(/[A-Z0-9]/g);
-      return upperLetters && upperLetters.length > 0
-        ? upperLetters
-        : [part.charAt(0)];
-    })
-    .join("")
-    .toLowerCase();
-  return capitals.startsWith(fragment);
-}
-
 function selectedSQL(view: EditorView) {
   const selection = view.state.selection.main;
   const selectedText = view.state.sliceDoc(selection.from, selection.to).trim();
@@ -441,14 +296,4 @@ function explicitlySelectedSQL(view: EditorView) {
   const selection = view.state.selection.main;
   if (selection.empty) return "";
   return view.state.sliceDoc(selection.from, selection.to).trim();
-}
-
-function quotePostgres(identifier: string) {
-  if (/^[a-z_][a-z0-9_]*$/.test(identifier)) return identifier;
-  return `"${identifier.split('"').join('""')}"`;
-}
-
-function quoteBacktick(identifier: string) {
-  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(identifier)) return identifier;
-  return `\`${identifier.split("`").join("``")}\``;
 }

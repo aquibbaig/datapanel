@@ -168,6 +168,7 @@ export function QueryEditor({
 
       <div className="relative min-h-0 overflow-hidden">
         <SqlCodeEditor
+          activeConnectionId={activeConnectionId}
           activeProfile={activeProfile}
           schemas={schemas}
           tablesBySchema={tablesBySchema}
