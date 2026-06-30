@@ -14,11 +14,13 @@ const metadataTimeout = 12 * time.Second
 const schemaContextTimeout = 30 * time.Second
 const defaultMaxDetailedTables = 240
 const hardMaxDetailedTables = 500
+const relationshipExpansionTableLimit = 12
 
 type MetadataProvider interface {
 	ListSchemas(ctx context.Context, connectionID string) ([]SchemaSummary, error)
 	ListTables(ctx context.Context, connectionID string, schema string) ([]TableSummary, error)
 	DescribeTable(ctx context.Context, connectionID string, schema string, table string) (TableDetails, error)
+	ListForeignKeys(ctx context.Context, connectionID string) ([]ForeignKeySummary, error)
 	SchemaFingerprint(ctx context.Context, connectionID string) (SchemaFingerprint, error)
 }
 
@@ -112,6 +114,13 @@ func (s *SchemaService) BuildSchemaContext(input SchemaContextRequest) (SchemaCo
 	selectedTables, err := selectTablesForSchemaContext(input, allTables, maxDetailedTables)
 	if err != nil {
 		return SchemaContext{}, err
+	}
+	if len(input.Tables) > 0 {
+		foreignKeys, err := s.adapter.ListForeignKeys(ctx, connectionID)
+		if err != nil {
+			return SchemaContext{}, err
+		}
+		selectedTables = expandSelectedTablesForRelationships(input, selectedTables, allTables, foreignKeys, maxDetailedTables)
 	}
 	detailsByKey := map[string]TableDetails{}
 	for _, table := range selectedTables {
@@ -224,6 +233,120 @@ func selectExplicitTablesForSchemaContext(requestedTables []SchemaContextTable, 
 		selected = append(selected, table)
 	}
 	return selected, nil
+}
+
+func expandSelectedTablesForRelationships(input SchemaContextRequest, selectedTables []TableSummary, allTables []TableSummary, foreignKeys []ForeignKeySummary, maxDetailedTables int) []TableSummary {
+	if len(selectedTables) == 0 || len(foreignKeys) == 0 {
+		return selectedTables
+	}
+
+	limit := maxDetailedTables
+	expandedLimit := len(selectedTables) + relationshipExpansionTableLimit
+	if expandedLimit > limit {
+		limit = expandedLimit
+	}
+	if limit > hardMaxDetailedTables {
+		limit = hardMaxDetailedTables
+	}
+	if limit > len(allTables) {
+		limit = len(allTables)
+	}
+	if len(selectedTables) >= limit {
+		return selectedTables
+	}
+
+	tablesByKey := map[string]TableSummary{}
+	for _, table := range allTables {
+		tablesByKey[schemaTableKey(table.Schema, table.Name)] = table
+	}
+
+	selectedKeys := map[string]bool{}
+	for _, table := range selectedTables {
+		selectedKeys[schemaTableKey(table.Schema, table.Name)] = true
+	}
+	initialSelectedCount := len(selectedKeys)
+
+	type relationshipCandidate struct {
+		table                    TableSummary
+		connectedSelectedKeys    map[string]bool
+		referencedBySelectedJoin bool
+	}
+	candidates := map[string]*relationshipCandidate{}
+	selectedSourceTargets := map[string]map[string]bool{}
+
+	addConnection := func(candidateKey string, selectedKey string) {
+		table, ok := tablesByKey[candidateKey]
+		if !ok || selectedKeys[candidateKey] {
+			return
+		}
+		candidate := candidates[candidateKey]
+		if candidate == nil {
+			candidate = &relationshipCandidate{
+				table:                 table,
+				connectedSelectedKeys: map[string]bool{},
+			}
+			candidates[candidateKey] = candidate
+		}
+		candidate.connectedSelectedKeys[selectedKey] = true
+	}
+
+	for _, foreignKey := range foreignKeys {
+		sourceKey := schemaTableKey(foreignKey.SourceSchema, foreignKey.SourceTable)
+		targetKey := schemaTableKey(foreignKey.TargetSchema, foreignKey.TargetTable)
+		sourceSelected := selectedKeys[sourceKey]
+		targetSelected := selectedKeys[targetKey]
+
+		if sourceSelected && !targetSelected {
+			targets := selectedSourceTargets[sourceKey]
+			if targets == nil {
+				targets = map[string]bool{}
+				selectedSourceTargets[sourceKey] = targets
+			}
+			targets[targetKey] = true
+			addConnection(targetKey, sourceKey)
+		}
+		if targetSelected && !sourceSelected {
+			addConnection(sourceKey, targetKey)
+		}
+	}
+
+	for _, foreignKey := range foreignKeys {
+		sourceKey := schemaTableKey(foreignKey.SourceSchema, foreignKey.SourceTable)
+		targetKey := schemaTableKey(foreignKey.TargetSchema, foreignKey.TargetTable)
+		if !selectedKeys[sourceKey] || selectedKeys[targetKey] || len(selectedSourceTargets[sourceKey]) < 2 {
+			continue
+		}
+		if candidate := candidates[targetKey]; candidate != nil {
+			candidate.referencedBySelectedJoin = true
+		}
+	}
+
+	addTable := func(table TableSummary) {
+		if len(selectedTables) >= limit {
+			return
+		}
+		key := schemaTableKey(table.Schema, table.Name)
+		if selectedKeys[key] {
+			return
+		}
+		selectedKeys[key] = true
+		selectedTables = append(selectedTables, table)
+	}
+
+	for _, table := range allTables {
+		key := schemaTableKey(table.Schema, table.Name)
+		candidate := candidates[key]
+		if candidate == nil {
+			continue
+		}
+		if (initialSelectedCount > 1 && len(candidate.connectedSelectedKeys) >= 2) ||
+			candidate.referencedBySelectedJoin ||
+			promptReferencesTable(input.Prompt, candidate.table) {
+			addTable(candidate.table)
+		}
+	}
+
+	return selectedTables
 }
 
 func promptReferencesTable(prompt string, table TableSummary) bool {

@@ -167,6 +167,12 @@ func (a *Adapter) DescribeTable(ctx context.Context, connectionID string, schema
 	return state.describeInformationSchemaTable(ctx, schema, table)
 }
 
+func (a *Adapter) ListForeignKeys(ctx context.Context, connectionID string) ([]postgres.ForeignKeySummary, error) {
+	_ = ctx
+	_ = connectionID
+	return []postgres.ForeignKeySummary{}, nil
+}
+
 func (a *Adapter) SchemaFingerprint(ctx context.Context, connectionID string) (postgres.SchemaFingerprint, error) {
 	state, err := a.client(connectionID)
 	if err != nil {
