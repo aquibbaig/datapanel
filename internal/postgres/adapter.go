@@ -177,6 +177,53 @@ func (a *Adapter) DescribeTable(ctx context.Context, connectionID string, schema
 	return details, nil
 }
 
+func (a *Adapter) ListForeignKeys(ctx context.Context, connectionID string) ([]ForeignKeySummary, error) {
+	pool, err := a.pool(connectionID)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := pool.Query(ctx, `
+		select
+			con.conname,
+			source_ns.nspname,
+			source_rel.relname,
+			target_ns.nspname,
+			target_rel.relname
+		from pg_constraint con
+		join pg_class source_rel on source_rel.oid = con.conrelid
+		join pg_namespace source_ns on source_ns.oid = source_rel.relnamespace
+		join pg_class target_rel on target_rel.oid = con.confrelid
+		join pg_namespace target_ns on target_ns.oid = target_rel.relnamespace
+		where con.contype = 'f'
+		  and source_ns.nspname not in ('pg_catalog', 'information_schema')
+		  and source_ns.nspname not like 'pg_toast%'
+		  and target_ns.nspname not in ('pg_catalog', 'information_schema')
+		  and target_ns.nspname not like 'pg_toast%'
+		order by source_ns.nspname, source_rel.relname, con.conname
+	`)
+	if err != nil {
+		return nil, apperrors.New(apperrors.CodeDatabase, "could not load foreign key metadata")
+	}
+	defer rows.Close()
+
+	foreignKeys := []ForeignKeySummary{}
+	for rows.Next() {
+		var foreignKey ForeignKeySummary
+		if err := rows.Scan(
+			&foreignKey.Name,
+			&foreignKey.SourceSchema,
+			&foreignKey.SourceTable,
+			&foreignKey.TargetSchema,
+			&foreignKey.TargetTable,
+		); err != nil {
+			return nil, apperrors.New(apperrors.CodeDatabase, "could not read foreign key metadata")
+		}
+		foreignKeys = append(foreignKeys, foreignKey)
+	}
+	return foreignKeys, rows.Err()
+}
+
 func (a *Adapter) SchemaFingerprint(ctx context.Context, connectionID string) (SchemaFingerprint, error) {
 	pool, err := a.pool(connectionID)
 	if err != nil {

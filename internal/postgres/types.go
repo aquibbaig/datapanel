@@ -15,6 +15,14 @@ type SchemaFingerprint struct {
 	Hash string `json:"hash"`
 }
 
+type ForeignKeySummary struct {
+	Name         string `json:"name"`
+	SourceSchema string `json:"sourceSchema"`
+	SourceTable  string `json:"sourceTable"`
+	TargetSchema string `json:"targetSchema"`
+	TargetTable  string `json:"targetTable"`
+}
+
 type SchemaContextRequest struct {
 	ConnectionID      string               `json:"connectionId"`
 	Prompt            string               `json:"prompt"`

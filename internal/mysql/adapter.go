@@ -171,6 +171,53 @@ func (a *Adapter) DescribeTable(ctx context.Context, connectionID string, schema
 	return details, nil
 }
 
+func (a *Adapter) ListForeignKeys(ctx context.Context, connectionID string) ([]postgres.ForeignKeySummary, error) {
+	db, err := a.db(connectionID)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := db.QueryContext(ctx, `
+		select
+			kcu.constraint_name,
+			kcu.table_schema,
+			kcu.table_name,
+			kcu.referenced_table_schema,
+			kcu.referenced_table_name
+		from information_schema.key_column_usage kcu
+		where kcu.referenced_table_schema is not null
+		  and kcu.table_schema not in ('information_schema', 'mysql', 'performance_schema', 'sys')
+		  and kcu.referenced_table_schema not in ('information_schema', 'mysql', 'performance_schema', 'sys')
+		group by
+			kcu.constraint_name,
+			kcu.table_schema,
+			kcu.table_name,
+			kcu.referenced_table_schema,
+			kcu.referenced_table_name
+		order by kcu.table_schema, kcu.table_name, kcu.constraint_name
+	`)
+	if err != nil {
+		return nil, apperrors.New(apperrors.CodeDatabase, "could not load foreign key metadata")
+	}
+	defer rows.Close()
+
+	foreignKeys := []postgres.ForeignKeySummary{}
+	for rows.Next() {
+		var foreignKey postgres.ForeignKeySummary
+		if err := rows.Scan(
+			&foreignKey.Name,
+			&foreignKey.SourceSchema,
+			&foreignKey.SourceTable,
+			&foreignKey.TargetSchema,
+			&foreignKey.TargetTable,
+		); err != nil {
+			return nil, apperrors.New(apperrors.CodeDatabase, "could not read foreign key metadata")
+		}
+		foreignKeys = append(foreignKeys, foreignKey)
+	}
+	return foreignKeys, rows.Err()
+}
+
 func (a *Adapter) SchemaFingerprint(ctx context.Context, connectionID string) (postgres.SchemaFingerprint, error) {
 	db, err := a.db(connectionID)
 	if err != nil {
@@ -447,7 +494,10 @@ func loadConstraints(ctx context.Context, db *sql.DB, schema string, table strin
 		select
 			tc.constraint_name,
 			tc.constraint_type,
-			coalesce(group_concat(kcu.column_name order by kcu.ordinal_position separator ', '), '')
+			coalesce(group_concat(kcu.column_name order by kcu.ordinal_position separator ', '), ''),
+			coalesce(max(kcu.referenced_table_schema), ''),
+			coalesce(max(kcu.referenced_table_name), ''),
+			coalesce(group_concat(kcu.referenced_column_name order by kcu.ordinal_position separator ', '), '')
 		from information_schema.table_constraints tc
 		left join information_schema.key_column_usage kcu
 		  on kcu.constraint_schema = tc.constraint_schema
@@ -467,10 +517,28 @@ func loadConstraints(ctx context.Context, db *sql.DB, schema string, table strin
 	for rows.Next() {
 		var constraint postgres.ConstraintSummary
 		var columns string
-		if err := rows.Scan(&constraint.Name, &constraint.Type, &columns); err != nil {
+		var referencedSchema string
+		var referencedTable string
+		var referencedColumns string
+		if err := rows.Scan(
+			&constraint.Name,
+			&constraint.Type,
+			&columns,
+			&referencedSchema,
+			&referencedTable,
+			&referencedColumns,
+		); err != nil {
 			return nil, apperrors.New(apperrors.CodeDatabase, "could not read constraint metadata")
 		}
-		if columns != "" {
+		if strings.EqualFold(constraint.Type, "FOREIGN KEY") && referencedSchema != "" && referencedTable != "" {
+			constraint.Definition = fmt.Sprintf(
+				"FOREIGN KEY (%s) REFERENCES %s.%s (%s)",
+				quoteColumnList(columns),
+				quoteIdentifier(referencedSchema),
+				quoteIdentifier(referencedTable),
+				quoteColumnList(referencedColumns),
+			)
+		} else if columns != "" {
 			constraint.Definition = fmt.Sprintf("%s (%s)", constraint.Type, quoteColumnList(columns))
 		} else {
 			constraint.Definition = constraint.Type
@@ -547,9 +615,13 @@ func firstKeyword(sql string) string {
 func quoteColumnList(columns string) string {
 	parts := strings.Split(columns, ",")
 	for index, part := range parts {
-		parts[index] = "`" + strings.ReplaceAll(strings.TrimSpace(part), "`", "``") + "`"
+		parts[index] = quoteIdentifier(part)
 	}
 	return strings.Join(parts, ", ")
+}
+
+func quoteIdentifier(identifier string) string {
+	return "`" + strings.ReplaceAll(strings.TrimSpace(identifier), "`", "``") + "`"
 }
 
 func sanitizeDatabaseError(err error) string {

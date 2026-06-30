@@ -123,10 +123,173 @@ func TestBuildSchemaContextUsesExplicitPlannedTables(t *testing.T) {
 	}
 }
 
+func TestBuildSchemaContextExpandsExplicitTablesWithSharedForeignKeyTable(t *testing.T) {
+	provider := fakeMetadataProvider{
+		schemas: []SchemaSummary{{Name: "typehero"}},
+		tables: map[string][]TableSummary{
+			"typehero": {
+				{Schema: "typehero", Name: "Challenge", Type: "BASE TABLE", RowEstimate: 10},
+				{Schema: "typehero", Name: "Submission", Type: "BASE TABLE", RowEstimate: 100},
+				{Schema: "typehero", Name: "User", Type: "BASE TABLE", RowEstimate: 20},
+				{Schema: "typehero", Name: "UserSession", Type: "BASE TABLE", RowEstimate: 200},
+			},
+		},
+		details: map[string]TableDetails{
+			"typehero.challenge": {
+				Schema: "typehero",
+				Name:   "Challenge",
+				Type:   "BASE TABLE",
+				Columns: []ColumnSummary{
+					{Name: "id", DataType: "text", Position: 1, IsPrimary: true},
+					{Name: "difficulty", DataType: "text", Position: 2},
+				},
+			},
+			"typehero.submission": {
+				Schema: "typehero",
+				Name:   "Submission",
+				Type:   "BASE TABLE",
+				Columns: []ColumnSummary{
+					{Name: "id", DataType: "text", Position: 1, IsPrimary: true},
+					{Name: "userId", DataType: "text", Position: 2},
+					{Name: "challengeId", DataType: "text", Position: 3},
+					{Name: "status", DataType: "text", Position: 4},
+				},
+				Constraints: []ConstraintSummary{
+					{Name: "Submission_userId_fkey", Type: "FOREIGN KEY", Definition: `FOREIGN KEY ("userId") REFERENCES "typehero"."User"("id")`},
+					{Name: "Submission_challengeId_fkey", Type: "FOREIGN KEY", Definition: `FOREIGN KEY ("challengeId") REFERENCES "typehero"."Challenge"("id")`},
+				},
+			},
+			"typehero.user": {
+				Schema: "typehero",
+				Name:   "User",
+				Type:   "BASE TABLE",
+				Columns: []ColumnSummary{
+					{Name: "id", DataType: "text", Position: 1, IsPrimary: true},
+					{Name: "name", DataType: "text", Position: 2},
+				},
+			},
+			"typehero.usersession": {
+				Schema: "typehero",
+				Name:   "UserSession",
+				Type:   "BASE TABLE",
+				Columns: []ColumnSummary{
+					{Name: "id", DataType: "text", Position: 1, IsPrimary: true},
+					{Name: "userId", DataType: "text", Position: 2},
+				},
+				Constraints: []ConstraintSummary{
+					{Name: "UserSession_userId_fkey", Type: "FOREIGN KEY", Definition: `FOREIGN KEY ("userId") REFERENCES "typehero"."User"("id")`},
+				},
+			},
+		},
+		foreignKeys: []ForeignKeySummary{
+			{Name: "Submission_userId_fkey", SourceSchema: "typehero", SourceTable: "Submission", TargetSchema: "typehero", TargetTable: "User"},
+			{Name: "Submission_challengeId_fkey", SourceSchema: "typehero", SourceTable: "Submission", TargetSchema: "typehero", TargetTable: "Challenge"},
+			{Name: "UserSession_userId_fkey", SourceSchema: "typehero", SourceTable: "UserSession", TargetSchema: "typehero", TargetTable: "User"},
+		},
+	}
+
+	contextResult, err := NewSchemaService(provider).BuildSchemaContext(SchemaContextRequest{
+		ConnectionID:      "connection-1",
+		Prompt:            "show the count of the types of Challenges a user has solved",
+		Dialect:           "postgres",
+		MaxDetailedTables: 2,
+		Tables: []SchemaContextTable{
+			{Schema: "typehero", Name: "User"},
+			{Schema: "typehero", Name: "Challenge"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("BuildSchemaContext returned error: %v", err)
+	}
+
+	if contextResult.DetailedTables != 3 {
+		t.Fatalf("expected three detailed tables after relationship expansion, got %d", contextResult.DetailedTables)
+	}
+	if !strings.Contains(contextResult.Context, `CREATE TABLE "typehero"."Submission"`) {
+		t.Fatalf("expected shared FK table DDL in context:\n%s", contextResult.Context)
+	}
+	if strings.Contains(contextResult.Context, `CREATE TABLE "typehero"."UserSession"`) {
+		t.Fatalf("did not expect one-sided related table DDL in context:\n%s", contextResult.Context)
+	}
+}
+
+func TestBuildSchemaContextExpandsSelectedJoinTableTargets(t *testing.T) {
+	provider := fakeMetadataProvider{
+		schemas: []SchemaSummary{{Name: "typehero"}},
+		tables: map[string][]TableSummary{
+			"typehero": {
+				{Schema: "typehero", Name: "Challenge", Type: "BASE TABLE", RowEstimate: 10},
+				{Schema: "typehero", Name: "Submission", Type: "BASE TABLE", RowEstimate: 100},
+				{Schema: "typehero", Name: "User", Type: "BASE TABLE", RowEstimate: 20},
+			},
+		},
+		details: map[string]TableDetails{
+			"typehero.challenge": {
+				Schema: "typehero",
+				Name:   "Challenge",
+				Type:   "BASE TABLE",
+				Columns: []ColumnSummary{
+					{Name: "id", DataType: "text", Position: 1, IsPrimary: true},
+					{Name: "difficulty", DataType: "text", Position: 2},
+				},
+			},
+			"typehero.submission": {
+				Schema: "typehero",
+				Name:   "Submission",
+				Type:   "BASE TABLE",
+				Columns: []ColumnSummary{
+					{Name: "id", DataType: "text", Position: 1, IsPrimary: true},
+					{Name: "userId", DataType: "text", Position: 2},
+					{Name: "challengeId", DataType: "text", Position: 3},
+				},
+				Constraints: []ConstraintSummary{
+					{Name: "Submission_userId_fkey", Type: "FOREIGN KEY", Definition: `FOREIGN KEY ("userId") REFERENCES "typehero"."User"("id")`},
+					{Name: "Submission_challengeId_fkey", Type: "FOREIGN KEY", Definition: `FOREIGN KEY ("challengeId") REFERENCES "typehero"."Challenge"("id")`},
+				},
+			},
+			"typehero.user": {
+				Schema: "typehero",
+				Name:   "User",
+				Type:   "BASE TABLE",
+				Columns: []ColumnSummary{
+					{Name: "id", DataType: "text", Position: 1, IsPrimary: true},
+					{Name: "name", DataType: "text", Position: 2},
+				},
+			},
+		},
+		foreignKeys: []ForeignKeySummary{
+			{Name: "Submission_userId_fkey", SourceSchema: "typehero", SourceTable: "Submission", TargetSchema: "typehero", TargetTable: "User"},
+			{Name: "Submission_challengeId_fkey", SourceSchema: "typehero", SourceTable: "Submission", TargetSchema: "typehero", TargetTable: "Challenge"},
+		},
+	}
+
+	contextResult, err := NewSchemaService(provider).BuildSchemaContext(SchemaContextRequest{
+		ConnectionID:      "connection-1",
+		Prompt:            "show solved challenge counts",
+		Dialect:           "postgres",
+		MaxDetailedTables: 1,
+		Tables:            []SchemaContextTable{{Schema: "typehero", Name: "Submission"}},
+	})
+	if err != nil {
+		t.Fatalf("BuildSchemaContext returned error: %v", err)
+	}
+
+	for _, expected := range []string{
+		`CREATE TABLE "typehero"."Submission"`,
+		`CREATE TABLE "typehero"."User"`,
+		`CREATE TABLE "typehero"."Challenge"`,
+	} {
+		if !strings.Contains(contextResult.Context, expected) {
+			t.Fatalf("expected %q in context:\n%s", expected, contextResult.Context)
+		}
+	}
+}
+
 type fakeMetadataProvider struct {
-	schemas []SchemaSummary
-	tables  map[string][]TableSummary
-	details map[string]TableDetails
+	schemas     []SchemaSummary
+	tables      map[string][]TableSummary
+	details     map[string]TableDetails
+	foreignKeys []ForeignKeySummary
 }
 
 func (f fakeMetadataProvider) ListSchemas(ctx context.Context, connectionID string) ([]SchemaSummary, error) {
@@ -145,6 +308,12 @@ func (f fakeMetadataProvider) DescribeTable(ctx context.Context, connectionID st
 	_ = ctx
 	_ = connectionID
 	return f.details[schemaTableKey(schema, table)], nil
+}
+
+func (f fakeMetadataProvider) ListForeignKeys(ctx context.Context, connectionID string) ([]ForeignKeySummary, error) {
+	_ = ctx
+	_ = connectionID
+	return f.foreignKeys, nil
 }
 
 func (f fakeMetadataProvider) SchemaFingerprint(ctx context.Context, connectionID string) (SchemaFingerprint, error) {
