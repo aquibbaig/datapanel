@@ -73,10 +73,18 @@ export function sqlCompletion({
   return async function completeSQL(
     context: CompletionContext,
   ): Promise<CompletionResult | null> {
+    if (isCompletionSuppressedAtCursor(context)) {
+      return null;
+    }
+
     const token = completionTokenBefore(context);
     const from = token.from;
     const fragment = normalizeCompletionFragment(token.text);
     const completionContext = inferCompletionContext(context, from, token.text);
+
+    if (completionContext === "none") {
+      return null;
+    }
 
     if (!token.text && !context.explicit && completionContext === "keyword") {
       return null;
@@ -171,26 +179,33 @@ function normalizeCompletionFragment(fragment: string) {
     .toLowerCase();
 }
 
-type SQLCompletionContext = "keyword" | "table" | "expression";
+type SQLCompletionContext = "keyword" | "table" | "expression" | "none";
 
 function inferCompletionContext(
   context: CompletionContext,
   fragmentFrom: number,
   fragment: string,
 ): SQLCompletionContext {
-  if (isTableReferenceCompletionContext(context, fragmentFrom)) return "table";
-  if (isExpressionCompletionContext(context, fragmentFrom, fragment)) return "expression";
+  const maskedStatementBefore = currentMaskedStatementBefore(
+    context,
+    fragmentFrom,
+  ).toLowerCase();
+
+  if (isTableReferenceCompletionContext(maskedStatementBefore)) return "table";
+  if (
+    !context.explicit &&
+    isPredicateValueCompletionContext(maskedStatementBefore)
+  ) {
+    return "none";
+  }
+  if (isExpressionCompletionContext(maskedStatementBefore, fragment)) {
+    return "expression";
+  }
   return "keyword";
 }
 
-function isTableReferenceCompletionContext(
-  context: CompletionContext,
-  fragmentFrom: number,
-) {
-  const lookBehindStart = Math.max(0, fragmentFrom - 200);
-  const beforeFragment = context.state.doc
-    .sliceString(lookBehindStart, fragmentFrom)
-    .toLowerCase();
+function isTableReferenceCompletionContext(statementBefore: string) {
+  const beforeFragment = statementBefore.slice(-200);
   return (
     /\b(from|join|using|update|into)\s+$/.test(beforeFragment) ||
     /\b(?:alter|drop|truncate)\s+table\s+$/.test(beforeFragment) ||
@@ -199,11 +214,9 @@ function isTableReferenceCompletionContext(
 }
 
 function isExpressionCompletionContext(
-  context: CompletionContext,
-  fragmentFrom: number,
+  statement: string,
   fragment: string,
 ) {
-  const statement = currentStatementBefore(context, fragmentFrom).toLowerCase();
   if (qualifiedCompletionTarget(fragment)) return true;
 
   const expressionIndex = Math.max(
@@ -236,6 +249,87 @@ function isExpressionCompletionContext(
 
   return true;
 }
+
+function isPredicateValueCompletionContext(statementBefore: string) {
+  const predicateTail = statementBefore.slice(
+    lastPredicateBoundaryEnd(statementBefore),
+  );
+  if (!predicateValuePatterns.some((pattern) => pattern.test(predicateTail))) {
+    return false;
+  }
+
+  return lastPredicateClause(statementBefore) !== "on";
+}
+
+const predicateValuePatterns = [
+  /(?:=|<>|!=|<=|>=|<|>)[\s\S]*$/,
+  /\b(?:not\s+)?(?:like|ilike)\s+[\s\S]*$/,
+  /\b(?:not\s+)?in\s*\([\s\S]*$/,
+  /\bis\s+(?:not\s+)?[\s\S]*$/,
+  /\bbetween\s+[\s\S]*$/,
+];
+
+function lastPredicateBoundaryEnd(statement: string) {
+  let boundaryEnd = 0;
+  for (const pattern of predicateBoundaryPatterns) {
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(statement))) {
+      boundaryEnd = Math.max(boundaryEnd, match.index + match[0].length);
+    }
+  }
+
+  return Math.max(boundaryEnd, statement.lastIndexOf(",") + 1);
+}
+
+function lastPredicateClause(statement: string) {
+  let clause: PredicateClause | null = null;
+  let clauseIndex = -1;
+
+  for (const { keyword, pattern } of predicateClausePatterns) {
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(statement))) {
+      if (match.index > clauseIndex) {
+        clause = keyword;
+        clauseIndex = match.index;
+      }
+    }
+  }
+
+  return clause;
+}
+
+const predicateBoundaryKeywords = [
+  "where",
+  "having",
+  "on",
+  "set",
+  "and",
+  "or",
+  "when",
+  "then",
+  "else",
+  "group by",
+  "order by",
+  "limit",
+  "offset",
+  "fetch",
+  "returning",
+  "values",
+];
+
+const predicateBoundaryPatterns = predicateBoundaryKeywords.map(
+  (keyword) => new RegExp(`\\b${keyword}\\b`, "gi"),
+);
+
+type PredicateClause = "where" | "having" | "on" | "set";
+
+const predicateClausePatterns: Array<{
+  keyword: PredicateClause;
+  pattern: RegExp;
+}> = (["where", "having", "on", "set"] as const).map((keyword) => ({
+  keyword,
+  pattern: new RegExp(`\\b${keyword}\\b`, "gi"),
+}));
 
 async function expressionCompletionOptions(
   context: CompletionContext,
@@ -670,13 +764,256 @@ function tablesForSchema(
     .flatMap(([, tables]) => tables);
 }
 
+function isCompletionSuppressedAtCursor(context: CompletionContext) {
+  const beforeCursor = context.state.doc.sliceString(0, context.pos);
+  const lexicalContext = sqlLexicalContextAt(beforeCursor);
+  return (
+    lexicalContext === "singleQuotedString" ||
+    lexicalContext === "lineComment" ||
+    lexicalContext === "blockComment"
+  );
+}
+
+type SQLLexicalContext =
+  | "code"
+  | "singleQuotedString"
+  | "doubleQuotedIdentifier"
+  | "backtickIdentifier"
+  | "bracketIdentifier"
+  | "lineComment"
+  | "blockComment";
+
+function sqlLexicalContextAt(sql: string): SQLLexicalContext {
+  let context: SQLLexicalContext = "code";
+
+  for (let index = 0; index < sql.length; index += 1) {
+    const character = sql[index];
+    const nextCharacter = sql[index + 1];
+
+    if (context === "code") {
+      if (character === "'") {
+        context = "singleQuotedString";
+        continue;
+      }
+      if (character === '"') {
+        context = "doubleQuotedIdentifier";
+        continue;
+      }
+      if (character === "`") {
+        context = "backtickIdentifier";
+        continue;
+      }
+      if (character === "[") {
+        context = "bracketIdentifier";
+        continue;
+      }
+      if (character === "-" && nextCharacter === "-") {
+        context = "lineComment";
+        index += 1;
+        continue;
+      }
+      if (character === "/" && nextCharacter === "*") {
+        context = "blockComment";
+        index += 1;
+      }
+      continue;
+    }
+
+    if (context === "singleQuotedString") {
+      if (character === "'" && nextCharacter === "'") {
+        index += 1;
+        continue;
+      }
+      if (character === "'") {
+        context = "code";
+      }
+      continue;
+    }
+
+    if (context === "doubleQuotedIdentifier") {
+      if (character === '"' && nextCharacter === '"') {
+        index += 1;
+        continue;
+      }
+      if (character === '"') {
+        context = "code";
+      }
+      continue;
+    }
+
+    if (context === "backtickIdentifier") {
+      if (character === "`" && nextCharacter === "`") {
+        index += 1;
+        continue;
+      }
+      if (character === "`") {
+        context = "code";
+      }
+      continue;
+    }
+
+    if (context === "bracketIdentifier") {
+      if (character === "]" && nextCharacter === "]") {
+        index += 1;
+        continue;
+      }
+      if (character === "]") {
+        context = "code";
+      }
+      continue;
+    }
+
+    if (context === "lineComment") {
+      if (character === "\n" || character === "\r") {
+        context = "code";
+      }
+      continue;
+    }
+
+    if (character === "*" && nextCharacter === "/") {
+      context = "code";
+      index += 1;
+    }
+  }
+
+  return context;
+}
+
+function maskSQLValueLiteralsAndComments(sql: string) {
+  const masked: string[] = [];
+  let context: SQLLexicalContext = "code";
+
+  for (let index = 0; index < sql.length; index += 1) {
+    const character = sql[index];
+    const nextCharacter = sql[index + 1];
+
+    if (context === "code") {
+      if (character === "'") {
+        masked.push(" ");
+        context = "singleQuotedString";
+        continue;
+      }
+      if (character === '"') {
+        masked.push(character);
+        context = "doubleQuotedIdentifier";
+        continue;
+      }
+      if (character === "`") {
+        masked.push(character);
+        context = "backtickIdentifier";
+        continue;
+      }
+      if (character === "[") {
+        masked.push(character);
+        context = "bracketIdentifier";
+        continue;
+      }
+      if (character === "-" && nextCharacter === "-") {
+        masked.push(" ", " ");
+        context = "lineComment";
+        index += 1;
+        continue;
+      }
+      if (character === "/" && nextCharacter === "*") {
+        masked.push(" ", " ");
+        context = "blockComment";
+        index += 1;
+        continue;
+      }
+
+      masked.push(character);
+      continue;
+    }
+
+    if (context === "singleQuotedString") {
+      masked.push(character === "\n" || character === "\r" ? character : " ");
+      if (character === "'" && nextCharacter === "'") {
+        masked.push(" ");
+        index += 1;
+        continue;
+      }
+      if (character === "'") {
+        context = "code";
+      }
+      continue;
+    }
+
+    if (context === "doubleQuotedIdentifier") {
+      masked.push(character);
+      if (character === '"' && nextCharacter === '"') {
+        masked.push(nextCharacter);
+        index += 1;
+        continue;
+      }
+      if (character === '"') {
+        context = "code";
+      }
+      continue;
+    }
+
+    if (context === "backtickIdentifier") {
+      masked.push(character);
+      if (character === "`" && nextCharacter === "`") {
+        masked.push(nextCharacter);
+        index += 1;
+        continue;
+      }
+      if (character === "`") {
+        context = "code";
+      }
+      continue;
+    }
+
+    if (context === "bracketIdentifier") {
+      masked.push(character);
+      if (character === "]" && nextCharacter === "]") {
+        masked.push(nextCharacter);
+        index += 1;
+        continue;
+      }
+      if (character === "]") {
+        context = "code";
+      }
+      continue;
+    }
+
+    if (context === "lineComment") {
+      masked.push(character === "\n" || character === "\r" ? character : " ");
+      if (character === "\n" || character === "\r") {
+        context = "code";
+      }
+      continue;
+    }
+
+    masked.push(character === "\n" || character === "\r" ? character : " ");
+    if (character === "*" && nextCharacter === "/") {
+      masked.push(" ");
+      context = "code";
+      index += 1;
+    }
+  }
+
+  return masked.join("");
+}
+
 function currentStatementBefore(
   context: CompletionContext,
   fragmentFrom: number,
 ) {
   const beforeCursor = context.state.doc.sliceString(0, fragmentFrom);
-  const statementStart = beforeCursor.lastIndexOf(";") + 1;
+  const statementStart =
+    maskSQLValueLiteralsAndComments(beforeCursor).lastIndexOf(";") + 1;
   return beforeCursor.slice(statementStart);
+}
+
+function currentMaskedStatementBefore(
+  context: CompletionContext,
+  fragmentFrom: number,
+) {
+  const beforeCursor = context.state.doc.sliceString(0, fragmentFrom);
+  const maskedBeforeCursor = maskSQLValueLiteralsAndComments(beforeCursor);
+  const statementStart = maskedBeforeCursor.lastIndexOf(";") + 1;
+  return maskedBeforeCursor.slice(statementStart);
 }
 
 function currentStatementAround(
@@ -684,8 +1021,9 @@ function currentStatementAround(
   fragmentFrom: number,
 ) {
   const doc = context.state.doc.toString();
-  const statementStart = doc.lastIndexOf(";", fragmentFrom - 1) + 1;
-  const nextStatementEnd = doc.indexOf(";", fragmentFrom);
+  const maskedDoc = maskSQLValueLiteralsAndComments(doc);
+  const statementStart = maskedDoc.lastIndexOf(";", fragmentFrom - 1) + 1;
+  const nextStatementEnd = maskedDoc.indexOf(";", fragmentFrom);
   const statementEnd = nextStatementEnd === -1 ? doc.length : nextStatementEnd;
   return doc.slice(statementStart, statementEnd);
 }
