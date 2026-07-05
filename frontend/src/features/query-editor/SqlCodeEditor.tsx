@@ -201,6 +201,9 @@ export function SqlCodeEditor({
           color: "rgb(var(--color-zinc-400))"
         },
         ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
+          backgroundColor: "rgb(var(--color-accent) / 0.35) !important"
+        },
+        ".cm-line::selection, .cm-line ::selection": {
           backgroundColor: "rgb(var(--color-accent) / 0.35)"
         },
         ".cm-selectionLayer": {
