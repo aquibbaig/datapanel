@@ -73,6 +73,7 @@ const defaultSettings: AppSettings = {
   exportDirectory: "",
   chatResponsePrompt: "",
   cursorMode: "default",
+  vimNavigationEnabled: false,
   telemetryEnabled: false,
   telemetryInstallId: "",
 };
@@ -652,6 +653,7 @@ function normalizeSettings(settings: AppSettings): AppSettings {
     ...defaultSettings,
     ...settings,
     exportDirectory: settings.exportDirectory || "",
+    vimNavigationEnabled: Boolean(settings.vimNavigationEnabled),
     telemetryEnabled: Boolean(settings.telemetryEnabled),
     telemetryInstallId: settings.telemetryInstallId || "",
   };

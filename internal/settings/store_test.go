@@ -19,6 +19,9 @@ func TestFileStoreLoadsDefaultsWhenMissing(t *testing.T) {
 	if settings.CursorMode != DefaultSettings().CursorMode {
 		t.Fatalf("expected default cursor mode, got %q", settings.CursorMode)
 	}
+	if settings.VimNavigationEnabled {
+		t.Fatalf("expected vim navigation to default off")
+	}
 	if settings.TelemetryEnabled {
 		t.Fatalf("expected telemetry to default off")
 	}

@@ -129,6 +129,19 @@ export function SettingsPanel({ settings, onUpdate }: Props) {
             />
             <span>Refresh metadata after connect</span>
           </label>
+          <label className="grid grid-cols-[18px_minmax(0,1fr)] items-center gap-2 text-sm text-zinc-300">
+            <input
+              type="checkbox"
+              checked={draft.vimNavigationEnabled}
+              onChange={(event) =>
+                setDraft({
+                  ...draft,
+                  vimNavigationEnabled: event.target.checked,
+                })
+              }
+            />
+            <span>Vim navigation in query writer</span>
+          </label>
           <label className="grid gap-2">
             <span className="text-xs text-muted">Export folder</span>
             <div className="flex items-center gap-2">

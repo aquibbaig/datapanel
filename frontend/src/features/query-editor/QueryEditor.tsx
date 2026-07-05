@@ -174,6 +174,7 @@ export function QueryEditor({
           tablesBySchema={tablesBySchema}
           theme={theme}
           value={value}
+          vimNavigationEnabled={settings?.vimNavigationEnabled ?? false}
           onChange={onChange}
           onRun={(selectedSQL) => void run(false, selectedSQL)}
           onSelectedSQLChange={setSelectedSQL}

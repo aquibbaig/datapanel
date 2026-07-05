@@ -13,6 +13,7 @@ import {
 import { PostgreSQL, sql } from "@codemirror/lang-sql";
 import { Compartment, EditorState, Extension } from "@codemirror/state";
 import {
+  drawSelection,
   EditorView,
   highlightActiveLine,
   keymap,
@@ -20,6 +21,7 @@ import {
   placeholder,
   tooltips
 } from "@codemirror/view";
+import { Vim, vim } from "@replit/codemirror-vim";
 import shiki from "codemirror-shiki";
 import { useEffect, useMemo, useRef } from "react";
 import { createHighlighterCore } from "shiki/core";
@@ -38,6 +40,7 @@ interface Props {
   tablesBySchema: Record<string, TableSummary[]>;
   theme: "dark" | "light";
   value: string;
+  vimNavigationEnabled: boolean;
   onChange(value: string): void;
   onRun(sql: string): void;
   onSelectedSQLChange(sql: string): void;
@@ -52,6 +55,8 @@ const shikiHighlighter = createHighlighterCore({
   engine: createOnigurumaEngine(import("shiki/wasm")),
 });
 
+Vim.map("jk", "<Esc>", "insert");
+
 export function SqlCodeEditor({
   activeConnectionId,
   activeProfile,
@@ -59,6 +64,7 @@ export function SqlCodeEditor({
   tablesBySchema,
   theme,
   value,
+  vimNavigationEnabled,
   onChange,
   onRun,
   onSelectedSQLChange,
@@ -82,6 +88,7 @@ export function SqlCodeEditor({
 
   const extensions = useMemo<Extension[]>(
     () => [
+      ...(vimNavigationEnabled ? [vim(), drawSelection()] : []),
       lineNumbers(),
       highlightActiveLine(),
       history(),
@@ -167,6 +174,17 @@ export function SqlCodeEditor({
           padding: "16px 0",
           caretColor: "rgb(var(--color-foreground))"
         },
+        ".cm-cursor, .cm-dropCursor": {
+          borderLeftColor: "rgb(var(--color-foreground))"
+        },
+        ".cm-vimCursorLayer .cm-fat-cursor": {
+          backgroundColor: "rgb(var(--color-foreground))",
+          color: "rgb(var(--color-surface-950)) !important"
+        },
+        "&:not(.cm-focused) .cm-vimCursorLayer .cm-fat-cursor": {
+          backgroundColor: "transparent",
+          outline: "solid 1px rgb(var(--color-foreground))"
+        },
         ".cm-line": {
           padding: "0 16px"
         },
@@ -184,6 +202,13 @@ export function SqlCodeEditor({
         },
         ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
           backgroundColor: "rgb(var(--color-accent) / 0.35)"
+        },
+        ".cm-selectionLayer": {
+          pointerEvents: "none",
+          zIndex: "20 !important"
+        },
+        "&.cm-focused > .cm-scroller.cm-vimMode > .cm-selectionLayer .cm-selectionBackground": {
+          backgroundColor: "rgb(var(--color-accent) / 0.45) !important"
         },
         "&.cm-focused": {
           outline: "none"
@@ -211,7 +236,7 @@ export function SqlCodeEditor({
         }
       })
     ],
-    [activeConnectionId, activeProfile, schemaCompletions, schemas, tablesBySchema, theme]
+    [activeConnectionId, activeProfile, schemaCompletions, schemas, tablesBySchema, theme, vimNavigationEnabled]
   );
 
   useEffect(() => {
