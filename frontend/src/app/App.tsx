@@ -1055,6 +1055,8 @@ export function App() {
         <Modal
           title="Settings"
           open={settingsOpen}
+          panelClassName="max-w-[920px]"
+          bodyClassName="p-0"
           onClose={() => setSettingsOpen(false)}
         >
           <SettingsPanel

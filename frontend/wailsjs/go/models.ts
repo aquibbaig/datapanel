@@ -1257,6 +1257,7 @@ export namespace settings {
 	    exportDirectory: string;
 	    chatResponsePrompt: string;
 	    cursorMode: string;
+	    vimNavigationEnabled: boolean;
 	    telemetryEnabled: boolean;
 	    telemetryInstallId: string;
 	
@@ -1276,6 +1277,7 @@ export namespace settings {
 	        this.exportDirectory = source["exportDirectory"];
 	        this.chatResponsePrompt = source["chatResponsePrompt"];
 	        this.cursorMode = source["cursorMode"];
+	        this.vimNavigationEnabled = source["vimNavigationEnabled"];
 	        this.telemetryEnabled = source["telemetryEnabled"];
 	        this.telemetryInstallId = source["telemetryInstallId"];
 	    }

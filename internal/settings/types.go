@@ -11,6 +11,7 @@ type AppSettings struct {
 	ExportDirectory       string `json:"exportDirectory"`
 	ChatResponsePrompt    string `json:"chatResponsePrompt"`
 	CursorMode            string `json:"cursorMode"`
+	VimNavigationEnabled  bool   `json:"vimNavigationEnabled"`
 	TelemetryEnabled      bool   `json:"telemetryEnabled"`
 	TelemetryInstallID    string `json:"telemetryInstallId"`
 }
@@ -27,6 +28,7 @@ func DefaultSettings() AppSettings {
 		ExportDirectory:       "",
 		ChatResponsePrompt:    "",
 		CursorMode:            "default",
+		VimNavigationEnabled:  false,
 		TelemetryEnabled:      false,
 		TelemetryInstallID:    "",
 	}
