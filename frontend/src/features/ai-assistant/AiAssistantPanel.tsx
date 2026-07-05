@@ -117,6 +117,11 @@ interface AskAIOptions {
   threadTitle?: string;
 }
 
+type PlannedTable = {
+  schema: string;
+  name: string;
+};
+
 type RuntimeBridge = {
   BrowserOpenURL?: (url: string) => void;
   EventsOn?: (
@@ -155,6 +160,8 @@ const modelsByProvider: Record<ProviderId, string[]> = {
   ],
   custom: ["openai-compatible"],
 };
+
+const maxDDLRecoveryRetries = 3;
 
 function defaultModelForProvider(provider: ProviderId) {
   return modelsByProvider[provider][0];
@@ -699,26 +706,16 @@ export function AiAssistantPanel({
         await saveAssistantResponse(thread.id, response);
         return;
       }
-      const schemaContext = (
-        await schemaService.context({
-          connectionId: activeProfile.id,
-          prompt,
-          dialect: activeProfile.driver,
-          maxDetailedTables: Math.max(tablePlan.tables.length, 1),
-          tables: tablePlan.tables.map((table) => ({
-            schema: table.schema,
-            name: table.name,
-          })),
-        })
-      ).context;
-      const response = await aiCredentialService.generate({
-        provider: selected.id,
-        model: requestModel,
-        prompt,
-        dialect: activeProfile?.driver || "postgres",
-        responseStyle: settings?.chatResponsePrompt || "",
-        schemaContext,
+      const response = await generateWithDDLRecovery({
+        connectionId: activeProfile.id,
         conversation,
+        dialect: activeProfile.driver,
+        model: requestModel,
+        provider: selected.id,
+        prompt,
+        responseStyle: settings?.chatResponsePrompt || "",
+        schemaSnapshot,
+        tables: tablePlan.tables,
       });
       response.tokenUsage = addTokenUsage(
         tablePlan.tokenUsage,
@@ -744,7 +741,6 @@ export function AiAssistantPanel({
         createdAt: assistantMessage.createdAt,
       });
       applyThreadTokenUsage(thread.id, response.tokenUsage, assistantMessage.createdAt);
-      if (response.sql) onLoadSQL(response.sql);
     } catch (error) {
       toast("AI request failed", {
         description: errorMessage(error),
@@ -908,6 +904,7 @@ export function AiAssistantPanel({
               className="px-4 pb-4 pt-1"
               onSubmit={(event) => {
                 event.preventDefault();
+                event.currentTarget.querySelector("textarea")?.blur();
                 void askAI();
               }}
             >
@@ -922,6 +919,7 @@ export function AiAssistantPanel({
                       event.key === "Enter"
                     ) {
                       event.preventDefault();
+                      event.currentTarget.blur();
                       void askAI();
                     }
                   }}
@@ -1393,9 +1391,10 @@ function AIResponseView({
             <SQLCodeBlock onCopySQL={onCopySQL} sql={response.sql} />
           ) : null}
         </div>
-        <div className="mt-2 flex min-w-0 items-center gap-1 pl-1">
+        <div className="mt-2 grid min-w-0 justify-start gap-1 pl-1">
           <ChatActionButton label="Copy response" onClick={onCopyAnswer}>
             <Copy size={14} />
+            <span>Copy response</span>
           </ChatActionButton>
           {response.sql ? (
             <>
@@ -1403,7 +1402,8 @@ function AIResponseView({
                 label="Load query into editor"
                 onClick={onLoadSQL}
               >
-                <ArrowBigDownDash size={17} />
+                <ArrowBigDownDash size={15} />
+                <span>Load query</span>
               </ChatActionButton>
               <ChatActionButton
                 disabled={busy}
@@ -1412,6 +1412,7 @@ function AIResponseView({
                 variant="primary"
               >
                 <PlayCircle size={14} />
+                <span>Run query</span>
               </ChatActionButton>
             </>
           ) : null}
@@ -1688,10 +1689,10 @@ function ChatActionButton({
     <button
       aria-label={label}
       className={cn(
-        "grid h-8 w-8 shrink-0 place-items-center rounded-md transition disabled:cursor-not-allowed disabled:opacity-45",
+        "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-45 [&>svg]:shrink-0",
         variant === "primary"
-          ? "bg-transparent text-accent hover:text-accent-hover"
-          : "bg-transparent text-zinc-400 hover:text-zinc-100",
+          ? "bg-transparent text-accent hover:bg-surface-850 hover:text-accent-hover"
+          : "bg-transparent text-zinc-400 hover:bg-surface-850 hover:text-zinc-100",
         !onClick &&
           "cursor-default bg-transparent text-zinc-400 hover:bg-transparent hover:text-zinc-400",
       )}
@@ -1893,6 +1894,65 @@ function buildTablePlanningContext(
   return lines.join("\n");
 }
 
+async function generateWithDDLRecovery({
+  connectionId,
+  conversation,
+  dialect,
+  model,
+  provider,
+  prompt,
+  responseStyle,
+  schemaSnapshot,
+  tables,
+}: {
+  connectionId: string;
+  conversation: AIChatTurn[];
+  dialect: string;
+  model: string;
+  provider: ProviderId;
+  prompt: string;
+  responseStyle: string;
+  schemaSnapshot: SchemaSnapshot;
+  tables: PlannedTable[];
+}) {
+  let selectedTables = uniquePlannedTables(tables);
+  let tokenUsage = zeroTokenUsage();
+
+  for (let retry = 0; ; retry += 1) {
+    const schemaContext = (
+      await schemaService.context({
+        connectionId,
+        prompt,
+        dialect,
+        maxDetailedTables: Math.max(selectedTables.length, 1),
+        tables: selectedTables,
+      })
+    ).context;
+    const response = await aiCredentialService.generate({
+      provider,
+      model,
+      prompt,
+      dialect,
+      responseStyle,
+      schemaContext,
+      conversation,
+    });
+
+    tokenUsage = addTokenUsage(tokenUsage, response.tokenUsage);
+    response.tokenUsage = tokenUsage;
+
+    if (response.sql || retry >= maxDDLRecoveryRetries) return response;
+
+    const nextTables = mergeKnownMissingTables(
+      selectedTables,
+      response.missingTables || [],
+      schemaSnapshot,
+    );
+    if (sameTableSet(selectedTables, nextTables)) return response;
+    selectedTables = nextTables;
+  }
+}
+
 function resolveTablesFromPrompt(
   prompt: string,
   schemas: SchemaSummary[],
@@ -1951,6 +2011,57 @@ function uniqueTables(tables: TableSummary[]) {
     unique.push(table);
   }
   return unique;
+}
+
+function uniquePlannedTables(tables: PlannedTable[]) {
+  const seen = new Set<string>();
+  const unique: PlannedTable[] = [];
+  for (const table of tables) {
+    const schema = table.schema.trim();
+    const name = table.name.trim();
+    const key = tableKey(schema, name);
+    if (!schema || !name || seen.has(key)) continue;
+    seen.add(key);
+    unique.push({ schema, name });
+  }
+  return unique;
+}
+
+function mergeKnownMissingTables(
+  selectedTables: PlannedTable[],
+  missingTables: PlannedTable[],
+  schemaSnapshot: SchemaSnapshot,
+) {
+  const knownTables = new Map<string, PlannedTable>();
+  for (const schema of schemaSnapshot.schemas) {
+    for (const table of schemaSnapshot.tablesBySchema[schema.name] || []) {
+      knownTables.set(tableKey(table.schema, table.name), {
+        schema: table.schema,
+        name: table.name,
+      });
+    }
+  }
+
+  return uniquePlannedTables([
+    ...selectedTables,
+    ...missingTables
+      .map((table) => knownTables.get(tableKey(table.schema, table.name)))
+      .filter((table): table is PlannedTable => Boolean(table)),
+  ]);
+}
+
+function sameTableSet(left: PlannedTable[], right: PlannedTable[]) {
+  if (left.length !== right.length) return false;
+  const leftKeys = new Set(
+    left.map((table) => tableKey(table.schema, table.name)),
+  );
+  return right.every((table) =>
+    leftKeys.has(tableKey(table.schema, table.name)),
+  );
+}
+
+function tableKey(schema: string, table: string) {
+  return `${schema}.${table}`.toLowerCase();
 }
 
 function errorMessage(error: unknown, fallback = "Unknown error") {

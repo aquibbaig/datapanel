@@ -19,7 +19,8 @@ export interface AIGenerateRequest
   conversation?: AIChatTurn[];
 }
 export interface AIGenerateResponse
-  extends Omit<ai.GenerateResponse, "convertValues"> {
+  extends Omit<ai.GenerateResponse, "convertValues" | "missingTables"> {
+  missingTables?: AIPlanResponse["tables"];
   tokenUsage: ai.TokenUsage;
 }
 export interface AIPlanRequest

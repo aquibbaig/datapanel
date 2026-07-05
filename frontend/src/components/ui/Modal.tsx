@@ -40,7 +40,7 @@ export function Modal({
             <X size={14} />
           </Button>
         </div>
-        <div className={cn("", bodyClassName)}>{children}</div>
+        <div className={cn(bodyClassName ?? "p-4")}>{children}</div>
       </div>
     </div>
   );

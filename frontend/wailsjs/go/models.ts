@@ -94,11 +94,30 @@ export namespace ai {
 	        this.totalTokens = source["totalTokens"];
 	    }
 	}
+	export class PlanTable {
+	    schema: string;
+	    name: string;
+	    confidence: number;
+	    reason: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PlanTable(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.schema = source["schema"];
+	        this.name = source["name"];
+	        this.confidence = source["confidence"];
+	        this.reason = source["reason"];
+	    }
+	}
 	export class GenerateResponse {
 	    answer: string;
 	    sql: string;
 	    destructiveRisk: boolean;
 	    assumptions: string[];
+	    missingTables?: PlanTable[];
 	    tokenUsage: TokenUsage;
 	
 	    static createFrom(source: any = {}) {
@@ -111,6 +130,7 @@ export namespace ai {
 	        this.sql = source["sql"];
 	        this.destructiveRisk = source["destructiveRisk"];
 	        this.assumptions = source["assumptions"];
+	        this.missingTables = this.convertValues(source["missingTables"], PlanTable);
 	        this.tokenUsage = this.convertValues(source["tokenUsage"], TokenUsage);
 	    }
 	
@@ -171,24 +191,6 @@ export namespace ai {
 		    }
 		    return a;
 		}
-	}
-	export class PlanTable {
-	    schema: string;
-	    name: string;
-	    confidence: number;
-	    reason: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new PlanTable(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.schema = source["schema"];
-	        this.name = source["name"];
-	        this.confidence = source["confidence"];
-	        this.reason = source["reason"];
-	    }
 	}
 	export class PlanResponse {
 	    needsClarification: boolean;

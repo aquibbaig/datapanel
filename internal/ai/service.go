@@ -569,12 +569,14 @@ func systemPrompt(dialect string, responseStyle string) string {
 	}
 	lines := []string{
 		"You are DataPanel's database assistant.",
-		"Return a JSON object with fields: answer, sql, destructiveRisk, assumptions.",
+		"Return a JSON object with fields: answer, sql, destructiveRisk, assumptions, missingTables.",
 		`Use an empty string for "sql" when no SQL is needed.`,
 		`Use an array of strings for "assumptions".`,
+		`Use an array for "missingTables"; each item must have schema, name, confidence, reason. Use [] when no extra DDL is needed.`,
 		"Use only the schema context provided.",
 		"Never invent table names, column names, join keys, filters, or metrics.",
-		"If required table or column metadata is missing, return an empty sql string and explain the missing schema item.",
+		"If required table DDL is listed as not loaded, return an empty sql string and put that listed table in missingTables.",
+		"If required column metadata is missing from loaded DDL, return an empty sql string and explain the missing schema item.",
 		"Prefer one clear SQL statement unless the user asks for a multi-step script.",
 		"Prefer read-only SELECT queries unless the user explicitly asks to modify data.",
 		"Mark destructiveRisk true for INSERT, UPDATE, DELETE, ALTER, DROP, TRUNCATE, or other data-changing SQL.",
@@ -623,7 +625,8 @@ func parseGenerateResponse(content string) (GenerateResponse, error) {
 	if parsed.Assumptions == nil {
 		parsed.Assumptions = []string{}
 	}
-	if parsed.Answer == "" && parsed.SQL == "" {
+	parsed.MissingTables = normalizePlanTables(parsed.MissingTables)
+	if parsed.Answer == "" && parsed.SQL == "" && len(parsed.MissingTables) == 0 {
 		return GenerateResponse{}, apperrors.New(apperrors.CodeValidation, "AI response was empty")
 	}
 	return parsed, nil
@@ -639,9 +642,22 @@ func parsePlanResponse(content string) (PlanResponse, error) {
 		parsed.Assumptions = []string{}
 	}
 
-	tables := make([]PlanTable, 0, len(parsed.Tables))
+	parsed.Tables = normalizePlanTables(parsed.Tables)
+
+	if parsed.NeedsClarification && parsed.Question == "" {
+		parsed.Question = "Which table should I use for this request?"
+	}
+	if !parsed.NeedsClarification && len(parsed.Tables) == 0 {
+		parsed.NeedsClarification = true
+		parsed.Question = "Which table should I use for this request?"
+	}
+	return parsed, nil
+}
+
+func normalizePlanTables(input []PlanTable) []PlanTable {
+	tables := make([]PlanTable, 0, len(input))
 	seen := map[string]bool{}
-	for _, table := range parsed.Tables {
+	for _, table := range input {
 		table.Schema = strings.TrimSpace(table.Schema)
 		table.Name = strings.TrimSpace(table.Name)
 		table.Reason = strings.TrimSpace(table.Reason)
@@ -661,16 +677,7 @@ func parsePlanResponse(content string) (PlanResponse, error) {
 		seen[key] = true
 		tables = append(tables, table)
 	}
-	parsed.Tables = tables
-
-	if parsed.NeedsClarification && parsed.Question == "" {
-		parsed.Question = "Which table should I use for this request?"
-	}
-	if !parsed.NeedsClarification && len(parsed.Tables) == 0 {
-		parsed.NeedsClarification = true
-		parsed.Question = "Which table should I use for this request?"
-	}
-	return parsed, nil
+	return tables
 }
 
 func providerHTTPError(statusCode int, responseBody []byte) error {
