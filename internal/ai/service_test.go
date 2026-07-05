@@ -181,6 +181,54 @@ func TestParsePlanResponseNormalizesTables(t *testing.T) {
 	}
 }
 
+func TestParseGenerateResponseNormalizesMissingTables(t *testing.T) {
+	response, err := parseGenerateResponse(`{
+		"answer": "I need more DDL.",
+		"sql": "",
+		"destructiveRisk": false,
+		"assumptions": null,
+		"missingTables": [
+			{"schema": " public ", "name": " orders ", "confidence": 1.4, "reason": "join target"},
+			{"schema": "public", "name": "orders", "confidence": 0.8, "reason": "duplicate"},
+			{"schema": "", "name": "ignored", "confidence": 0.5, "reason": ""}
+		]
+	}`)
+	if err != nil {
+		t.Fatalf("parseGenerateResponse returned error: %v", err)
+	}
+	if len(response.MissingTables) != 1 {
+		t.Fatalf("expected one missing table, got %d", len(response.MissingTables))
+	}
+	if response.MissingTables[0].Schema != "public" || response.MissingTables[0].Name != "orders" {
+		t.Fatalf("unexpected missing table: %+v", response.MissingTables[0])
+	}
+	if response.MissingTables[0].Confidence != 1 {
+		t.Fatalf("expected confidence to be clamped to 1, got %f", response.MissingTables[0].Confidence)
+	}
+	if response.Assumptions == nil {
+		t.Fatalf("expected assumptions to be normalized to an empty slice")
+	}
+}
+
+func TestParseGenerateResponseAllowsSQLWithoutMissingTables(t *testing.T) {
+	response, err := parseGenerateResponse(`{
+		"answer": "Done.",
+		"sql": "select 1;",
+		"destructiveRisk": false,
+		"assumptions": [],
+		"missingTables": null
+	}`)
+	if err != nil {
+		t.Fatalf("parseGenerateResponse returned error: %v", err)
+	}
+	if response.SQL != "select 1;" {
+		t.Fatalf("unexpected SQL: %q", response.SQL)
+	}
+	if len(response.MissingTables) != 0 {
+		t.Fatalf("expected no missing tables, got %+v", response.MissingTables)
+	}
+}
+
 func TestParsePlanResponseRequiresTableOrClarification(t *testing.T) {
 	plan, err := parsePlanResponse(`{
 		"needsClarification": false,

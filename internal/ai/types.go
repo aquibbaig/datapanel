@@ -55,11 +55,12 @@ type PlanResponse struct {
 }
 
 type GenerateResponse struct {
-	Answer          string     `json:"answer"`
-	SQL             string     `json:"sql"`
-	DestructiveRisk bool       `json:"destructiveRisk"`
-	Assumptions     []string   `json:"assumptions"`
-	TokenUsage      TokenUsage `json:"tokenUsage"`
+	Answer          string      `json:"answer"`
+	SQL             string      `json:"sql"`
+	DestructiveRisk bool        `json:"destructiveRisk"`
+	Assumptions     []string    `json:"assumptions"`
+	MissingTables   []PlanTable `json:"missingTables,omitempty"`
+	TokenUsage      TokenUsage  `json:"tokenUsage"`
 }
 
 type TokenUsage struct {
