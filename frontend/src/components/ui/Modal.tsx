@@ -1,15 +1,25 @@
 import type { ReactNode } from "react";
 import { X } from "lucide-react";
+import { cn } from "../../lib/cn";
 import { Button } from "./Button";
 
 interface Props {
   title: string;
   open: boolean;
   children: ReactNode;
+  panelClassName?: string;
+  bodyClassName?: string;
   onClose(): void;
 }
 
-export function Modal({ title, open, children, onClose }: Props) {
+export function Modal({
+  title,
+  open,
+  children,
+  panelClassName,
+  bodyClassName,
+  onClose,
+}: Props) {
   if (!open) return null;
 
   return (
@@ -18,7 +28,10 @@ export function Modal({ title, open, children, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[560px] rounded-xl border border-line bg-surface-850 shadow-2xl"
+        className={cn(
+          "w-full max-w-[560px] rounded-xl border border-line bg-surface-850 shadow-2xl",
+          panelClassName,
+        )}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex h-12 items-center justify-between border-b border-line px-4">
@@ -27,7 +40,7 @@ export function Modal({ title, open, children, onClose }: Props) {
             <X size={14} />
           </Button>
         </div>
-        <div className="p-4">{children}</div>
+        <div className={cn("", bodyClassName)}>{children}</div>
       </div>
     </div>
   );

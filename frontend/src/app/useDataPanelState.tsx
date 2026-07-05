@@ -1149,7 +1149,6 @@ export function useDataPanelState() {
     });
     setSettings(appliedSettings);
     setStatus({ tone: "success", text: "Settings updated" });
-    notify("success", "Settings updated");
   }, []);
 
   return {
