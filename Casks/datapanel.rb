@@ -19,9 +19,9 @@ cask "datapanel" do
 
       settings_path = File.expand_path("~/Library/Application Support/datapanel/settings.json")
       settings = File.file?(settings_path) ? JSON.parse(File.read(settings_path)) : {}
-      telemetry_install_id = settings["telemetryInstallId"].to_s.strip
+      user_id = settings["userId"].to_s.strip
 
-      if settings["telemetryEnabled"] == true && !telemetry_install_id.empty?
+      if settings["telemetryEnabled"] == true && !user_id.empty?
         posthog_token = "phc_wGsopSafUkaBkGME8r5u8k5TAc5VSjXsb3pf3oxqm4cd"
         posthog_host = "https://us.i.posthog.com"
         uri = URI("#{posthog_host}/i/v0/e/")
@@ -30,11 +30,11 @@ cask "datapanel" do
         request.body = {
           api_key: posthog_token,
           event: "datapanel_uninstalled",
-          distinct_id: telemetry_install_id,
+          distinct_id: user_id,
           properties: {
             "$process_person_profile": false,
             app: "datapanel",
-            telemetry_install_id: telemetry_install_id,
+            userId: user_id,
             source: "homebrew_cask_uninstall",
           },
           timestamp: Time.now.utc.iso8601,

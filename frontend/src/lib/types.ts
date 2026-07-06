@@ -137,7 +137,7 @@ export type SQLAnalysis = query.SQLAnalysis;
 
 export interface AppSettings extends settings.AppSettings {
   telemetryEnabled: boolean;
-  telemetryInstallId: string;
+  userId: string;
 }
 export type SaveFileExportRequest = fileexport.SaveExportRequest;
 export type SaveFileExportResult = fileexport.SaveExportResult;

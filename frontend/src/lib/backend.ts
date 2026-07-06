@@ -75,9 +75,8 @@ const defaultSettings: AppSettings = {
   cursorMode: "default",
   vimNavigationEnabled: false,
   telemetryEnabled: false,
-  telemetryInstallId: "",
+  userId: "",
 };
-const mockTelemetryFirstLaunchReportedIds = new Set<string>();
 
 const mockAICredentials: Record<string, AICredentialStatus> = {};
 const mockAIThreads: AIChatThread[] = [];
@@ -655,7 +654,7 @@ function normalizeSettings(settings: AppSettings): AppSettings {
     exportDirectory: settings.exportDirectory || "",
     vimNavigationEnabled: Boolean(settings.vimNavigationEnabled),
     telemetryEnabled: Boolean(settings.telemetryEnabled),
-    telemetryInstallId: settings.telemetryInstallId || "",
+    userId: settings.userId || "",
   };
 }
 
@@ -680,38 +679,15 @@ export const settingsService = {
   },
   async update(input: AppSettings): Promise<AppSettings> {
     if (!isWailsRuntime()) {
-      const telemetryInstallId =
-        defaultSettings.telemetryInstallId ||
-        (input.telemetryEnabled ? crypto.randomUUID() : "");
+      const userId = defaultSettings.userId || input.userId || "";
       Object.assign(defaultSettings, input, {
-        telemetryInstallId,
+        userId,
       });
       return normalizeSettings(defaultSettings);
     }
     return normalizeSettings(
       (await SettingsBindings.UpdateSettings(input)) as AppSettings,
     );
-  },
-  async shouldReportTelemetryFirstLaunch(): Promise<boolean> {
-    if (!isWailsRuntime()) {
-      const settings = normalizeSettings(defaultSettings);
-      return Boolean(
-        settings.telemetryEnabled &&
-          settings.telemetryInstallId &&
-          !mockTelemetryFirstLaunchReportedIds.has(settings.telemetryInstallId),
-      );
-    }
-    return SettingsBindings.ShouldReportTelemetryFirstLaunch();
-  },
-  async markTelemetryFirstLaunchReported(): Promise<void> {
-    if (!isWailsRuntime()) {
-      const settings = normalizeSettings(defaultSettings);
-      if (settings.telemetryInstallId) {
-        mockTelemetryFirstLaunchReportedIds.add(settings.telemetryInstallId);
-      }
-      return;
-    }
-    return SettingsBindings.MarkTelemetryFirstLaunchReported();
   },
 };
 

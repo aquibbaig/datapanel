@@ -6,8 +6,7 @@ import { BrowserOpenURL } from "../../wailsjs/runtime/runtime";
 import { aiCredentialService, appDataService, connectionService, queryService, schemaService, settingsService, updateService } from "../lib/backend";
 import {
   configureTelemetry,
-  trackAppOpened,
-  trackTelemetryFirstLaunch,
+  trackAppInstalled,
 } from "../lib/telemetry";
 import type {
   AppSettings,
@@ -106,29 +105,27 @@ function preferredWorkspaceId(profiles: ConnectionProfile[]) {
   return profiles[0]?.id || "";
 }
 
-async function applyTelemetrySettings(
-  nextSettings: AppSettings,
-  options: { trackAppOpen: boolean },
-) {
+async function applyTelemetrySettings(nextSettings: AppSettings) {
   await configureTelemetry(nextSettings);
-  let appliedSettings = nextSettings;
+  return nextSettings;
+}
 
-  if (await settingsService.shouldReportTelemetryFirstLaunch()) {
-    const eventQueued = await trackTelemetryFirstLaunch(appliedSettings);
-    if (eventQueued) {
-      try {
-        await settingsService.markTelemetryFirstLaunchReported();
-      } catch (error) {
-        console.warn("Could not mark telemetry first launch as reported", error);
-      }
-    }
-  }
+let appInstalledReportPromise: Promise<AppSettings> | null = null;
 
-  if (options.trackAppOpen) {
-    await trackAppOpened(appliedSettings);
-  }
+async function reportAppInstalled(settings: AppSettings) {
+  if (settings.userId.trim()) return settings;
+  if (appInstalledReportPromise) return appInstalledReportPromise;
 
-  return appliedSettings;
+  appInstalledReportPromise = (async () => {
+    const userId = crypto.randomUUID();
+    const nextSettings = await settingsService.update({ ...settings, userId });
+    await configureTelemetry(nextSettings);
+    await trackAppInstalled(userId, nextSettings);
+    return nextSettings;
+  })().finally(() => {
+    appInstalledReportPromise = null;
+  });
+  return appInstalledReportPromise;
 }
 
 export function useDataPanelState() {
@@ -428,9 +425,14 @@ export function useDataPanelState() {
       loadProfiles(),
       settingsService
         .get()
-        .then((nextSettings) =>
-          applyTelemetrySettings(nextSettings, { trackAppOpen: true }),
-        )
+        .then(async (nextSettings) => {
+          let appliedSettings = await applyTelemetrySettings(nextSettings);
+          appliedSettings = await reportAppInstalled(appliedSettings).catch((error: unknown) => {
+            console.warn("Could not report app install telemetry", error);
+            return appliedSettings;
+          });
+          return appliedSettings;
+        })
         .then((nextSettings) => {
           setSettings(nextSettings);
           return nextSettings;
@@ -1144,9 +1146,7 @@ export function useDataPanelState() {
 
   const updateSettings = useCallback(async (nextSettings: AppSettings) => {
     const saved = await settingsService.update(nextSettings);
-    const appliedSettings = await applyTelemetrySettings(saved, {
-      trackAppOpen: false,
-    });
+    const appliedSettings = await applyTelemetrySettings(saved);
     setSettings(appliedSettings);
     setStatus({ tone: "success", text: "Settings updated" });
   }, []);

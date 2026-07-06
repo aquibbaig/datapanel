@@ -63,8 +63,8 @@ export function RightActionPanel({
   return (
     <div className={cn("flex h-full flex-col", panel === "ai" ? "p-0" : "gap-4 p-4")}>
       {panel !== "ai" ? (
-        <div className="flex items-start gap-2">
-          <Clock3 size={14} className="mt-0.5 shrink-0 text-zinc-100" />
+        <div className="flex items-center gap-2">
+          <Clock3 size={14} className="shrink-0 text-zinc-100" />
           <div>
             <h2 className="text-sm font-semibold text-zinc-100">
               {titles[panel]}

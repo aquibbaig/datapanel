@@ -1261,7 +1261,7 @@ export namespace settings {
 	    cursorMode: string;
 	    vimNavigationEnabled: boolean;
 	    telemetryEnabled: boolean;
-	    telemetryInstallId: string;
+	    userId: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppSettings(source);
@@ -1281,7 +1281,7 @@ export namespace settings {
 	        this.cursorMode = source["cursorMode"];
 	        this.vimNavigationEnabled = source["vimNavigationEnabled"];
 	        this.telemetryEnabled = source["telemetryEnabled"];
-	        this.telemetryInstallId = source["telemetryInstallId"];
+	        this.userId = source["userId"];
 	    }
 	}
 
