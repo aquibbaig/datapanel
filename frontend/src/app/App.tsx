@@ -358,7 +358,7 @@ export function App() {
     };`;
     const result = await model.runQuery(sql, true, {
       historyMode: "query",
-      recordHistory: true,
+      recordHistory: false,
     });
     if (result) {
       const details = await detailsPromise;
