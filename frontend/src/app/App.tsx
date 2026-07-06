@@ -1060,7 +1060,9 @@ export function App() {
           onClose={() => setSettingsOpen(false)}
         >
           <SettingsPanel
+            appUpdateStatus={model.appUpdateState}
             settings={model.settings}
+            onCheckForUpdates={model.checkForAppUpdate}
             onUpdate={model.updateSettings}
           />
         </Modal>

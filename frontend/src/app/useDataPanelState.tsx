@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Check, Download, ExternalLink, Info, Loader2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { BrowserOpenURL } from "../../wailsjs/runtime/runtime";
@@ -19,7 +19,8 @@ import type {
   SchemaSummary,
   TableDetails,
   TableSummary,
-  TestConnectionRequest
+  TestConnectionRequest,
+  UpdateCheckResult
 } from "../lib/types";
 
 export interface StatusMessage {
@@ -30,6 +31,13 @@ export interface StatusMessage {
 export interface WorkspaceSwitchState {
   profileId: string;
   name: string;
+}
+
+export interface AppUpdateState {
+  checking: boolean;
+  lastCheckedAt?: string;
+  result?: UpdateCheckResult | null;
+  error?: string;
 }
 
 interface QueryResultSnapshot {
@@ -48,16 +56,11 @@ interface QueryToastOptions {
 interface MetadataLoadOptions {
   refresh?: boolean;
   reconnectKeychain?: boolean;
-  backgroundRefresh?: boolean;
 }
 
 interface ConnectOptions {
   suppressErrorToast?: boolean;
   reconnectKeychain?: boolean;
-  refresh?: boolean;
-}
-
-interface PrefetchMetadataOptions {
   refresh?: boolean;
 }
 
@@ -74,8 +77,10 @@ const tableDetailsQueryKey = (connectionId: string, schema: string, table: strin
   ["tableDetails", connectionId, schema, table] as const;
 
 const activeWorkspaceStorageKey = "datapanel.activeWorkspaceId";
-const maxBackgroundWorkspacePrefetches = 5;
 const maxToastDescriptionLength = 260;
+const appUpdateCheckIntervalMs = 15 * 60 * 1000;
+const updateAvailableToastId = "datapanel-update-available";
+const manualUpdateCheckToastId = "datapanel-check-update";
 
 function loadLastActiveWorkspaceId() {
   try {
@@ -152,7 +157,6 @@ export function useDataPanelState() {
   const inspectRequestRef = useRef(0);
   const queryRequestRef = useRef(0);
   const metadataRequestRef = useRef(0);
-  const updateCheckStartedRef = useRef(false);
   const profilesRef = useRef<ConnectionProfile[]>([]);
   const activeConnectionIdRef = useRef("");
   const queryResultRef = useRef<QueryResult | null>(null);
@@ -163,6 +167,30 @@ export function useDataPanelState() {
     () => profiles.find((profile) => profile.id === activeConnectionId) || null,
     [activeConnectionId, profiles]
   );
+
+  const appUpdateQuery = useQuery({
+    queryKey: ["appUpdate"],
+    queryFn: updateService.check,
+    enabled: !isLocalDev(),
+    refetchInterval: appUpdateCheckIntervalMs,
+    refetchOnWindowFocus: false,
+    retry: false,
+    staleTime: appUpdateCheckIntervalMs,
+    gcTime: appUpdateCheckIntervalMs,
+  });
+
+  const appUpdateState = useMemo<AppUpdateState>(() => ({
+    checking: appUpdateQuery.isFetching,
+    lastCheckedAt: appUpdateQuery.dataUpdatedAt
+      ? new Date(appUpdateQuery.dataUpdatedAt).toISOString()
+      : undefined,
+    result: appUpdateQuery.data ?? null,
+    error: "",
+  }), [
+    appUpdateQuery.data,
+    appUpdateQuery.dataUpdatedAt,
+    appUpdateQuery.isFetching,
+  ]);
 
   useEffect(() => {
     profilesRef.current = profiles;
@@ -277,18 +305,19 @@ export function useDataPanelState() {
     return snapshot;
   }, [applySchemaSnapshot, fetchSchemaSnapshot]);
 
-  const refreshMetadataInBackground = useCallback((profileId: string) => {
+  const loadCachedMetadata = useCallback(async (profileId: string) => {
     const requestId = metadataRequestRef.current + 1;
     metadataRequestRef.current = requestId;
-    void fetchSchemaSnapshot(profileId, { refresh: true })
-      .then((snapshot) => {
-        if (metadataRequestRef.current !== requestId) return;
-        applySchemaSnapshot(profileId, snapshot);
-      })
-      .catch((error: unknown) => {
-        console.warn("Background metadata refresh failed", error);
-      });
-  }, [applySchemaSnapshot, fetchSchemaSnapshot]);
+    const snapshot = await readSchemaSnapshotCache(profileId);
+    if (metadataRequestRef.current !== requestId) return snapshot;
+    if (snapshot) {
+      applySchemaSnapshot(profileId, snapshot);
+    } else if (activeConnectionIdRef.current === profileId) {
+      setSchemas([]);
+      setTablesBySchema({});
+    }
+    return snapshot;
+  }, [applySchemaSnapshot, readSchemaSnapshotCache]);
 
   const invalidateSchemaSnapshot = useCallback(async (profileId: string) => {
     queryClient.removeQueries({ queryKey: schemaSnapshotQueryKey(profileId) });
@@ -304,33 +333,6 @@ export function useDataPanelState() {
         console.warn("Schema snapshot cache clear failed", error);
       });
   }, [queryClient]);
-
-  const prefetchWorkspaceMetadata = useCallback(async (
-    profilesToPrefetch: ConnectionProfile[],
-    options: PrefetchMetadataOptions = {},
-  ) => {
-    const queuedProfiles = profilesToPrefetch.filter((profile) => profile.id);
-    if (queuedProfiles.length === 0) return;
-
-    await runWithConcurrency(
-      queuedProfiles,
-      maxBackgroundWorkspacePrefetches,
-      async (profile) => {
-        try {
-          const cached = await readSchemaSnapshotCache(profile.id);
-          if (cached && !options.refresh) return;
-          await connectionService.connect({
-            profileId: profile.id,
-            password: "",
-            reconnectKeychain: false,
-          });
-          await fetchSchemaSnapshot(profile.id, { refresh: Boolean(options.refresh) });
-        } catch (error) {
-          console.warn(`Connection metadata prefetch failed for ${profile.name}`, error);
-        }
-      },
-    );
-  }, [fetchSchemaSnapshot, readSchemaSnapshotCache]);
 
   const clearSelectedTable = useCallback(() => {
     inspectRequestRef.current += 1;
@@ -368,7 +370,7 @@ export function useDataPanelState() {
   const connectAndLoadMetadata = useCallback(async (
     profileId: string,
     password = "",
-    options: MetadataLoadOptions = { refresh: true },
+    options: MetadataLoadOptions = { refresh: false },
   ) => {
     const started = performance.now();
     const result = await connectionService.connect({
@@ -389,23 +391,16 @@ export function useDataPanelState() {
       lastPingAt: now,
       connectedAt: now,
     });
-    if (options.backgroundRefresh) {
-      const cached = await readSchemaSnapshotCache(profileId);
-      if (cached) {
-        metadataRequestRef.current += 1;
-        applySchemaSnapshot(profileId, cached);
-        refreshMetadataInBackground(profileId);
-        return result;
-      }
+    if (options.refresh) {
+      await loadMetadata(profileId, options);
+    } else {
+      await loadCachedMetadata(profileId);
     }
-    await loadMetadata(profileId, options);
     return result;
   }, [
-    applySchemaSnapshot,
     clearSelectedTable,
+    loadCachedMetadata,
     loadMetadata,
-    readSchemaSnapshotCache,
-    refreshMetadataInBackground,
   ]);
 
   const loadProfiles = useCallback(async () => {
@@ -447,7 +442,6 @@ export function useDataPanelState() {
           await connectAndLoadMetadata(initialProfileId, "", {
             refresh: false,
           });
-          void prefetchWorkspaceMetadata(nextProfiles, { refresh: true });
         }
       })
       .catch((error: unknown) => {
@@ -457,45 +451,66 @@ export function useDataPanelState() {
         notify("danger", "Could not initialize app", message);
       })
       .finally(() => setInitializing(false));
-  }, [connectAndLoadMetadata, loadProfiles, prefetchWorkspaceMetadata]);
+  }, [connectAndLoadMetadata, loadProfiles]);
+
+  const showUpdateAvailable = useCallback((result: UpdateCheckResult) => {
+    setStatus({ tone: "warning", text: result.message });
+    toast("Update available", {
+      id: updateAvailableToastId,
+      description: updateDescription(result.latestVersion, result.assetName),
+      duration: Infinity,
+      icon: result.canInstall ? (
+        <Download className="h-4 w-4 text-zinc-300" />
+      ) : (
+        <ExternalLink className="h-4 w-4 text-zinc-300" />
+      ),
+      action: {
+        label: result.canInstall ? "Download" : "Open",
+        onClick: () => {
+          if (result.canInstall) {
+            void installAppUpdate(result.assetName);
+            return;
+          }
+          if (result.releaseUrl) {
+            BrowserOpenURL(result.releaseUrl);
+          }
+        },
+      },
+    });
+  }, []);
 
   useEffect(() => {
-    if (isLocalDev()) return;
-    if (updateCheckStartedRef.current) return;
-    updateCheckStartedRef.current = true;
+    if (appUpdateQuery.error) {
+      console.warn("Update check failed", appUpdateQuery.error);
+    }
+  }, [appUpdateQuery.error]);
 
-    void updateService
-      .check()
-      .then((result) => {
-        if (!result.updateAvailable) return;
+  useEffect(() => {
+    if (!appUpdateQuery.data?.updateAvailable) return;
+    showUpdateAvailable(appUpdateQuery.data);
+  }, [appUpdateQuery.data, appUpdateQuery.dataUpdatedAt, showUpdateAvailable]);
 
-        setStatus({ tone: "warning", text: result.message });
-        toast("Update available", {
-          description: updateDescription(result.latestVersion, result.assetName),
-          duration: Infinity,
-          icon: result.canInstall ? (
-            <Download className="h-4 w-4 text-zinc-300" />
-          ) : (
-            <ExternalLink className="h-4 w-4 text-zinc-300" />
-          ),
-          action: {
-            label: result.canInstall ? "Download" : "Open",
-            onClick: () => {
-              if (result.canInstall) {
-                void installAppUpdate(result.assetName);
-                return;
-              }
-              if (result.releaseUrl) {
-                BrowserOpenURL(result.releaseUrl);
-              }
-            },
-          },
-        });
-      })
-      .catch((error: unknown) => {
-        console.warn("Update check failed", error);
+  const checkForAppUpdate = useCallback(async () => {
+    const response = await appUpdateQuery.refetch();
+    if (response.error) {
+      toast.error("Could not check for updates", {
+        id: manualUpdateCheckToastId,
+        description: errorMessage(response.error, "Could not check for updates"),
       });
-  }, []);
+      return null;
+    }
+    const result = response.data;
+    if (!result) return null;
+    if (result.updateAvailable) {
+      showUpdateAvailable(result);
+    } else {
+      toast.success("DataPanel is up to date", {
+        id: manualUpdateCheckToastId,
+        description: result.message,
+      });
+    }
+    return result;
+  }, [appUpdateQuery.refetch, showUpdateAvailable]);
 
   async function installAppUpdate(assetName: string) {
     if (isLocalDev()) return;
@@ -615,7 +630,7 @@ export function useDataPanelState() {
     };
     setBusy(true);
     try {
-      const refresh = options.refresh ?? (settings?.autoRefreshMetadata ?? true);
+      const refresh = options.refresh ?? false;
       if (switchingConnection) {
         saveActiveQueryResultSnapshot(previousConnectionId);
         activeConnectionIdRef.current = profileId;
@@ -631,7 +646,6 @@ export function useDataPanelState() {
       }
       const result = await connectAndLoadMetadata(profileId, password, {
         refresh,
-        backgroundRefresh: switchingConnection && refresh,
         reconnectKeychain: options.reconnectKeychain,
       });
       if (switchingConnection) {
@@ -674,7 +688,6 @@ export function useDataPanelState() {
     restoreQueryResultSnapshot,
     runningRequestId,
     saveActiveQueryResultSnapshot,
-    settings?.autoRefreshMetadata,
     status,
   ]);
 
@@ -1167,6 +1180,7 @@ export function useDataPanelState() {
     settings,
     status,
     connectionHealth,
+    appUpdateState,
     busy,
     initializing,
     workspaceSwitching,
@@ -1184,6 +1198,7 @@ export function useDataPanelState() {
     explainQuery,
     commitSQL,
     cancelQuery,
+    checkForAppUpdate,
     updateSettings
   };
 }
@@ -1224,23 +1239,6 @@ function querySuccessMessage(rows: number, affectedRows: number, durationMs: num
 
 function schemaSnapshotHasTables(snapshot: SchemaSnapshot) {
   return Object.values(snapshot.tablesBySchema).some((tables) => tables.length > 0);
-}
-
-async function runWithConcurrency<T>(
-  items: T[],
-  limit: number,
-  task: (item: T) => Promise<void>,
-) {
-  let cursor = 0;
-  const workerCount = Math.min(Math.max(1, limit), items.length);
-  const workers = Array.from({ length: workerCount }, async () => {
-    while (cursor < items.length) {
-      const item = items[cursor];
-      cursor += 1;
-      await task(item);
-    }
-  });
-  await Promise.all(workers);
 }
 
 function updateDescription(version: string, assetName: string) {

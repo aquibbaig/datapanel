@@ -6,6 +6,7 @@ import {
   Monitor,
   Moon,
   MousePointer,
+  RefreshCw,
   RotateCcw,
   Shield,
   Sun,
@@ -14,17 +15,31 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "../../components/ui/Button";
 import { cn } from "../../lib/cn";
 import { textInputBehaviorProps } from "../../lib/text-input";
-import type { AppSettings } from "../../lib/types";
+import type { AppSettings, UpdateCheckResult } from "../../lib/types";
+
+interface AppUpdateStatus {
+  checking: boolean;
+  lastCheckedAt?: string;
+  result?: UpdateCheckResult | null;
+  error?: string;
+}
 
 interface Props {
   settings: AppSettings | null;
+  appUpdateStatus: AppUpdateStatus;
+  onCheckForUpdates(): Promise<unknown>;
   onUpdate(settings: AppSettings): Promise<void>;
 }
 
 type SectionId = "general" | "query" | "editor" | "exports" | "privacy";
 type IconComponent = typeof Monitor;
 
-export function SettingsPanel({ settings, onUpdate }: Props) {
+export function SettingsPanel({
+  settings,
+  appUpdateStatus,
+  onCheckForUpdates,
+  onUpdate,
+}: Props) {
   const [draft, setDraft] = useState<AppSettings | null>(settings);
   const [activeSection, setActiveSection] = useState<SectionId>("general");
   const [saving, setSaving] = useState(false);
@@ -185,6 +200,22 @@ export function SettingsPanel({ settings, onUpdate }: Props) {
                   onChange={(cursorMode) => updateDraft({ cursorMode })}
                 />
               </SettingRow>
+              <SettingRow
+                title="App updates"
+                description={updateCheckDescription(appUpdateStatus)}
+              >
+                <Button
+                  disabled={appUpdateStatus.checking}
+                  type="button"
+                  onClick={() => void onCheckForUpdates()}
+                >
+                  <RefreshCw
+                    className={cn(appUpdateStatus.checking && "animate-spin")}
+                    size={14}
+                  />
+                  Check now
+                </Button>
+              </SettingRow>
             </div>
           ) : null}
 
@@ -218,17 +249,6 @@ export function SettingsPanel({ settings, onUpdate }: Props) {
                   value={draft.queryTimeoutSeconds}
                   onChange={(queryTimeoutSeconds) =>
                     updateDraft({ queryTimeoutSeconds }, true)
-                  }
-                />
-              </SettingRow>
-              <SettingRow
-                title="Refresh metadata after connect"
-                description="Load schema metadata when a connection opens."
-              >
-                <ToggleSwitch
-                  checked={draft.autoRefreshMetadata}
-                  onChange={(autoRefreshMetadata) =>
-                    updateDraft({ autoRefreshMetadata })
                   }
                 />
               </SettingRow>
@@ -433,6 +453,23 @@ function NumberInput({
       onChange={(event) => onChange(Number(event.target.value))}
     />
   );
+}
+
+function updateCheckDescription(status: AppUpdateStatus) {
+  if (status.checking) return "Checking for the latest DataPanel release.";
+  if (status.error) return status.error;
+  if (status.result?.updateAvailable) return status.result.message;
+  if (status.lastCheckedAt) {
+    return `Last checked ${formatDateTime(status.lastCheckedAt)}.`;
+  }
+  return "DataPanel checks for updates every 15 minutes while open.";
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
 }
 
 function sectionTitle(section: SectionId) {
