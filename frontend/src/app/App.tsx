@@ -358,7 +358,7 @@ export function App() {
     };`;
     const result = await model.runQuery(sql, true, {
       historyMode: "query",
-      recordHistory: true,
+      recordHistory: false,
     });
     if (result) {
       const details = await detailsPromise;
@@ -682,7 +682,7 @@ export function App() {
           onAddConnection={openNewConnection}
           onConnect={connectProfile}
           onEditConnection={() => openEditConnection(model.activeProfile)}
-          onInspectTable={model.inspectTable}
+          onSelectTable={selectTableForEditing}
           onPrefetchTableDetails={model.prefetchTableDetails}
           onRefresh={model.refreshMetadata}
         />
