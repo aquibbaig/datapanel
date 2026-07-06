@@ -20,7 +20,7 @@ interface Props {
   selectedTable: TableSummary | null;
   tableDetails: TableDetails | null;
   onRefresh(): Promise<void>;
-  onInspectTable(table: TableSummary): Promise<TableDetails | null>;
+  onSelectTable(table: TableSummary): Promise<void>;
   onPrefetchTableDetails(table: TableSummary): Promise<void>;
 }
 
@@ -32,7 +32,7 @@ export function SchemaBrowser({
   selectedTable,
   tableDetails,
   onRefresh,
-  onInspectTable,
+  onSelectTable,
   onPrefetchTableDetails,
 }: Props) {
   const [filter, setFilter] = useState("");
@@ -191,7 +191,7 @@ export function SchemaBrowser({
                       selectedForeignKeys={selectedForeignKeys}
                       inspectingTable={inspectingTable}
                       selectedTable={selectedTable}
-                      onInspectTable={onInspectTable}
+                      onSelectTable={onSelectTable}
                       onToggleSchema={(schemaName) =>
                         setExpandedSchemaKeys((current) =>
                           toggleSchemaExpansion(current, schemaName),
@@ -383,14 +383,14 @@ function BrowserRow({
   selectedForeignKeys,
   inspectingTable,
   selectedTable,
-  onInspectTable,
+  onSelectTable,
   onToggleSchema,
 }: {
   row: BrowserRow;
   selectedForeignKeys: Set<string>;
   inspectingTable: TableSummary | null;
   selectedTable: TableSummary | null;
-  onInspectTable(table: TableSummary): Promise<TableDetails | null>;
+  onSelectTable(table: TableSummary): Promise<void>;
   onToggleSchema(schemaName: string): void;
 }) {
   if (row.kind === "schema") {
@@ -454,7 +454,7 @@ function BrowserRow({
       active={active}
       loading={loading}
       table={table}
-      onInspectTable={onInspectTable}
+      onSelectTable={onSelectTable}
     />
   );
 }

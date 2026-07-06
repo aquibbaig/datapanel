@@ -1,19 +1,19 @@
 import { Loader2, Table2, View } from "lucide-react";
 import { cn } from "../../../lib/cn";
-import type { TableDetails, TableSummary } from "../../../lib/types";
+import type { TableSummary } from "../../../lib/types";
 
 interface Props {
   active: boolean;
   loading: boolean;
   table: TableSummary;
-  onInspectTable(table: TableSummary): Promise<TableDetails | null>;
+  onSelectTable(table: TableSummary): Promise<void>;
 }
 
 export function SchemaTableRow({
   active,
   loading,
   table,
-  onInspectTable,
+  onSelectTable,
 }: Props) {
   const tableType = tableTypeDisplay(table.type);
   const TypeIcon = tableType.icon;
@@ -30,8 +30,8 @@ export function SchemaTableRow({
       >
         <button
           className="flex min-w-0 flex-1 items-center gap-2 self-stretch rounded-md px-2 text-left text-sm"
-          onClick={() => void onInspectTable(table)}
-          title={`Inspect ${table.schema}.${table.name}`}
+          onClick={() => void onSelectTable(table)}
+          title={`Open ${table.schema}.${table.name}`}
           type="button"
         >
           <TypeIcon

@@ -682,7 +682,7 @@ export function App() {
           onAddConnection={openNewConnection}
           onConnect={connectProfile}
           onEditConnection={() => openEditConnection(model.activeProfile)}
-          onInspectTable={model.inspectTable}
+          onSelectTable={selectTableForEditing}
           onPrefetchTableDetails={model.prefetchTableDetails}
           onRefresh={model.refreshMetadata}
         />
