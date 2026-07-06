@@ -1,5 +1,4 @@
 import {
-  ArrowBigDownDash,
   ArrowUp,
   ChevronDown,
   CogIcon,
@@ -11,6 +10,7 @@ import {
   MessageSquare,
   PlayCircle,
   Plus,
+  SquareArrowRight,
   Trash2,
   X,
 } from "lucide-react";
@@ -863,9 +863,6 @@ export function AiAssistantPanel({
                         busy={chatBusy}
                         key={message.id}
                         response={message.response}
-                        onCopyAnswer={() =>
-                          void copyText("AI response copied.", message.content)
-                        }
                         onCopySQL={() =>
                           void copyText(
                             "Generated SQL copied.",
@@ -1354,14 +1351,12 @@ function stripMarkdownCodeFence(value: string) {
 
 function AIResponseView({
   busy,
-  onCopyAnswer,
   onCopySQL,
   onExecuteSQL,
   onLoadSQL,
   response,
 }: {
   busy: boolean;
-  onCopyAnswer(): void;
   onCopySQL(): void;
   onExecuteSQL(): void;
   onLoadSQL(): void;
@@ -1391,19 +1386,14 @@ function AIResponseView({
             <SQLCodeBlock onCopySQL={onCopySQL} sql={response.sql} />
           ) : null}
         </div>
-        <div className="mt-2 grid min-w-0 justify-start gap-1 pl-1">
-          <ChatActionButton label="Copy response" onClick={onCopyAnswer}>
-            <Copy size={14} />
-            <span>Copy response</span>
-          </ChatActionButton>
+        <div className="mt-2 flex min-w-0 justify-end gap-1 pr-1">
           {response.sql ? (
             <>
               <ChatActionButton
                 label="Load query into editor"
                 onClick={onLoadSQL}
               >
-                <ArrowBigDownDash size={15} />
-                <span>Load query</span>
+                <SquareArrowRight size={15} />
               </ChatActionButton>
               <ChatActionButton
                 disabled={busy}
@@ -1412,7 +1402,6 @@ function AIResponseView({
                 variant="primary"
               >
                 <PlayCircle size={14} />
-                <span>Run query</span>
               </ChatActionButton>
             </>
           ) : null}
@@ -1689,7 +1678,7 @@ function ChatActionButton({
     <button
       aria-label={label}
       className={cn(
-        "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-45 [&>svg]:shrink-0",
+        "inline-grid h-8 w-8 shrink-0 place-items-center rounded-md transition disabled:cursor-not-allowed disabled:opacity-45 [&>svg]:shrink-0",
         variant === "primary"
           ? "bg-transparent text-accent hover:bg-surface-850 hover:text-accent-hover"
           : "bg-transparent text-zinc-400 hover:bg-surface-850 hover:text-zinc-100",

@@ -9,7 +9,6 @@ import {
   Search,
   Settings,
   Star,
-  X,
 } from "lucide-react";
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { Toaster } from "sonner";
@@ -644,14 +643,12 @@ export function App() {
     <div className="contents bg-background text-foreground" data-cursor-mode={cursorMode}>
       <Toaster
         closeButton
-        icons={{ close: <X size={14} /> }}
         position="top-right"
         theme={resolvedTheme}
         toastOptions={{
           classNames: {
-            toast: "items-start pr-10",
+            toast: "!items-start",
             icon: "mt-0.5",
-            closeButton: "!left-auto !right-4 !top-4 !h-4 !w-4 !border-0 !bg-transparent !p-0 !text-zinc-300 !shadow-none !transform-none hover:!bg-transparent hover:!text-zinc-100",
           },
         }}
       />
