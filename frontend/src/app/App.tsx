@@ -648,7 +648,7 @@ export function App() {
         toastOptions={{
           classNames: {
             toast: "!items-start",
-            icon: "mt-0.5",
+            icon: "mt-[3px]",
           },
         }}
       />
