@@ -13,7 +13,7 @@ type AppSettings struct {
 	CursorMode            string `json:"cursorMode"`
 	VimNavigationEnabled  bool   `json:"vimNavigationEnabled"`
 	TelemetryEnabled      bool   `json:"telemetryEnabled"`
-	TelemetryInstallID    string `json:"telemetryInstallId"`
+	UserID                string `json:"userId"`
 }
 
 func DefaultSettings() AppSettings {
@@ -30,6 +30,6 @@ func DefaultSettings() AppSettings {
 		CursorMode:            "default",
 		VimNavigationEnabled:  false,
 		TelemetryEnabled:      false,
-		TelemetryInstallID:    "",
+		UserID:                "",
 	}
 }

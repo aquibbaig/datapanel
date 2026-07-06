@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -25,8 +26,8 @@ func TestFileStoreLoadsDefaultsWhenMissing(t *testing.T) {
 	if settings.TelemetryEnabled {
 		t.Fatalf("expected telemetry to default off")
 	}
-	if settings.TelemetryInstallID != "" {
-		t.Fatalf("expected telemetry identifiers to default empty: %#v", settings)
+	if settings.UserID != "" {
+		t.Fatalf("expected user identifiers to default empty: %#v", settings)
 	}
 }
 
@@ -61,13 +62,14 @@ func TestFileStoreSavesAndNormalizesSettings(t *testing.T) {
 	}
 }
 
-func TestServiceGeneratesTelemetryInstallIDWhenEnabled(t *testing.T) {
+func TestServiceStoresUserIDWhenProvided(t *testing.T) {
 	dir := t.TempDir()
 	service := NewService(
 		NewFileStore(filepath.Join(dir, "settings.json")),
 		filepath.Join(dir, "cache"),
 	)
 
+	userID := uuid.NewString()
 	got, err := service.UpdateSettings(AppSettings{
 		Theme:                 "system",
 		QueryLimit:            100,
@@ -77,6 +79,7 @@ func TestServiceGeneratesTelemetryInstallIDWhenEnabled(t *testing.T) {
 		InspectorWidth:        320,
 		AutoRefreshMetadata:   true,
 		TelemetryEnabled:      true,
+		UserID:                userID,
 	})
 	if err != nil {
 		t.Fatalf("update settings: %v", err)
@@ -84,18 +87,78 @@ func TestServiceGeneratesTelemetryInstallIDWhenEnabled(t *testing.T) {
 	if !got.TelemetryEnabled {
 		t.Fatalf("expected telemetry to be enabled")
 	}
-	if _, err := uuid.Parse(got.TelemetryInstallID); err != nil {
-		t.Fatalf("expected generated telemetry install id, got %q", got.TelemetryInstallID)
+	if got.UserID != userID {
+		t.Fatalf("expected stored user id, got %q", got.UserID)
 	}
 }
 
-func TestServicePreservesTelemetryInstallID(t *testing.T) {
+func TestServiceLeavesUserIDEmptyOnLoad(t *testing.T) {
+	dir := t.TempDir()
+	store := NewFileStore(filepath.Join(dir, "settings.json"))
+	service := NewService(store, filepath.Join(dir, "cache"))
+
+	got, err := service.GetSettings()
+	if err != nil {
+		t.Fatalf("get settings: %v", err)
+	}
+	if got.TelemetryEnabled {
+		t.Fatalf("expected telemetry diagnostics to default off")
+	}
+	if got.UserID != "" {
+		t.Fatalf("expected user id to start empty, got %q", got.UserID)
+	}
+
+	saved, err := store.Load()
+	if err != nil {
+		t.Fatalf("load saved settings: %v", err)
+	}
+	if saved.UserID != "" {
+		t.Fatalf("expected empty user id to persist, got %q", saved.UserID)
+	}
+}
+
+func TestLegacyTelemetryInstallIDDoesNotBecomeUserID(t *testing.T) {
+	dir := t.TempDir()
+	settingsPath := filepath.Join(dir, "settings.json")
+	if err := os.WriteFile(settingsPath, []byte(`{
+  "theme": "light",
+  "telemetryEnabled": true,
+  "telemetryInstallId": "019f3643-be98-7ed5-8d86-8bc63cd14f02"
+}`), 0o600); err != nil {
+		t.Fatalf("write legacy settings: %v", err)
+	}
+
+	service := NewService(NewFileStore(settingsPath), filepath.Join(dir, "cache"))
+	loaded, err := service.GetSettings()
+	if err != nil {
+		t.Fatalf("get settings: %v", err)
+	}
+	if !loaded.TelemetryEnabled {
+		t.Fatalf("expected legacy telemetry setting to load")
+	}
+	if loaded.UserID != "" {
+		t.Fatalf("legacy telemetryInstallId should not suppress install tracking, got user id %q", loaded.UserID)
+	}
+
+	userID := uuid.NewString()
+	loaded.UserID = userID
+	updated, err := service.UpdateSettings(loaded)
+	if err != nil {
+		t.Fatalf("update settings: %v", err)
+	}
+	if updated.UserID != userID {
+		t.Fatalf("expected generated user id to be stored, got %q", updated.UserID)
+	}
+}
+
+func TestServicePreservesUserID(t *testing.T) {
 	dir := t.TempDir()
 	service := NewService(
 		NewFileStore(filepath.Join(dir, "settings.json")),
 		filepath.Join(dir, "cache"),
 	)
 
+	userID := uuid.NewString()
 	first, err := service.UpdateSettings(AppSettings{
 		Theme:                 "system",
 		QueryLimit:            100,
@@ -105,6 +168,7 @@ func TestServicePreservesTelemetryInstallID(t *testing.T) {
 		InspectorWidth:        320,
 		AutoRefreshMetadata:   true,
 		TelemetryEnabled:      true,
+		UserID:                userID,
 	})
 	if err != nil {
 		t.Fatalf("first update settings: %v", err)
@@ -119,13 +183,13 @@ func TestServicePreservesTelemetryInstallID(t *testing.T) {
 		InspectorWidth:        340,
 		AutoRefreshMetadata:   true,
 		TelemetryEnabled:      true,
-		TelemetryInstallID:    "client-supplied-id",
+		UserID:                "client-supplied-id",
 	})
 	if err != nil {
 		t.Fatalf("second update settings: %v", err)
 	}
-	if second.TelemetryInstallID != first.TelemetryInstallID {
-		t.Fatalf("telemetry install id changed: first=%q second=%q", first.TelemetryInstallID, second.TelemetryInstallID)
+	if second.UserID != first.UserID {
+		t.Fatalf("user id changed: first=%q second=%q", first.UserID, second.UserID)
 	}
 
 	third, err := service.UpdateSettings(AppSettings{
@@ -137,61 +201,12 @@ func TestServicePreservesTelemetryInstallID(t *testing.T) {
 		InspectorWidth:        360,
 		AutoRefreshMetadata:   true,
 		TelemetryEnabled:      true,
-		TelemetryInstallID:    "rotated-client-id",
+		UserID:                "rotated-client-id",
 	})
 	if err != nil {
 		t.Fatalf("third update settings: %v", err)
 	}
-	if third.TelemetryInstallID != first.TelemetryInstallID {
-		t.Fatalf("telemetry install id changed after later save: %q", third.TelemetryInstallID)
-	}
-}
-
-func TestServiceUsesTelemetryCacheMarkerForFirstLaunchReport(t *testing.T) {
-	dir := t.TempDir()
-	service := NewService(
-		NewFileStore(filepath.Join(dir, "settings.json")),
-		filepath.Join(dir, "cache"),
-	)
-
-	shouldReport, err := service.ShouldReportTelemetryFirstLaunch()
-	if err != nil {
-		t.Fatalf("should report before opt-in: %v", err)
-	}
-	if shouldReport {
-		t.Fatalf("expected telemetry to stay quiet before opt-in")
-	}
-
-	if _, err := service.UpdateSettings(AppSettings{
-		Theme:                 "system",
-		QueryLimit:            100,
-		QueryTimeoutSeconds:   15,
-		ConfirmDestructiveSQL: true,
-		SidebarWidth:          260,
-		InspectorWidth:        320,
-		AutoRefreshMetadata:   true,
-		TelemetryEnabled:      true,
-	}); err != nil {
-		t.Fatalf("update settings: %v", err)
-	}
-
-	shouldReport, err = service.ShouldReportTelemetryFirstLaunch()
-	if err != nil {
-		t.Fatalf("should report after opt-in: %v", err)
-	}
-	if !shouldReport {
-		t.Fatalf("expected first launch telemetry to report before marker exists")
-	}
-
-	if err := service.MarkTelemetryFirstLaunchReported(); err != nil {
-		t.Fatalf("mark first launch reported: %v", err)
-	}
-
-	shouldReport, err = service.ShouldReportTelemetryFirstLaunch()
-	if err != nil {
-		t.Fatalf("should report after marker: %v", err)
-	}
-	if shouldReport {
-		t.Fatalf("expected first launch telemetry to stay quiet after marker exists")
+	if third.UserID != first.UserID {
+		t.Fatalf("user id changed after later save: %q", third.UserID)
 	}
 }

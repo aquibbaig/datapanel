@@ -5,8 +5,12 @@ import type { AppSettings } from "./types";
 type TelemetryProperties = Record<string, string | number | boolean | null>;
 type PostHogClient = typeof posthog;
 
-const posthogToken = import.meta.env.VITE_POSTHOG_PROJECT_TOKEN?.trim() ?? "";
-const posthogHost = import.meta.env.VITE_POSTHOG_HOST?.trim() ?? "";
+const defaultPosthogToken = "phc_wGsopSafUkaBkGME8r5u8k5TAc5VSjXsb3pf3oxqm4cd";
+const defaultPosthogHost = "https://us.i.posthog.com";
+const posthogToken =
+  import.meta.env.VITE_POSTHOG_PROJECT_TOKEN?.trim() || defaultPosthogToken;
+const posthogHost =
+  import.meta.env.VITE_POSTHOG_HOST?.trim() || defaultPosthogHost;
 const configured = Boolean(posthogToken && posthogHost);
 
 let initialized = false;
@@ -74,12 +78,30 @@ async function enabledPostHogClient() {
   }
 }
 
-export async function trackTelemetryFirstLaunch(settings = telemetrySettings) {
-  return capture("datapanel_install_first_launch", baseProperties(settings));
+async function configuredPostHogClient() {
+  if (!configured) return null;
+  const client = await loadPostHog();
+  if (!client) return null;
+  client.opt_in_capturing({ captureEventName: false });
+  return client;
 }
 
-export async function trackAppOpened(settings = telemetrySettings) {
-  return capture("datapanel_app_opened", baseProperties(settings));
+export async function trackAppInstalled(
+  userId: string,
+  settings = telemetrySettings,
+) {
+  const normalizedUserId = userId.trim();
+  if (!normalizedUserId) return false;
+  const client = await configuredPostHogClient();
+  if (!client) return false;
+  client.capture("datapanel_app_installed", {
+    ...baseProperties(settings),
+    ...runtimeProperties(),
+    distinct_id: normalizedUserId,
+    userId: normalizedUserId,
+    $process_person_profile: false,
+  });
+  return true;
 }
 
 export async function captureTelemetryBoundaryError(
@@ -123,15 +145,32 @@ function isTelemetryEnabled(settings: AppSettings | null): settings is AppSettin
   return Boolean(
     configured &&
       settings?.telemetryEnabled &&
-      settings.telemetryInstallId.trim() !== "",
+      settings.userId.trim() !== "",
   );
 }
 
 function baseProperties(settings: AppSettings | null): TelemetryProperties {
   return {
     app: "datapanel",
-    telemetry_install_id: settings?.telemetryInstallId.trim() || null,
+    userId: settings?.userId.trim() || null,
   };
+}
+
+function runtimeProperties(): TelemetryProperties {
+  const userAgent = navigator.userAgent || "";
+  return {
+    locale: navigator.language || null,
+    os: operatingSystem(userAgent),
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
+    user_agent: userAgent || null,
+  };
+}
+
+function operatingSystem(userAgent: string) {
+  if (userAgent.includes("Windows")) return "Windows";
+  if (userAgent.includes("Mac OS X") || userAgent.includes("Macintosh")) return "macOS";
+  if (userAgent.includes("Linux")) return "Linux";
+  return "Unknown";
 }
 
 function errorName(error: unknown) {

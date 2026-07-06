@@ -87,6 +87,6 @@ func normalize(settings AppSettings) AppSettings {
 	}
 	settings.ExportDirectory = strings.TrimSpace(settings.ExportDirectory)
 	settings.ChatResponsePrompt = strings.TrimSpace(settings.ChatResponsePrompt)
-	settings.TelemetryInstallID = strings.TrimSpace(settings.TelemetryInstallID)
+	settings.UserID = strings.TrimSpace(settings.UserID)
 	return settings
 }
