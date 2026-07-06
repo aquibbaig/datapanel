@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, Download, ExternalLink, Info, Loader2, XCircle } from "lucide-react";
+import { AlertTriangle, Check, Download, ExternalLink, Info, Loader2, X, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { BrowserOpenURL } from "../../wailsjs/runtime/runtime";
 import { aiCredentialService, appDataService, connectionService, queryService, schemaService, settingsService, updateService } from "../lib/backend";
@@ -1254,11 +1254,32 @@ function notify(
   description?: string,
   id?: string,
 ) {
-  toast(title, {
+  const toastId = id || crypto.randomUUID();
+  toast(toastTitle(title, toastId), {
+    closeButton: false,
     description: truncateToastDescription(description),
-    id,
+    id: toastId,
     icon: toastIcon(tone),
   });
+}
+
+function toastTitle(title: string, id: string) {
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span>{title}</span>
+      <button
+        aria-label={`Dismiss ${title}`}
+        className="inline-grid h-4 w-4 place-items-center rounded text-zinc-300 transition hover:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-line"
+        onClick={(event) => {
+          event.stopPropagation();
+          toast.dismiss(id);
+        }}
+        type="button"
+      >
+        <X size={14} />
+      </button>
+    </span>
+  );
 }
 
 function truncateToastDescription(description?: string) {

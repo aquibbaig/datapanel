@@ -1,5 +1,17 @@
 # Changelog
 
+## 📊 Schema Results & Telemetry
+Release - v0.1.3
+
+✨ New
+
+- Added opt-in telemetry with privacy-safe event metadata.
+- Clicking a table in the left schema browser now opens a limited results view for that table.
+
+💎 Improvements
+
+- Kept schema-browser table opens out of query history so history stays focused on user-written SQL.
+
 ## 🤖 Agentic AI Chat
 Release - v1.0.2
 
