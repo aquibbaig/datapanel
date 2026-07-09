@@ -27,6 +27,7 @@ export function ResultsToolbar({
   rowCount,
   saving,
   selectedRowCount,
+  totalRowCount,
   truncated,
   visibleColumnCount,
   onAddRow,
@@ -49,6 +50,7 @@ export function ResultsToolbar({
   rowCount: number;
   saving: boolean;
   selectedRowCount: number;
+  totalRowCount: number;
   truncated: boolean;
   visibleColumnCount: number;
   onAddRow(): void;
@@ -62,7 +64,11 @@ export function ResultsToolbar({
   return (
     <div className="flex h-8 items-center justify-between gap-4 border-b border-line px-2 text-xs text-zinc-300">
       <div className="flex min-w-0 items-center gap-4">
-        <span>{rowCount} rows</span>
+        <span>
+          {rowCount === totalRowCount
+            ? `${rowCount} rows`
+            : `${rowCount}/${totalRowCount} rows`}
+        </span>
         {selectedRowCount > 0 ? <span>{selectedRowCount} selected</span> : null}
         <span>{affectedRows} affected</span>
         <span>{durationMs}ms</span>

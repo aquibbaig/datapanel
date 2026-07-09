@@ -16,7 +16,9 @@ import type {
 import { ChangeReviewPanel } from "./components/ChangeReviewPanel";
 import { CellEditor } from "./components/CellEditor";
 import { CellValue } from "./components/CellValue";
+import { ColumnActionsMenu } from "./components/ColumnActionsMenu";
 import { FinderBar } from "./components/FinderBar";
+import { ResultViewBar } from "./components/ResultViewBar";
 import { ResultsToolbar } from "./components/ResultsToolbar";
 import { ValueInspector } from "./components/ValueInspector";
 import {
@@ -48,6 +50,10 @@ import {
   serializeRowsAsTSV,
 } from "./lib/export";
 import {
+  applyResultFilters,
+  sortResultRows,
+} from "./lib/filters";
+import {
   cloneEditSnapshot,
   createPendingInsertId,
   insertedRowToResultRow,
@@ -68,6 +74,9 @@ import type {
   ChangeSummary,
   EditSnapshot,
   PendingInsertRow,
+  ResultFilter,
+  ResultFilterOperator,
+  ResultSort,
 } from "./types";
 
 interface Props {
@@ -103,6 +112,14 @@ export function ResultsGrid({
   const [finderOpen, setFinderOpen] = useState(false);
   const [finderQuery, setFinderQuery] = useState("");
   const [activeFindIndex, setActiveFindIndex] = useState(0);
+  const [filters, setFilters] = useState<ResultFilter[]>([]);
+  const [sortState, setSortState] = useState<ResultSort | null>(null);
+  const [hiddenColumnNames, setHiddenColumnNames] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [openColumnMenuIndex, setOpenColumnMenuIndex] = useState<number | null>(
+    null,
+  );
   const [scrollLeft, setScrollLeft] = useState(0);
   const [inspectedCell, setInspectedCell] = useState<{
     columnName: string;
@@ -129,6 +146,10 @@ export function ResultsGrid({
     setFinderOpen(false);
     setFinderQuery("");
     setActiveFindIndex(0);
+    setFilters([]);
+    setSortState(null);
+    setHiddenColumnNames(new Set());
+    setOpenColumnMenuIndex(null);
     setInspectedCell(null);
     changesRef.current = {};
     deletedRowKeysRef.current = new Set();
@@ -173,12 +194,17 @@ export function ResultsGrid({
       (result?.columns || []).map((column, index) => [column.name, index]),
     );
   }, [result]);
-  const visibleColumns = useMemo(
+  const resultColumns = useMemo(
     () =>
       (result?.columns || []).filter(
         (column) => column.name !== postgresRowLocatorColumn,
       ),
     [result],
+  );
+  const visibleColumns = useMemo(
+    () =>
+      resultColumns.filter((column) => !hiddenColumnNames.has(column.name)),
+    [hiddenColumnNames, resultColumns],
   );
   const rowLocatorIndex = columnIndexes.get(postgresRowLocatorColumn);
   const sourceColumnIndexes = useMemo(() => {
@@ -249,9 +275,37 @@ export function ResultsGrid({
       sourceColumnIndexes,
     ],
   );
+  function cellValueForView(
+    rowEntry: (typeof rowEntries)[number],
+    columnName: string,
+  ) {
+    const rowChanges =
+      rowEntry.kind === "insert"
+        ? rowEntry.insertedRow.values
+        : changes[rowEntry.rowKey] || {};
+    const draft = rowChanges[columnName];
+    if (draft) return draftValue(draft);
+    const index = columnIndexes.get(columnName);
+    return index === undefined ? null : rowEntry.row[index];
+  }
+
+  const filteredRowEntries = useMemo(
+    () =>
+      applyResultFilters(rowEntries, filters, (entry, columnName) =>
+        cellValueForView(entry, columnName),
+      ),
+    [changes, columnIndexes, filters, rowEntries],
+  );
+  const viewRowEntries = useMemo(
+    () =>
+      sortResultRows(filteredRowEntries, sortState, (entry, columnName) =>
+        cellValueForView(entry, columnName),
+      ),
+    [changes, columnIndexes, filteredRowEntries, sortState],
+  );
   const selectedRowEntries = useMemo(
-    () => rowEntries.filter(({ rowKey }) => selectedRowKeys.has(rowKey)),
-    [rowEntries, selectedRowKeys],
+    () => viewRowEntries.filter(({ rowKey }) => selectedRowKeys.has(rowKey)),
+    [selectedRowKeys, viewRowEntries],
   );
   const selectedRowCount = selectedRowEntries.length;
   const selectedExistingRowsWithoutLocator =
@@ -266,7 +320,7 @@ export function ResultsGrid({
   const selectedRowsAreStagedForDelete =
     selectedExistingRowKeys.length > 0 &&
     selectedExistingRowKeys.every((rowKey) => deletedRowKeys.has(rowKey));
-  const canAddRow = mutationEnabled && !saving && visibleColumns.length > 0;
+  const canAddRow = mutationEnabled && !saving && resultColumns.length > 0;
   const canDeleteSelectedRows =
     mutationEnabled &&
     !saving &&
@@ -294,7 +348,7 @@ export function ResultsGrid({
       rows: displayRows,
       selectedTable,
       sourceColumnIndexes,
-      visibleColumns,
+      visibleColumns: resultColumns,
     });
   }, [
     changes,
@@ -310,7 +364,7 @@ export function ResultsGrid({
     rowLocatorIndex,
     selectedTable,
     sourceColumnIndexes,
-    visibleColumns,
+    resultColumns,
   ]);
 
   function updateCell(
@@ -518,7 +572,7 @@ export function ResultsGrid({
   }
 
   async function pasteRowsFromClipboard() {
-    if (!mutationEnabled || saving || visibleColumns.length === 0) return;
+    if (!mutationEnabled || saving || resultColumns.length === 0) return;
     try {
       const contents = await readClipboardText();
       const nextRows = parseClipboardRows(
@@ -550,7 +604,7 @@ export function ResultsGrid({
   }
 
   function addBlankRow() {
-    if (!mutationEnabled || saving || visibleColumns.length === 0) return;
+    if (!mutationEnabled || saving || resultColumns.length === 0) return;
     const row: PendingInsertRow = {
       id: createPendingInsertId(),
       values: {},
@@ -640,11 +694,85 @@ export function ResultsGrid({
     );
   }
 
-  const rows = displayRows;
+  function addResultFilter(
+    columnName: string,
+    operator: ResultFilterOperator,
+    value: string,
+  ) {
+    setFilters((current) => [
+      ...current,
+      {
+        id: `${columnName}:${operator}:${value}:${Date.now()}`,
+        columnName,
+        operator,
+        value,
+      },
+    ]);
+  }
+
+  function clearColumnFilter(columnName: string) {
+    setFilters((current) =>
+      current.filter((filter) => filter.columnName !== columnName),
+    );
+  }
+
+  async function copyColumnName(columnName: string) {
+    try {
+      await writeClipboardText(columnName);
+      toast("Column name copied", { description: columnName });
+    } catch {
+      toast.error("Could not copy column name");
+    }
+  }
+
+  function hideColumn(columnName: string) {
+    if (visibleColumns.length <= 1) {
+      toast.error("At least one column must stay visible");
+      return;
+    }
+    setHiddenColumnNames((current) => new Set(current).add(columnName));
+    clearColumnFilter(columnName);
+    setSortState((current) =>
+      current?.columnName === columnName ? null : current,
+    );
+  }
+
+  function hideEmptyColumns() {
+    const emptyColumnNames = visibleColumns
+      .filter((column) =>
+        rowEntries.every((entry) => {
+          const value = cellValueForView(entry, column.name);
+          return value === null || value === undefined || value === "";
+        }),
+      )
+      .map((column) => column.name);
+
+    if (emptyColumnNames.length === 0) {
+      toast("No empty columns found");
+      return;
+    }
+    if (emptyColumnNames.length >= visibleColumns.length) {
+      toast.error("At least one column must stay visible");
+      return;
+    }
+    setHiddenColumnNames((current) => {
+      const next = new Set(current);
+      for (const columnName of emptyColumnNames) next.add(columnName);
+      return next;
+    });
+  }
+
+  function resetResultView() {
+    setFilters([]);
+    setSortState(null);
+    setHiddenColumnNames(new Set());
+    setOpenColumnMenuIndex(null);
+  }
+
   const rowsForExport =
     selectedRowCount > 0
       ? selectedRowEntries.map(({ row }) => row)
-      : rows;
+      : viewRowEntries.map(({ row }) => row);
 
   const exportResult = result
     ? {
@@ -659,7 +787,7 @@ export function ResultsGrid({
       }
     : null;
   const rowVirtualizer = useVirtualizer({
-    count: rowEntries.length,
+    count: viewRowEntries.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => resultRowHeight,
     overscan: 18,
@@ -680,11 +808,11 @@ export function ResultsGrid({
     () =>
       buildFindMatches({
         query: normalizedFinderQuery,
-        rows: rowEntries,
+        rows: viewRowEntries,
         visibleColumns,
         columnIndexes,
       }),
-    [columnIndexes, normalizedFinderQuery, rowEntries, visibleColumns],
+    [columnIndexes, normalizedFinderQuery, viewRowEntries, visibleColumns],
   );
   const activeFindMatch =
     findMatches.length > 0
@@ -804,6 +932,12 @@ export function ResultsGrid({
     visibleColumns,
   ]);
 
+  const viewControlsOpen =
+    finderOpen ||
+    filters.length > 0 ||
+    Boolean(sortState) ||
+    hiddenColumnNames.size > 0;
+
   if (isLoading) {
     return (
       <section className="grid min-h-0 place-items-center gap-2 bg-surface-900 text-muted">
@@ -849,7 +983,14 @@ export function ResultsGrid({
           : "grid-cols-[minmax(0,1fr)]",
       )}
     >
-      <div className="grid min-h-0 min-w-0 grid-rows-[32px_auto_minmax(0,1fr)] overflow-hidden">
+      <div
+        className={cn(
+          "grid min-h-0 min-w-0 overflow-hidden",
+          viewControlsOpen
+            ? "grid-rows-[32px_auto_minmax(0,1fr)]"
+            : "grid-rows-[32px_minmax(0,1fr)]",
+        )}
+      >
         <ResultsToolbar
           affectedRows={result.affectedRows}
           canAddRow={canAddRow}
@@ -860,9 +1001,10 @@ export function ResultsGrid({
           exportResult={exportResult}
           mutationEnabled={mutationEnabled}
           pendingChanges={pendingChanges}
-          rowCount={rowEntries.length}
+          rowCount={viewRowEntries.length}
           saving={saving}
           selectedRowCount={selectedRowCount}
+          totalRowCount={rowEntries.length}
           truncated={result.truncated}
           visibleColumnCount={visibleColumns.length}
           onAddRow={addBlankRow}
@@ -873,19 +1015,38 @@ export function ResultsGrid({
           onExportJSON={exportJSON}
           onOpenFinder={openFinder}
         />
-        {finderOpen ? (
-          <FinderBar
-            activeIndex={activeFindIndex}
-            inputRef={finderInputRef}
-            matchCount={findMatches.length}
-            query={finderQuery}
-            onChange={setFinderQuery}
-            onClose={() => {
-              setFinderOpen(false);
-              gridRef.current?.focus();
-            }}
-            onMoveMatch={moveFindMatch}
-          />
+        {viewControlsOpen ? (
+          <div className="min-w-0">
+            {finderOpen ? (
+              <FinderBar
+                activeIndex={activeFindIndex}
+                inputRef={finderInputRef}
+                matchCount={findMatches.length}
+                query={finderQuery}
+                onChange={setFinderQuery}
+                onClose={() => {
+                  setFinderOpen(false);
+                  gridRef.current?.focus();
+                }}
+                onMoveMatch={moveFindMatch}
+              />
+            ) : null}
+            <ResultViewBar
+              filters={filters}
+              hiddenColumnCount={hiddenColumnNames.size}
+              rowCount={viewRowEntries.length}
+              sort={sortState}
+              totalRowCount={rowEntries.length}
+              onClearAll={resetResultView}
+              onClearFilter={(id) =>
+                setFilters((current) =>
+                  current.filter((filter) => filter.id !== id),
+                )
+              }
+              onClearHiddenColumns={() => setHiddenColumnNames(new Set())}
+              onClearSort={() => setSortState(null)}
+            />
+          </div>
         ) : null}
         <div className="grid min-h-0 grid-rows-[34px_minmax(0,1fr)] overflow-hidden">
           <div className="relative overflow-hidden border-b border-line bg-surface-800 text-xs">
@@ -899,17 +1060,27 @@ export function ResultsGrid({
             >
               {virtualColumns.map((virtualColumn) => {
                 const column = visibleColumns[virtualColumn.index];
+                const columnFiltered = filters.some(
+                  (filter) => filter.columnName === column.name,
+                );
+                const columnSorted = sortState?.columnName === column.name;
                 const highlighted =
+                  columnFiltered ||
+                  columnSorted ||
                   activeColumnMatchIndexes.has(virtualColumn.index) ||
                   (activeFindMatch?.kind === "cell" &&
                     activeFindMatch.columnIndex === virtualColumn.index);
                 return (
                   <div
                     className={cn(
-                      "absolute top-0 flex items-center border-r border-line px-3 font-medium text-zinc-300",
+                      "group absolute top-0 flex items-center gap-2 border-r border-line px-3 font-medium text-zinc-300",
                       highlighted && "bg-accent/20 text-zinc-50",
                     )}
                     key={columnKey(column, virtualColumn.index)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setOpenColumnMenuIndex(virtualColumn.index);
+                    }}
                     style={{
                       height: resultHeaderHeight,
                       left: virtualColumn.start - scrollLeft,
@@ -917,7 +1088,7 @@ export function ResultsGrid({
                     }}
                     title={columnTitle(column)}
                   >
-                    <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="flex min-w-0 flex-1 items-center gap-1.5">
                       {primaryKeyColumnSet.has(
                         mutationColumnName(column).toLowerCase(),
                       ) ? (
@@ -929,6 +1100,26 @@ export function ResultsGrid({
                       ) : null}
                       <span className="truncate">{column.name}</span>
                     </span>
+                    <ColumnActionsMenu
+                      column={column}
+                      filtered={columnFiltered}
+                      open={openColumnMenuIndex === virtualColumn.index}
+                      sort={sortState}
+                      onAddFilter={addResultFilter}
+                      onClearColumnFilter={clearColumnFilter}
+                      onCopyColumnName={(columnName) =>
+                        void copyColumnName(columnName)
+                      }
+                      onHideColumn={hideColumn}
+                      onHideEmptyColumns={hideEmptyColumns}
+                      onOpenChange={(open) =>
+                        setOpenColumnMenuIndex(
+                          open ? virtualColumn.index : null,
+                        )
+                      }
+                      onResetView={resetResultView}
+                      onSort={setSortState}
+                    />
                   </div>
                 );
               })}
@@ -948,7 +1139,7 @@ export function ResultsGrid({
               }}
             >
               {virtualRows.map((virtualRow) => {
-                const rowEntry = rowEntries[virtualRow.index];
+                const rowEntry = viewRowEntries[virtualRow.index];
                 if (!rowEntry) return null;
                 const { row, rowIndex, rowKey } = rowEntry;
                 const rowChanges =
