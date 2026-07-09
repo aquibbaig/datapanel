@@ -10,6 +10,10 @@ import {
   historyKeymap,
   indentWithTab,
 } from "@codemirror/commands";
+import {
+  codeFolding,
+  foldKeymap,
+} from "@codemirror/language";
 import { PostgreSQL, sql } from "@codemirror/lang-sql";
 import { Compartment, EditorState, Extension } from "@codemirror/state";
 import {
@@ -32,6 +36,15 @@ import type {
   TableSummary,
 } from "../../lib/types";
 import { buildSchemaCompletions, sqlCompletion } from "./sqlCompletion";
+import {
+  foldSQLStatement,
+  prepareSQLFoldPlaceholder,
+  sqlFoldPlaceholderDOM,
+  sqlStatementFoldGutter,
+  sqlStatementFolding,
+  toggleSQLStatementFold,
+  unfoldSQLStatement,
+} from "./sqlFolding";
 
 interface Props {
   activeConnectionId: string;
@@ -56,6 +69,32 @@ const shikiHighlighter = createHighlighterCore({
 });
 
 Vim.map("jk", "<Esc>", "insert");
+
+const vimFoldingGlobal = globalThis as typeof globalThis & {
+  __datapanelSQLVimFolding?: boolean;
+};
+
+if (!vimFoldingGlobal.__datapanelSQLVimFolding) {
+  Vim.defineAction("datapanelFoldSQLStatement", (cm) => {
+    foldSQLStatement(cm.cm6);
+  });
+  Vim.defineAction("datapanelUnfoldSQLStatement", (cm) => {
+    unfoldSQLStatement(cm.cm6);
+  });
+  Vim.defineAction("datapanelToggleSQLStatementFold", (cm) => {
+    toggleSQLStatementFold(cm.cm6);
+  });
+  Vim.mapCommand("zc", "action", "datapanelFoldSQLStatement", {}, {
+    context: "normal",
+  });
+  Vim.mapCommand("zo", "action", "datapanelUnfoldSQLStatement", {}, {
+    context: "normal",
+  });
+  Vim.mapCommand("za", "action", "datapanelToggleSQLStatementFold", {}, {
+    context: "normal",
+  });
+  vimFoldingGlobal.__datapanelSQLVimFolding = true;
+}
 
 export function SqlCodeEditor({
   activeConnectionId,
@@ -89,6 +128,12 @@ export function SqlCodeEditor({
   const extensions = useMemo<Extension[]>(
     () => [
       ...(vimNavigationEnabled ? [vim(), drawSelection()] : []),
+      sqlStatementFolding,
+      codeFolding({
+        preparePlaceholder: prepareSQLFoldPlaceholder,
+        placeholderDOM: sqlFoldPlaceholderDOM,
+      }),
+      sqlStatementFoldGutter(),
       lineNumbers(),
       highlightActiveLine(),
       history(),
@@ -112,7 +157,13 @@ export function SqlCodeEditor({
           key: "Ctrl-p",
           run: moveCompletionSelection(false)
         },
+        {
+          key: "Ctrl-Shift-[",
+          mac: "Cmd-Alt-[",
+          run: foldSQLStatement
+        },
         ...historyKeymap,
+        ...foldKeymap,
         ...defaultKeymap,
         indentWithTab,
         {
@@ -192,6 +243,42 @@ export function SqlCodeEditor({
           backgroundColor: "rgb(var(--color-surface-950))",
           color: "rgb(var(--color-muted))",
           borderRight: "1px solid rgb(var(--color-line))"
+        },
+        ".cm-foldGutter": {
+          minWidth: "22px"
+        },
+        ".cm-foldGutter .cm-gutterElement": {
+          alignItems: "center",
+          display: "flex",
+          justifyContent: "center",
+          padding: "0 4px"
+        },
+        ".cm-sqlFoldMarker": {
+          borderBottom: "4px solid transparent",
+          borderLeft: "6px solid rgb(var(--color-zinc-600))",
+          borderTop: "4px solid transparent",
+          cursor: "pointer",
+          height: "0",
+          transition: "border-left-color 0.15s ease, transform 0.15s ease",
+          userSelect: "none"
+        },
+        ".cm-sqlFoldMarker:hover": {
+          borderLeftColor: "rgb(var(--color-foreground))"
+        },
+        ".cm-sqlFoldMarker-open": {
+          transform: "rotate(90deg)"
+        },
+        ".cm-foldPlaceholder.cm-sqlFoldPlaceholder": {
+          backgroundColor: "rgb(var(--color-surface-800))",
+          border: "1px solid rgb(var(--color-line))",
+          borderRadius: "4px",
+          color: "rgb(var(--color-muted))",
+          cursor: "pointer",
+          margin: "0 2px",
+          padding: "0 4px"
+        },
+        ".cm-foldPlaceholder.cm-sqlFoldPlaceholder:hover": {
+          color: "rgb(var(--color-foreground))"
         },
         ".cm-activeLine": {
           backgroundColor: "rgb(var(--color-surface-850))"
