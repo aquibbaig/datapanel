@@ -33,6 +33,25 @@ export interface ChangeItem {
   columns: string[];
 }
 
+export type ResultFilterOperator =
+  | "contains"
+  | "equals"
+  | "notEquals"
+  | "empty"
+  | "notEmpty";
+
+export interface ResultFilter {
+  id: string;
+  columnName: string;
+  operator: ResultFilterOperator;
+  value: string;
+}
+
+export interface ResultSort {
+  columnName: string;
+  direction: "asc" | "desc";
+}
+
 export type FindMatch =
   | { kind: "column"; columnIndex: number }
   | { kind: "cell"; rowIndex: number; columnIndex: number };
