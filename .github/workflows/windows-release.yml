@@ -40,8 +40,10 @@ jobs:
             exit 1
           fi
           version="${tag#v}"
+          windows_product_version="${version%%[-+]*}"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "windows_product_version=$windows_product_version" >> "$GITHUB_OUTPUT"
 
       - name: Checkout source code
         uses: actions/checkout@v7
@@ -90,8 +92,9 @@ jobs:
         shell: bash
         env:
           DATAPANEL_VERSION: ${{ steps.normalise_version.outputs.version }}
+          DATAPANEL_WINDOWS_PRODUCT_VERSION: ${{ steps.normalise_version.outputs.windows_product_version }}
         run: |
-          jq '.info.productVersion = env.DATAPANEL_VERSION' wails.json > tmp.json
+          jq '.info.productVersion = env.DATAPANEL_WINDOWS_PRODUCT_VERSION' wails.json > tmp.json
           mv tmp.json wails.json
           jq '.version = env.DATAPANEL_VERSION' frontend/package.json > frontend/tmp.json
           mv frontend/tmp.json frontend/package.json
