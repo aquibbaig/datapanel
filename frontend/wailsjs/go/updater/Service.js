@@ -10,6 +10,10 @@ export function GetReleaseState() {
   return window['go']['updater']['Service']['GetReleaseState']();
 }
 
+export function GetVersionInfo() {
+  return window['go']['updater']['Service']['GetVersionInfo']();
+}
+
 export function InstallUpdate(arg1) {
   return window['go']['updater']['Service']['InstallUpdate'](arg1);
 }

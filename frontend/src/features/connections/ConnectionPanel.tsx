@@ -280,7 +280,7 @@ export function ConnectionPanel({
               type={form.driver === "bigquery" ? "text" : "password"}
               value={form.password}
               onChange={(event) => setForm({ ...form, password: event.target.value })}
-              placeholder={form.driver === "bigquery" ? "/Users/me/key.json or blank for gcloud auth login" : initialProfile ? "Saved in keychain" : ""}
+              placeholder={form.driver === "bigquery" ? "/Users/me/key.json or blank for gcloud auth login" : initialProfile ? "Saved securely" : ""}
             />
           </label>
           {form.driver === "bigquery" ? (

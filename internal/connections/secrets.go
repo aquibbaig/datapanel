@@ -28,7 +28,7 @@ type OSKeyringStore struct {
 }
 
 const bundledSecretsKey = "datapanel:secrets:v1"
-const keychainAccessRequiredMessage = "Keychain access required"
+const keychainAccessRequiredMessage = "Secure storage locked"
 const aiSecretPrefix = "ai:"
 
 type secretBundle struct {
@@ -79,7 +79,7 @@ func (s *OSKeyringStore) Get(ctx context.Context, profileID string) (string, err
 			s.blocked = true
 			return "", keychainAccessRequiredError()
 		}
-		return "", apperrors.New(apperrors.CodeSecurity, "saved password not found")
+		return "", savedSecretNotFoundError()
 	}
 	return secret, nil
 }
@@ -257,7 +257,7 @@ func (s *MemorySecretStore) Get(ctx context.Context, profileID string) (string, 
 	defer s.mu.RUnlock()
 	secret, ok := s.secrets[profileID]
 	if !ok {
-		return "", apperrors.New(apperrors.CodeSecurity, "saved password not found")
+		return "", savedSecretNotFoundError()
 	}
 	return secret, nil
 }
@@ -277,4 +277,8 @@ func (s *MemorySecretStore) RequestAccess(ctx context.Context) error {
 
 func keychainAccessRequiredError() error {
 	return apperrors.New(apperrors.CodeSecurity, keychainAccessRequiredMessage)
+}
+
+func savedSecretNotFoundError() error {
+	return apperrors.New(apperrors.CodeSecurity, "saved password not found")
 }

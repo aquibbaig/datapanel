@@ -2,14 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Check, Download, ExternalLink, Info, Loader2, XCircle } from "lucide-react";
 import { toast } from "sonner";
-import { BrowserOpenURL } from "../../wailsjs/runtime/runtime";
-import { aiCredentialService, appDataService, connectionService, queryService, schemaService, settingsService, updateService } from "../lib/backend";
+import { BrowserOpenURL, EventsOn } from "../../wailsjs/runtime/runtime";
+import { appDataService, connectionService, queryService, schemaService, settingsService, updateService } from "../lib/backend";
 import {
   configureTelemetry,
   trackAppInstalled,
 } from "../lib/telemetry";
 import type {
   AppSettings,
+  AppVersionInfo,
   ConnectionHealth,
   ConnectionProfile,
   QueryHistoryEntry,
@@ -20,7 +21,7 @@ import type {
   TableDetails,
   TableSummary,
   TestConnectionRequest,
-  UpdateCheckResult
+  UpdateCheckResult,
 } from "../lib/types";
 
 export interface StatusMessage {
@@ -36,6 +37,7 @@ export interface WorkspaceSwitchState {
 export interface AppUpdateState {
   checking: boolean;
   lastCheckedAt?: string;
+  versionInfo?: AppVersionInfo | null;
   result?: UpdateCheckResult | null;
   error?: string;
 }
@@ -55,12 +57,12 @@ interface QueryToastOptions {
 
 interface MetadataLoadOptions {
   refresh?: boolean;
-  reconnectKeychain?: boolean;
+  reconnectSecureStorage?: boolean;
 }
 
 interface ConnectOptions {
   suppressErrorToast?: boolean;
-  reconnectKeychain?: boolean;
+  reconnectSecureStorage?: boolean;
   refresh?: boolean;
 }
 
@@ -79,6 +81,7 @@ const tableDetailsQueryKey = (connectionId: string, schema: string, table: strin
 const activeWorkspaceStorageKey = "datapanel.activeWorkspaceId";
 const maxToastDescriptionLength = 260;
 const appUpdateCheckIntervalMs = 15 * 60 * 1000;
+const activationUpdateCheckCooldownMs = 30 * 1000;
 const updateAvailableToastId = "datapanel-update-available";
 const manualUpdateCheckToastId = "datapanel-check-update";
 
@@ -157,6 +160,8 @@ export function useDataPanelState() {
   const inspectRequestRef = useRef(0);
   const queryRequestRef = useRef(0);
   const metadataRequestRef = useRef(0);
+  const initializationStartedRef = useRef(false);
+  const activationUpdateCheckRef = useRef(0);
   const profilesRef = useRef<ConnectionProfile[]>([]);
   const activeConnectionIdRef = useRef("");
   const queryResultRef = useRef<QueryResult | null>(null);
@@ -179,17 +184,28 @@ export function useDataPanelState() {
     gcTime: appUpdateCheckIntervalMs,
   });
 
+  const appVersionQuery = useQuery({
+    queryKey: ["appVersion"],
+    queryFn: updateService.version,
+    enabled: !isLocalDev(),
+    retry: false,
+    staleTime: Infinity,
+    gcTime: appUpdateCheckIntervalMs,
+  });
+
   const appUpdateState = useMemo<AppUpdateState>(() => ({
     checking: appUpdateQuery.isFetching,
     lastCheckedAt: appUpdateQuery.dataUpdatedAt
       ? new Date(appUpdateQuery.dataUpdatedAt).toISOString()
       : undefined,
+    versionInfo: appVersionQuery.data ?? null,
     result: appUpdateQuery.data ?? null,
     error: "",
   }), [
     appUpdateQuery.data,
     appUpdateQuery.dataUpdatedAt,
     appUpdateQuery.isFetching,
+    appVersionQuery.data,
   ]);
 
   useEffect(() => {
@@ -376,7 +392,7 @@ export function useDataPanelState() {
     const result = await connectionService.connect({
       profileId,
       password,
-      reconnectKeychain: Boolean(options.reconnectKeychain),
+      reconnectSecureStorage: Boolean(options.reconnectSecureStorage),
     });
     const now = new Date().toISOString();
     activeConnectionIdRef.current = profileId;
@@ -416,6 +432,9 @@ export function useDataPanelState() {
   }, []);
 
   useEffect(() => {
+    if (initializationStartedRef.current) return;
+    initializationStartedRef.current = true;
+
     void Promise.all([
       loadProfiles(),
       settingsService
@@ -432,9 +451,6 @@ export function useDataPanelState() {
           setSettings(nextSettings);
           return nextSettings;
         }),
-      aiCredentialService.list().catch((error: unknown) => {
-        console.warn("AI credential warmup failed", error);
-      }),
     ])
       .then(async ([nextProfiles]) => {
         const initialProfileId = preferredWorkspaceId(nextProfiles);
@@ -511,6 +527,41 @@ export function useDataPanelState() {
     }
     return result;
   }, [appUpdateQuery.refetch, showUpdateAvailable]);
+
+  const checkForAppUpdateOnActivation = useCallback(() => {
+    if (isLocalDev()) return;
+    const now = Date.now();
+    if (now - activationUpdateCheckRef.current < activationUpdateCheckCooldownMs) {
+      return;
+    }
+    activationUpdateCheckRef.current = now;
+    void appUpdateQuery.refetch().then((response) => {
+      if (response.error) {
+        console.warn("Activation update check failed", response.error);
+      }
+    });
+  }, [appUpdateQuery.refetch]);
+
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        checkForAppUpdateOnActivation();
+      }
+    }
+
+    window.addEventListener("focus", checkForAppUpdateOnActivation);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    const unsubscribe =
+      (window as { runtime?: { EventsOn?: unknown } }).runtime?.EventsOn
+        ? EventsOn("datapanel:app-activated", checkForAppUpdateOnActivation)
+        : undefined;
+
+    return () => {
+      window.removeEventListener("focus", checkForAppUpdateOnActivation);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
+  }, [checkForAppUpdateOnActivation]);
 
   async function installAppUpdate(assetName: string) {
     if (isLocalDev()) return;
@@ -646,7 +697,7 @@ export function useDataPanelState() {
       }
       const result = await connectAndLoadMetadata(profileId, password, {
         refresh,
-        reconnectKeychain: options.reconnectKeychain,
+        reconnectSecureStorage: options.reconnectSecureStorage,
       });
       if (switchingConnection) {
         restoreQueryResultSnapshot(profileId);

@@ -6,4 +6,6 @@ export function CheckForUpdate():Promise<updater.UpdateCheckResult>;
 
 export function GetReleaseState():Promise<updater.ReleaseState>;
 
+export function GetVersionInfo():Promise<updater.AppVersionInfo>;
+
 export function InstallUpdate(arg1:updater.InstallUpdateRequest):Promise<updater.InstallUpdateResult>;

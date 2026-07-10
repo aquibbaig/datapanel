@@ -142,6 +142,7 @@ export interface AppSettings extends settings.AppSettings {
 export type SaveFileExportRequest = fileexport.SaveExportRequest;
 export type SaveFileExportResult = fileexport.SaveExportResult;
 export type ReleaseState = updater.ReleaseState;
+export type AppVersionInfo = updater.AppVersionInfo;
 export type UpdateCheckResult = updater.UpdateCheckResult;
 export type InstallUpdateRequest = updater.InstallUpdateRequest;
 export type InstallUpdateResult = updater.InstallUpdateResult;

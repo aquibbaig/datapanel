@@ -514,7 +514,7 @@ export function AiAssistantPanel({
     const token = credentialToken.trim();
     if (!token) {
       toast("Paste an API key", {
-        description: "DataPanel stores it locally in your Mac Keychain.",
+        description: "DataPanel stores it locally in secure storage.",
       });
       return;
     }
@@ -557,7 +557,7 @@ export function AiAssistantPanel({
           keyHint: "",
           label: "",
           updatedAt: "",
-          storage: selectedCredential?.storage || "keychain",
+          storage: selectedCredential?.storage || "vault",
         } as AICredentialStatus,
       }));
       toast("API key removed", {
@@ -1048,7 +1048,7 @@ export function AiAssistantPanel({
               <SetupStep
                 index={2}
                 title={`Paste the ${selected.name} API key`}
-                description="The key is stored locally in the Mac Keychain, not in frontend storage."
+                description="The key is stored locally in DataPanel secure storage, not in frontend storage."
               >
                 <div className="flex min-w-0 gap-2">
                   <Button
@@ -1096,7 +1096,7 @@ export function AiAssistantPanel({
         <div className="grid min-w-0 gap-3">
           <p className="text-sm leading-6 text-muted">
             Paste the {selected.name} API key. DataPanel stores it locally in
-            your Mac Keychain and never shows the full key again.
+            DataPanel secure storage and never shows the full key again.
           </p>
 
           {selectedCredential?.connected ? (
@@ -1142,7 +1142,7 @@ export function AiAssistantPanel({
               ) : (
                 <KeyRound size={14} />
               )}
-              Store in Keychain
+              Store securely
             </Button>
             {selectedCredential?.connected ? (
               <Button
