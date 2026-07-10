@@ -44,9 +44,9 @@ type TestConnectionRequest struct {
 }
 
 type ConnectRequest struct {
-	ProfileID         string `json:"profileId"`
-	Password          string `json:"password"`
-	ReconnectKeychain bool   `json:"reconnectKeychain"`
+	ProfileID              string `json:"profileId"`
+	Password               string `json:"password"`
+	ReconnectSecureStorage bool   `json:"reconnectSecureStorage"`
 }
 
 type ConnectionStatus struct {

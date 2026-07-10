@@ -33,6 +33,7 @@ import type {
   TableSummary,
   TestConnectionRequest,
   InstallUpdateResult,
+  AppVersionInfo,
   UpdateCheckResult,
 } from "./types";
 import { ai, fileexport } from "../../wailsjs/go/models";
@@ -44,6 +45,7 @@ import * as SchemaBindings from "../../wailsjs/go/postgres/SchemaService";
 import * as QueryBindings from "../../wailsjs/go/query/Service";
 import * as SettingsBindings from "../../wailsjs/go/settings/Service";
 import * as UpdaterBindings from "../../wailsjs/go/updater/Service";
+import frontendPackage from "../../package.json";
 
 const mockProfiles: ConnectionProfile[] = [
   {
@@ -149,6 +151,8 @@ const mockTableNameParts = [
 function isWailsRuntime() {
   return Boolean(window.go);
 }
+
+const localPreviewVersion = frontendPackage.version || "dev";
 
 function mockSchemas(): SchemaSummary[] {
   return mockSchemaNames.map((name) => ({ name }));
@@ -692,12 +696,24 @@ export const settingsService = {
 };
 
 export const updateService = {
+  async version(): Promise<AppVersionInfo> {
+    if (!isWailsRuntime()) {
+      return {
+        currentVersion: localPreviewVersion,
+        currentReleaseHash: "dev",
+        lastCheckedAt: "",
+        lastInstalledAt: "",
+        firstRunAfterUpdate: false,
+      };
+    }
+    return UpdaterBindings.GetVersionInfo();
+  },
   async check(): Promise<UpdateCheckResult> {
     if (!isWailsRuntime()) {
       return {
-        currentVersion: "0.1.0",
+        currentVersion: localPreviewVersion,
         currentReleaseHash: "dev",
-        latestVersion: "0.1.0",
+        latestVersion: localPreviewVersion,
         latestReleaseHash: "dev",
         releaseName: "DataPanel preview",
         releaseUrl: "https://github.com/aquibbaig/datapanel/releases",

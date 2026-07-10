@@ -15,11 +15,12 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "../../components/ui/Button";
 import { cn } from "../../lib/cn";
 import { textInputBehaviorProps } from "../../lib/text-input";
-import type { AppSettings, UpdateCheckResult } from "../../lib/types";
+import type { AppSettings, AppVersionInfo, UpdateCheckResult } from "../../lib/types";
 
 interface AppUpdateStatus {
   checking: boolean;
   lastCheckedAt?: string;
+  versionInfo?: AppVersionInfo | null;
   result?: UpdateCheckResult | null;
   error?: string;
 }
@@ -199,6 +200,14 @@ export function SettingsPanel({
                   options={cursorModeOptions}
                   onChange={(cursorMode) => updateDraft({ cursorMode })}
                 />
+              </SettingRow>
+              <SettingRow
+                title="Version"
+                description={versionDescription(appUpdateStatus.versionInfo)}
+              >
+                <span className="select-text text-sm font-medium text-zinc-200">
+                  {appUpdateStatus.versionInfo?.currentVersion || "dev"}
+                </span>
               </SettingRow>
               <SettingRow
                 title="App updates"
@@ -463,6 +472,15 @@ function updateCheckDescription(status: AppUpdateStatus) {
     return `Last checked ${formatDateTime(status.lastCheckedAt)}.`;
   }
   return "DataPanel checks for updates every 15 minutes while open.";
+}
+
+function versionDescription(versionInfo?: AppVersionInfo | null) {
+  if (!versionInfo) return "Current DataPanel app version.";
+  const releaseHash = versionInfo.currentReleaseHash?.trim();
+  if (!releaseHash || releaseHash === "dev" || releaseHash === versionInfo.currentVersion) {
+    return "Current DataPanel app version.";
+  }
+  return `Build ${releaseHash}.`;
 }
 
 function formatDateTime(value: string) {

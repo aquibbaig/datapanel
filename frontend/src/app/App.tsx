@@ -301,11 +301,11 @@ export function App() {
     }
   }
 
-  async function reconnectKeychain() {
+  async function refreshCredentials() {
     if (!model.activeProfile) return;
     try {
       await model.connect(model.activeProfile.id, "", {
-        reconnectKeychain: true,
+        reconnectSecureStorage: true,
         suppressErrorToast: true,
       });
     } catch {
@@ -962,13 +962,13 @@ export function App() {
               {activeKeychainAccessHint ? (
                 <button
                   className="group relative grid h-5 w-5 shrink-0 place-items-center rounded text-warning transition hover:bg-warning/10 hover:text-warning-hover"
-                  title="Reconnect Keychain"
+                  title="Refresh credentials"
                   type="button"
-                  onClick={() => void reconnectKeychain()}
+                  onClick={() => void refreshCredentials()}
                 >
                   <KeyRound size={12} />
                   <span className="pointer-events-none absolute bottom-6 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-warning/30 bg-surface-800 px-2 py-1 text-[11px] font-medium text-warning shadow-xl group-hover:block">
-                    Reconnect Keychain
+                    Refresh credentials
                   </span>
                 </button>
               ) : null}
@@ -1483,7 +1483,7 @@ function connectionTooltip(model: ReturnType<typeof useDataPanelState>) {
         </span>
         {keychainAccessHint ? (
           <span className="text-zinc-100">
-            Approve the macOS prompt to let DataPanel read saved secrets.
+            Approve the macOS prompt to refresh saved credentials.
           </span>
         ) : null}
         <span>
@@ -1525,12 +1525,13 @@ function currentKeychainAccessHint(
 ) {
   const message = model.connectionHealth.error || model.status.text;
   if (!isKeychainAccessIssue(message)) return "";
-  return "Keychain access required";
+  return "Secure storage locked";
 }
 
 function isKeychainAccessIssue(message = "") {
   const normalized = message.toLowerCase();
   return normalized.includes("keychain access required") ||
+    normalized.includes("secure storage locked") ||
     normalized.includes("could not unlock saved secrets") ||
     normalized.includes("saved password not found") ||
     normalized.includes("user interaction") ||

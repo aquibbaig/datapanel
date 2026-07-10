@@ -41,7 +41,7 @@ const (
 
 func NewService(secrets SecretStore, storage string) *Service {
 	if strings.TrimSpace(storage) == "" {
-		storage = "keychain"
+		storage = "vault"
 	}
 	return &Service{
 		secrets: secrets,

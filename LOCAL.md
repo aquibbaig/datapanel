@@ -6,7 +6,7 @@
 - Backend: Go
 - Frontend: React, TypeScript, Vite
 - Database drivers: pgx for Postgres, go-sql-driver/mysql for MySQL
-- Secret storage: OS keychain through `99designs/keyring`
+- Secret storage: encrypted local vault unlocked by a single OS keychain item through `99designs/keyring`
 
 ## Setup
 

@@ -746,7 +746,7 @@ export namespace connections {
 	export class ConnectRequest {
 	    profileId: string;
 	    password: string;
-	    reconnectKeychain: boolean;
+	    reconnectSecureStorage: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ConnectRequest(source);
@@ -756,7 +756,7 @@ export namespace connections {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.profileId = source["profileId"];
 	        this.password = source["password"];
-	        this.reconnectKeychain = source["reconnectKeychain"];
+	        this.reconnectSecureStorage = source["reconnectSecureStorage"];
 	    }
 	}
 	export class ConnectionProfile {
@@ -1288,7 +1288,27 @@ export namespace settings {
 }
 
 export namespace updater {
+
+	export class AppVersionInfo {
+	    currentVersion: string;
+	    currentReleaseHash: string;
+	    lastCheckedAt: string;
+	    lastInstalledAt: string;
+	    firstRunAfterUpdate: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new AppVersionInfo(source);
+	    }
 	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.currentVersion = source["currentVersion"];
+	        this.currentReleaseHash = source["currentReleaseHash"];
+	        this.lastCheckedAt = source["lastCheckedAt"];
+	        this.lastInstalledAt = source["lastInstalledAt"];
+	        this.firstRunAfterUpdate = source["firstRunAfterUpdate"];
+	    }
+	}
 	export class InstallUpdateRequest {
 	    assetName: string;
 	
@@ -1371,4 +1391,3 @@ export namespace updater {
 	}
 
 }
-

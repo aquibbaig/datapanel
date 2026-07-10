@@ -44,8 +44,8 @@ func main() {
 
 	profileStore := connections.NewFileProfileStore(paths.ConnectionsPath)
 	var secretStore connections.SecretStore
-	secretStorage := "keychain"
-	secretStore, err = connections.NewOSKeyringStore("datapanel")
+	secretStorage := "vault"
+	secretStore, err = connections.NewVaultSecretStore("datapanel", paths.SecretsVaultPath)
 	if err != nil {
 		log.Printf("falling back to local session secrets: %v", err)
 		secretStore = connections.NewMemorySecretStore()
@@ -88,6 +88,7 @@ func main() {
 			UniqueId: "com.datapanel.app",
 			OnSecondInstanceLaunch: func(data options.SecondInstanceData) {
 				application.HandleLaunchArgs(data.Args)
+				application.AppActivated()
 			},
 		},
 		Bind: []interface{}{

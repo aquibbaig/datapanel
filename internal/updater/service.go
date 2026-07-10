@@ -61,6 +61,22 @@ func (s *Service) GetReleaseState() (ReleaseState, error) {
 	return s.loadState()
 }
 
+func (s *Service) GetVersionInfo() (AppVersionInfo, error) {
+	state, err := s.loadState()
+	if err != nil {
+		return AppVersionInfo{}, err
+	}
+	firstRunAfterUpdate := !sameVersion(state.CurrentVersion, CurrentVersion) ||
+		strings.TrimSpace(state.CurrentReleaseHash) != strings.TrimSpace(CurrentReleaseHash)
+	return AppVersionInfo{
+		CurrentVersion:      canonicalCurrentVersion(),
+		CurrentReleaseHash:  CurrentReleaseHash,
+		LastCheckedAt:       state.LastCheckedAt,
+		LastInstalledAt:     state.LastInstalledAt,
+		FirstRunAfterUpdate: firstRunAfterUpdate,
+	}, nil
+}
+
 func (s *Service) CheckForUpdate() (UpdateCheckResult, error) {
 	if isDevelopmentBuild() {
 		return developmentUpdateResult(), nil

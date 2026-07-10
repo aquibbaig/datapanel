@@ -107,7 +107,7 @@ func (s *Service) Connect(input ConnectRequest) (ConnectionStatus, error) {
 	password := input.Password
 	if password == "" {
 		requiresSecret := requiresSavedSecret(profile)
-		if input.ReconnectKeychain || requiresSecret {
+		if input.ReconnectSecureStorage || requiresSecret {
 			if err := s.secrets.RequestAccess(context.Background()); err != nil {
 				if requiresSecret {
 					return ConnectionStatus{}, err

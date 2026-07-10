@@ -36,7 +36,7 @@ func TestSaveCredentialReturnsOnlyRedactedStatus(t *testing.T) {
 		t.Fatalf("credential was not written to key store: %v", err)
 	}
 	if raw == "test-secret-value" {
-		t.Fatalf("expected serialized keychain payload, got raw token")
+		t.Fatalf("expected serialized secure-storage payload, got raw token")
 	}
 }
 

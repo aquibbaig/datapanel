@@ -32,6 +32,14 @@ type InstallUpdateResult struct {
 	Message    string `json:"message"`
 }
 
+type AppVersionInfo struct {
+	CurrentVersion      string `json:"currentVersion"`
+	CurrentReleaseHash  string `json:"currentReleaseHash"`
+	LastCheckedAt       string `json:"lastCheckedAt"`
+	LastInstalledAt     string `json:"lastInstalledAt"`
+	FirstRunAfterUpdate bool   `json:"firstRunAfterUpdate"`
+}
+
 type githubRelease struct {
 	TagName      string        `json:"tag_name"`
 	TargetCommit string        `json:"target_commitish"`

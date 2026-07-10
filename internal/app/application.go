@@ -16,11 +16,12 @@ type PoolCloser interface {
 }
 
 type Paths struct {
-	ConfigDir       string `json:"configDir"`
-	CacheDir        string `json:"cacheDir"`
-	AppDatabasePath string `json:"appDatabasePath"`
-	ConnectionsPath string `json:"connectionsPath"`
-	SettingsPath    string `json:"settingsPath"`
+	ConfigDir        string `json:"configDir"`
+	CacheDir         string `json:"cacheDir"`
+	AppDatabasePath  string `json:"appDatabasePath"`
+	ConnectionsPath  string `json:"connectionsPath"`
+	SettingsPath     string `json:"settingsPath"`
+	SecretsVaultPath string `json:"secretsVaultPath"`
 }
 
 type MultiCloser []PoolCloser
@@ -41,6 +42,7 @@ type Application struct {
 }
 
 const OpenSettingsEvent = "datapanel:open-settings"
+const AppActivatedEvent = "datapanel:app-activated"
 
 func NewApplication(paths Paths, closer PoolCloser) *Application {
 	return &Application{paths: paths, closer: closer}
@@ -59,11 +61,12 @@ func NewPaths(appName string) (Paths, error) {
 	configDir := filepath.Join(configRoot, appName)
 	cacheDir := filepath.Join(cacheRoot, appName)
 	return Paths{
-		ConfigDir:       configDir,
-		CacheDir:        cacheDir,
-		AppDatabasePath: filepath.Join(configDir, "datapanel.sqlite3"),
-		ConnectionsPath: filepath.Join(configDir, "connections.json"),
-		SettingsPath:    filepath.Join(configDir, "settings.json"),
+		ConfigDir:        configDir,
+		CacheDir:         cacheDir,
+		AppDatabasePath:  filepath.Join(configDir, "datapanel.sqlite3"),
+		ConnectionsPath:  filepath.Join(configDir, "connections.json"),
+		SettingsPath:     filepath.Join(configDir, "settings.json"),
+		SecretsVaultPath: filepath.Join(configDir, "secrets.vault.json"),
 	}, nil
 }
 
@@ -87,6 +90,16 @@ func (a *Application) OpenSettings() {
 		return
 	}
 	wailsruntime.EventsEmit(ctx, OpenSettingsEvent)
+}
+
+func (a *Application) AppActivated() {
+	a.mu.RLock()
+	ctx := a.ctx
+	a.mu.RUnlock()
+	if ctx == nil {
+		return
+	}
+	wailsruntime.EventsEmit(ctx, AppActivatedEvent)
 }
 
 func (a *Application) Hide() {
