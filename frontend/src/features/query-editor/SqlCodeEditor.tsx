@@ -10,10 +10,7 @@ import {
   historyKeymap,
   indentWithTab,
 } from "@codemirror/commands";
-import {
-  codeFolding,
-  foldKeymap,
-} from "@codemirror/language";
+import { codeFolding } from "@codemirror/language";
 import { PostgreSQL, sql } from "@codemirror/lang-sql";
 import { Compartment, EditorState, Extension } from "@codemirror/state";
 import {
@@ -37,13 +34,14 @@ import type {
 } from "../../lib/types";
 import { buildSchemaCompletions, sqlCompletion } from "./sqlCompletion";
 import {
+  sqlFoldAtomicRanges,
+  sqlFoldSelectionGuard,
   foldSQLStatement,
   prepareSQLFoldPlaceholder,
   sqlFoldPlaceholderDOM,
   sqlStatementFoldGutter,
   sqlStatementFolding,
   toggleSQLStatementFold,
-  unfoldSQLStatement,
 } from "./sqlFolding";
 
 interface Props {
@@ -71,15 +69,14 @@ const shikiHighlighter = createHighlighterCore({
 Vim.map("jk", "<Esc>", "insert");
 
 const vimFoldingGlobal = globalThis as typeof globalThis & {
-  __datapanelSQLVimFolding?: boolean;
+  __datapanelSQLVimFoldingSelectionSafe?: boolean;
 };
 
-if (!vimFoldingGlobal.__datapanelSQLVimFolding) {
+if (!vimFoldingGlobal.__datapanelSQLVimFoldingSelectionSafe) {
+  Vim.unmap("zo", "normal");
+  Vim.unmap("za", "normal");
   Vim.defineAction("datapanelFoldSQLStatement", (cm) => {
     foldSQLStatement(cm.cm6);
-  });
-  Vim.defineAction("datapanelUnfoldSQLStatement", (cm) => {
-    unfoldSQLStatement(cm.cm6);
   });
   Vim.defineAction("datapanelToggleSQLStatementFold", (cm) => {
     toggleSQLStatementFold(cm.cm6);
@@ -87,13 +84,10 @@ if (!vimFoldingGlobal.__datapanelSQLVimFolding) {
   Vim.mapCommand("zc", "action", "datapanelFoldSQLStatement", {}, {
     context: "normal",
   });
-  Vim.mapCommand("zo", "action", "datapanelUnfoldSQLStatement", {}, {
+  Vim.mapCommand("<Space>zc", "action", "datapanelToggleSQLStatementFold", {}, {
     context: "normal",
   });
-  Vim.mapCommand("za", "action", "datapanelToggleSQLStatementFold", {}, {
-    context: "normal",
-  });
-  vimFoldingGlobal.__datapanelSQLVimFolding = true;
+  vimFoldingGlobal.__datapanelSQLVimFoldingSelectionSafe = true;
 }
 
 export function SqlCodeEditor({
@@ -133,6 +127,8 @@ export function SqlCodeEditor({
         preparePlaceholder: prepareSQLFoldPlaceholder,
         placeholderDOM: sqlFoldPlaceholderDOM,
       }),
+      sqlFoldAtomicRanges,
+      sqlFoldSelectionGuard,
       sqlStatementFoldGutter(),
       lineNumbers(),
       highlightActiveLine(),
@@ -163,7 +159,6 @@ export function SqlCodeEditor({
           run: foldSQLStatement
         },
         ...historyKeymap,
-        ...foldKeymap,
         ...defaultKeymap,
         indentWithTab,
         {
@@ -273,12 +268,9 @@ export function SqlCodeEditor({
           border: "1px solid rgb(var(--color-line))",
           borderRadius: "4px",
           color: "rgb(var(--color-muted))",
-          cursor: "pointer",
+          cursor: "text",
           margin: "0 2px",
           padding: "0 4px"
-        },
-        ".cm-foldPlaceholder.cm-sqlFoldPlaceholder:hover": {
-          color: "rgb(var(--color-foreground))"
         },
         ".cm-activeLine": {
           backgroundColor: "rgb(var(--color-surface-850))"
@@ -332,15 +324,18 @@ export function SqlCodeEditor({
   useEffect(() => {
     if (!containerRef.current || viewRef.current) return;
 
-    viewRef.current = new EditorView({
+    const view = new EditorView({
       parent: containerRef.current,
       state: EditorState.create({
         doc: initialValueRef.current,
         extensions: extensionCompartmentRef.current.of(extensions)
       })
     });
+    viewRef.current = view;
+    const focusFrame = window.requestAnimationFrame(() => view.focus());
 
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       viewRef.current?.destroy();
       viewRef.current = null;
     };

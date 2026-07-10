@@ -6,10 +6,12 @@ import {
   unfoldEffect,
 } from "@codemirror/language";
 import {
+  EditorSelection,
+  EditorState,
   RangeSet,
   RangeSetBuilder,
-  type EditorState,
   type Extension,
+  type SelectionRange,
 } from "@codemirror/state";
 import {
   EditorView,
@@ -26,6 +28,11 @@ interface SQLStatementRange {
   end: number;
 }
 
+interface SQLFoldTarget {
+  statement: SQLStatementRange;
+  foldRange: { from: number; to: number };
+}
+
 type SQLScanContext =
   | { type: "code" }
   | { type: "singleQuote" }
@@ -36,10 +43,40 @@ type SQLScanContext =
   | { type: "blockComment"; depth: number }
   | { type: "dollarQuote"; delimiter: string };
 
-const foldedSQLPreviewLimit = 120;
+const foldedSQLPreviewLimit = 160;
 
 export const sqlStatementFolding: Extension = foldService.of(
   sqlStatementFoldRange
+);
+
+export const sqlFoldAtomicRanges: Extension = EditorView.atomicRanges.of(
+  (view) => foldedRanges(view.state)
+);
+
+export const sqlFoldSelectionGuard: Extension = EditorState.transactionFilter.of(
+  (transaction) => {
+    if (
+      !transaction.selection ||
+      transaction.docChanged ||
+      transaction.effects.some((effect) => effect.is(unfoldEffect))
+    ) {
+      return transaction;
+    }
+
+    const selection = snapSelectionAroundFolds(
+      transaction.startState,
+      transaction.newSelection
+    );
+    if (selection.eq(transaction.newSelection, true)) return transaction;
+
+    return {
+      changes: transaction.changes,
+      effects: transaction.effects,
+      filter: false,
+      scrollIntoView: transaction.scrollIntoView,
+      selection,
+    };
+  }
 );
 
 export function sqlStatementFoldRange(
@@ -47,36 +84,26 @@ export function sqlStatementFoldRange(
   lineStart: number,
   lineEnd: number
 ) {
-  const statement = sqlStatementRangeAt(
-    state.doc.toString(),
-    lineStart,
-    lineEnd
+  return (
+    sqlStatementFoldTarget(state, lineStart, lineEnd, true)?.foldRange ?? null
   );
-  if (!statement) return null;
-
-  const firstLine = state.doc.lineAt(statement.start);
-  if (!lineIntersectsRange(lineStart, lineEnd, {
-    start: statement.start,
-    end: firstLine.to,
-  })) {
-    return null;
-  }
-
-  return foldRangeForStatement(state, statement);
 }
 
 export const foldSQLStatement: Command = (view) => {
   for (const selection of view.state.selection.ranges) {
     const line = view.state.doc.lineAt(selection.head);
-    const foldRange = sqlStatementFoldRangeAroundLine(
+    const target = sqlStatementFoldTarget(
       view.state,
       line.from,
-      line.to
+      line.to,
+      false
     );
-    if (!foldRange || hasFoldedRange(view.state, foldRange)) continue;
+    if (!target || hasFoldedRange(view.state, target.foldRange)) continue;
 
     view.dispatch({
-      effects: foldEffect.of(foldRange),
+      effects: foldEffect.of(target.foldRange),
+      selection: { anchor: target.statement.start },
+      scrollIntoView: true,
     });
     return true;
   }
@@ -165,11 +192,12 @@ export function sqlStatementFoldGutter(): Extension {
   ];
 }
 
-function sqlStatementFoldRangeAroundLine(
+function sqlStatementFoldTarget(
   state: EditorState,
   lineStart: number,
-  lineEnd: number
-) {
+  lineEnd: number,
+  firstLineOnly: boolean
+): SQLFoldTarget | null {
   const statement = sqlStatementRangeAt(
     state.doc.toString(),
     lineStart,
@@ -177,7 +205,18 @@ function sqlStatementFoldRangeAroundLine(
   );
   if (!statement) return null;
 
-  return foldRangeForStatement(state, statement);
+  if (firstLineOnly) {
+    const firstLine = state.doc.lineAt(statement.start);
+    if (!lineIntersectsRange(lineStart, lineEnd, {
+      start: statement.start,
+      end: firstLine.to,
+    })) {
+      return null;
+    }
+  }
+
+  const foldRange = foldRangeForStatement(state, statement);
+  return foldRange ? { statement, foldRange } : null;
 }
 
 function foldRangeForStatement(
@@ -230,9 +269,17 @@ function toggleFoldAtGutterLine(view: EditorView, line: BlockInfo) {
 
   const foldRange = sqlStatementFoldRange(view.state, line.from, line.to);
   if (foldRange) {
+    const statement = sqlStatementRangeAt(
+      view.state.doc.toString(),
+      line.from,
+      line.to
+    );
     view.dispatch({
       effects: foldEffect.of(foldRange),
+      selection: { anchor: statement?.start ?? line.from },
+      scrollIntoView: true,
     });
+    view.focus();
   }
 }
 
@@ -246,15 +293,14 @@ export function prepareSQLFoldPlaceholder(
 
 export function sqlFoldPlaceholderDOM(
   _view: unknown,
-  onclick: (event: Event) => void,
+  _onclick: (event: Event) => void,
   preview: string | null
 ) {
   const placeholder = document.createElement("span");
   placeholder.className = "cm-foldPlaceholder cm-sqlFoldPlaceholder";
   placeholder.textContent = preview || " ...";
   placeholder.setAttribute("aria-label", "Folded SQL statement");
-  placeholder.title = "Unfold SQL statement";
-  placeholder.onclick = onclick;
+  placeholder.title = "Folded SQL statement";
   return placeholder;
 }
 
@@ -498,6 +544,50 @@ function compactSQLPreview(sqlText: string) {
   const compact = sqlText.replace(/\s+/g, " ").trim();
   if (compact.length <= foldedSQLPreviewLimit) return compact;
   return `${compact.slice(0, foldedSQLPreviewLimit).trimEnd()}...`;
+}
+
+function snapSelectionAroundFolds(
+  state: EditorState,
+  selection: EditorSelection
+) {
+  let changed = false;
+  const ranges = selection.ranges.map((range) => {
+    const nextRange = snapSelectionRangeAroundFolds(state, range);
+    if (!nextRange.eq(range, true)) changed = true;
+    return nextRange;
+  });
+
+  return changed ? EditorSelection.create(ranges, selection.mainIndex) : selection;
+}
+
+function snapSelectionRangeAroundFolds(
+  state: EditorState,
+  range: SelectionRange
+) {
+  const anchor = snapPositionAroundFolds(state, range.anchor, range.head);
+  const head = snapPositionAroundFolds(state, range.head, range.anchor);
+  if (anchor === range.anchor && head === range.head) return range;
+  return EditorSelection.range(anchor, head);
+}
+
+function snapPositionAroundFolds(
+  state: EditorState,
+  position: number,
+  oppositePosition: number
+) {
+  let nextPosition = position;
+
+  foldedRanges(state).between(0, state.doc.length, (from, to) => {
+    if (position > from && position < to) {
+      nextPosition = oppositePosition <= from ? to : from;
+    } else if (position === from && oppositePosition < from) {
+      nextPosition = to;
+    } else if (position === to && oppositePosition > to) {
+      nextPosition = from;
+    }
+  });
+
+  return nextPosition;
 }
 
 function isSQLWhitespace(char: string | undefined) {

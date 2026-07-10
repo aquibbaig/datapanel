@@ -1288,14 +1288,14 @@ export namespace settings {
 }
 
 export namespace updater {
-
+	
 	export class AppVersionInfo {
 	    currentVersion: string;
 	    currentReleaseHash: string;
 	    lastCheckedAt: string;
 	    lastInstalledAt: string;
 	    firstRunAfterUpdate: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new AppVersionInfo(source);
 	    }
@@ -1391,3 +1391,4 @@ export namespace updater {
 	}
 
 }
+

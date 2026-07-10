@@ -10,24 +10,23 @@ import {
   Settings,
   Star,
 } from "lucide-react";
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { Toaster } from "sonner";
 import { BrowserOpenURL, EventsOn } from "../../wailsjs/runtime/runtime";
 import { AppSidebar } from "../components/AppSidebar";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbPage,
-} from "../components/ui/breadcrumb";
 import { Button } from "../components/ui/Button";
 import { Modal } from "../components/ui/Modal";
-import { Separator } from "../components/ui/separator";
 import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
 } from "../components/ui/sidebar";
+import type { AISQLAssistantRequest } from "../features/ai-assistant/AiAssistantPanel";
 import { ConnectionPanel } from "../features/connections/ConnectionPanel";
 import { QueryEditor } from "../features/query-editor/QueryEditor";
 import { QueryPlanView } from "../features/query-plan/QueryPlanView";
@@ -35,8 +34,12 @@ import { ResultsGrid } from "../features/results-grid/ResultsGrid";
 import { SettingsPanel } from "../features/settings/SettingsPanel";
 import { appDataService } from "../lib/backend";
 import { cn } from "../lib/cn";
-import type { ConnectionProfile, QueryResult, TableDetails, TableSummary } from "../lib/types";
-import type { AISQLAssistantRequest } from "../features/ai-assistant/AiAssistantPanel";
+import type {
+  ConnectionProfile,
+  QueryResult,
+  TableDetails,
+  TableSummary,
+} from "../lib/types";
 import { CommandPalette } from "./CommandPalette";
 import { RightActionPanel, type RightPanel } from "./RightActionPanel";
 import { useDataPanelState } from "./useDataPanelState";
@@ -79,18 +82,21 @@ function restoreQueryWorkspaceDrafts(draft: {
   workspaces: Array<{ id: string; title: string; sql: string }>;
 }) {
   const seen = new Set<string>();
-  const workspaces = draft.workspaces.reduce<QueryWorkspace[]>((items, item, index) => {
-    if (items.length >= maxQueryWorkspaces) return items;
-    const id = item.id?.trim() || crypto.randomUUID();
-    if (seen.has(id)) return items;
-    seen.add(id);
-    items.push({
-      id,
-      title: item.title?.trim() || `Query ${index + 1}`,
-      sql: typeof item.sql === "string" ? item.sql : "",
-    });
-    return items;
-  }, []);
+  const workspaces = draft.workspaces.reduce<QueryWorkspace[]>(
+    (items, item, index) => {
+      if (items.length >= maxQueryWorkspaces) return items;
+      const id = item.id?.trim() || crypto.randomUUID();
+      if (seen.has(id)) return items;
+      seen.add(id);
+      items.push({
+        id,
+        title: item.title?.trim() || `Query ${index + 1}`,
+        sql: typeof item.sql === "string" ? item.sql : "",
+      });
+      return items;
+    },
+    [],
+  );
   const nextWorkspaces =
     workspaces.length > 0 ? workspaces : createInitialQueryWorkspaces();
   const activeWorkspaceId = nextWorkspaces.some(
@@ -131,9 +137,7 @@ export function App() {
   const [rightPanel, setRightPanel] = useState<RightPanel | null>(null);
   const [assistantRequest, setAssistantRequest] =
     useState<AISQLAssistantRequest | null>(null);
-  const [bottomView, setBottomView] = useState<"results" | "plan">(
-    "results",
-  );
+  const [bottomView, setBottomView] = useState<"results" | "plan">("results");
   const [bottomPanelExpanded, setBottomPanelExpanded] = useState(true);
   const [bottomPanelHeight, setBottomPanelHeight] = useState<number | null>(
     null,
@@ -164,8 +168,9 @@ export function App() {
   const activeQueryWorkspaceIdRef = useRef(activeQueryWorkspaceId);
   const queryWorkspacesRef = useRef(queryWorkspaces);
   const activeQueryWorkspace =
-    queryWorkspaces.find((workspace) => workspace.id === activeQueryWorkspaceId) ??
-    queryWorkspaces[0];
+    queryWorkspaces.find(
+      (workspace) => workspace.id === activeQueryWorkspaceId,
+    ) ?? queryWorkspaces[0];
   const sqlDraft = activeQueryWorkspace?.sql ?? "";
 
   useEffect(() => {
@@ -348,7 +353,9 @@ export function App() {
     table: Parameters<typeof model.inspectTable>[0],
   ) {
     const driver = normalizeDriver(model.activeProfile?.driver);
-    const detailsPromise = model.inspectTable(table, { force: true }).catch(() => null);
+    const detailsPromise = model
+      .inspectTable(table, { force: true })
+      .catch(() => null);
     const selectList =
       driver === "postgres" && isPostgresBaseTable(table.type)
         ? `ctid::text as "${postgresRowLocatorColumn}", *`
@@ -391,11 +398,17 @@ export function App() {
 
     if (editableTarget && !isExplainSQL(sql)) {
       editableTable = editableTarget.table;
-      editableDetailsPromise = model.loadTableDetails(editableTarget.table, { force: true }).catch(
-        () => null,
-      );
-      if (driver === "postgres" && isPostgresBaseTable(editableTarget.table.type)) {
-        sqlToRun = addPostgresRowLocator(sql, editableTarget.rowLocatorPlacement);
+      editableDetailsPromise = model
+        .loadTableDetails(editableTarget.table, { force: true })
+        .catch(() => null);
+      if (
+        driver === "postgres" &&
+        isPostgresBaseTable(editableTarget.table.type)
+      ) {
+        sqlToRun = addPostgresRowLocator(
+          sql,
+          editableTarget.rowLocatorPlacement,
+        );
       }
     }
 
@@ -411,9 +424,9 @@ export function App() {
       );
       if (inferredTable) {
         editableTable = inferredTable;
-        editableDetailsPromise = model.loadTableDetails(inferredTable, { force: true }).catch(
-          () => null,
-        );
+        editableDetailsPromise = model
+          .loadTableDetails(inferredTable, { force: true })
+          .catch(() => null);
       }
     }
 
@@ -477,7 +490,10 @@ export function App() {
     setAssistantRequest({
       id: crypto.randomUUID(),
       displayPrompt: buildSQLExplanationDisplayPrompt(selectedSQL),
-      prompt: buildSQLExplanationPrompt(selectedSQL, model.activeProfile?.driver),
+      prompt: buildSQLExplanationPrompt(
+        selectedSQL,
+        model.activeProfile?.driver,
+      ),
       autoSubmit: true,
       startNewThread: true,
       threadTitle: "Explain query with AI",
@@ -527,7 +543,9 @@ export function App() {
   function setSqlDraft(sql: string) {
     setQueryWorkspaces((current) =>
       current.map((workspace) =>
-        workspace.id === activeQueryWorkspaceId ? { ...workspace, sql } : workspace,
+        workspace.id === activeQueryWorkspaceId
+          ? { ...workspace, sql }
+          : workspace,
       ),
     );
   }
@@ -586,8 +604,8 @@ export function App() {
       nextActiveId = replacement.id;
     } else if (workspace.id === activeQueryWorkspaceId) {
       nextActiveId =
-        remaining[Math.min(Math.max(deletedIndex, 0), remaining.length - 1)]?.id ??
-        remaining[0].id;
+        remaining[Math.min(Math.max(deletedIndex, 0), remaining.length - 1)]
+          ?.id ?? remaining[0].id;
     }
 
     setQueryWorkspaces(remaining);
@@ -640,7 +658,10 @@ export function App() {
   const activeKeychainAccessHint = currentKeychainAccessHint(model);
 
   return (
-    <div className="contents bg-background text-foreground" data-cursor-mode={cursorMode}>
+    <div
+      className="contents bg-background text-foreground"
+      data-cursor-mode={cursorMode}
+    >
       <Toaster
         closeButton
         position="top-right"
@@ -648,7 +669,8 @@ export function App() {
         toastOptions={{
           classNames: {
             toast: "!items-start",
-            icon: "mt-[3px]",
+            icon: "mt-[2px]",
+            closeButton: "!left-auto !right-0 !translate-x-[35%] !-translate-y-[35%]",
           },
         }}
       />
@@ -747,7 +769,8 @@ export function App() {
               </Button>
               <Button
                 className={cn(
-                  rightPanel === "ai" && "bg-selection text-selection-foreground",
+                  rightPanel === "ai" &&
+                    "bg-selection text-selection-foreground",
                 )}
                 size="icon"
                 onClick={() => toggleRightPanel("ai")}
@@ -757,7 +780,8 @@ export function App() {
               </Button>
               <Button
                 className={cn(
-                  rightPanel === "history" && "bg-selection text-selection-foreground",
+                  rightPanel === "history" &&
+                    "bg-selection text-selection-foreground",
                 )}
                 size="icon"
                 onClick={() => toggleRightPanel("history")}
@@ -765,11 +789,7 @@ export function App() {
               >
                 <Clock3 size={14} />
               </Button>
-              <Button
-                size="icon"
-                onClick={toggleLastRightPanel}
-                title="Panels"
-              >
+              <Button size="icon" onClick={toggleLastRightPanel} title="Panels">
                 <PanelRight size={14} />
               </Button>
             </div>
@@ -859,7 +879,8 @@ export function App() {
                     <div className="flex min-w-0 items-center gap-2">
                       {editableResultTable ? (
                         <span className="truncate px-2 text-xs text-muted">
-                          {editableResultTable.schema}.{editableResultTable.name}
+                          {editableResultTable.schema}.
+                          {editableResultTable.name}
                         </span>
                       ) : null}
                       <Button
@@ -1111,10 +1132,10 @@ function canRetryConnection(model: ReturnType<typeof useDataPanelState>) {
     model.connectionHealth.connectionId === model.activeConnectionId;
   return Boolean(
     model.activeProfile &&
-      healthBelongsToActiveConnection &&
-      !model.connectionHealth.connected &&
-      model.connectionHealth.error &&
-      !isKeychainAccessIssue(message),
+    healthBelongsToActiveConnection &&
+    !model.connectionHealth.connected &&
+    model.connectionHealth.error &&
+    !isKeychainAccessIssue(message),
   );
 }
 
@@ -1237,10 +1258,7 @@ function parseSingleTableSelectTarget(sql: string) {
 }
 
 function parseReturningMutationTarget(sql: string) {
-  return (
-    parseInsertReturningTarget(sql) ||
-    parseUpdateReturningTarget(sql)
-  );
+  return parseInsertReturningTarget(sql) || parseUpdateReturningTarget(sql);
 }
 
 function parseInsertReturningTarget(sql: string) {
@@ -1391,11 +1409,7 @@ function isPostgresBaseTable(tableType: string) {
   return tableType.trim().toUpperCase() === "BASE TABLE";
 }
 
-function qualifiedName(
-  driver: SQLDriver,
-  schema: string,
-  table: string,
-) {
+function qualifiedName(driver: SQLDriver, schema: string, table: string) {
   return `${quoteIdentifier(driver, schema)}.${quoteIdentifier(driver, table)}`;
 }
 
@@ -1497,7 +1511,9 @@ function connectionTooltip(model: ReturnType<typeof useDataPanelState>) {
           <span>Connected {relativeTime(health.connectedAt)}</span>
         ) : null}
         <span className="truncate text-muted">
-          {profile.driver === "bigquery" ? profile.host : `${profile.host}:${profile.port}`}
+          {profile.driver === "bigquery"
+            ? profile.host
+            : `${profile.host}:${profile.port}`}
         </span>
       </div>
     </div>
@@ -1530,13 +1546,15 @@ function currentKeychainAccessHint(
 
 function isKeychainAccessIssue(message = "") {
   const normalized = message.toLowerCase();
-  return normalized.includes("keychain access required") ||
+  return (
+    normalized.includes("keychain access required") ||
     normalized.includes("secure storage locked") ||
     normalized.includes("could not unlock saved secrets") ||
     normalized.includes("saved password not found") ||
     normalized.includes("user interaction") ||
     normalized.includes("passphrase") ||
-    normalized.includes("access control");
+    normalized.includes("access control")
+  );
 }
 
 function appErrorMessage(error: unknown) {
