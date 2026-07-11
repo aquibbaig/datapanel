@@ -1,5 +1,20 @@
 # Changelog
 
+## ⚙️ Config File Settings & Editor Performance
+Release - v1.1.0
+
+✨ New
+
+- Added a NixOS-style `settings.conf` file as the editable source for app settings.
+- Added an app menu shortcut to open the settings file in the system text editor.
+
+💎 Improvements
+
+- Synced settings changes between the text config file and the React settings UI.
+- Moved settings UI rendering onto a shared settings configuration definition.
+- Improved SQL folding and query editor performance.
+- Updated the Windows release workflow to use product version metadata.
+
 ## 🔐 Secure Vault Storage
 Release - v1.0.5
 
