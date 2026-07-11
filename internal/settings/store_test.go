@@ -1,9 +1,12 @@
 package settings
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -60,13 +63,122 @@ func TestFileStoreSavesAndNormalizesSettings(t *testing.T) {
 	if got.ExportDirectory != "~/exports" {
 		t.Fatalf("expected export directory to be trimmed, got %q", got.ExportDirectory)
 	}
+	data, err := os.ReadFile(store.Path())
+	if err != nil {
+		t.Fatalf("read saved settings: %v", err)
+	}
+	if strings.Contains(string(data), "user-id") {
+		t.Fatalf("settings config should not expose user id:\n%s", data)
+	}
+}
+
+func TestFileStoreLoadsConfigSettings(t *testing.T) {
+	settingsPath := filepath.Join(t.TempDir(), "settings.conf")
+	if err := os.WriteFile(settingsPath, []byte(`
+theme = dark
+query-limit = 250
+query-timeout-seconds = 45
+confirm-destructive-sql = false
+sidebar-width = 280
+inspector-width = 340
+auto-refresh-metadata = false
+export-directory = "~/Data Exports"
+chat-response-prompt = "Keep it short"
+cursor-mode = pointer
+vim-navigation-enabled = true
+telemetry-enabled = true
+`), 0o600); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+
+	got, err := NewFileStore(settingsPath).Load()
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
+	if got.Theme != "dark" || got.QueryLimit != 250 || got.QueryTimeoutSeconds != 45 {
+		t.Fatalf("did not load basic config values: %#v", got)
+	}
+	if got.ConfirmDestructiveSQL || got.AutoRefreshMetadata {
+		t.Fatalf("did not load false boolean values: %#v", got)
+	}
+	if got.ExportDirectory != "~/Data Exports" || got.ChatResponsePrompt != "Keep it short" {
+		t.Fatalf("did not load string values: %#v", got)
+	}
+	if got.CursorMode != "pointer" || !got.VimNavigationEnabled || !got.TelemetryEnabled {
+		t.Fatalf("did not load editor/privacy values: %#v", got)
+	}
+}
+
+func TestFileStoreIgnoresConfigUserID(t *testing.T) {
+	settingsPath := filepath.Join(t.TempDir(), "settings.conf")
+	if err := os.WriteFile(settingsPath, []byte(`
+theme = dark
+user-id = 17cef7e3-0e0f-4cf0-b0aa-869ad885c523
+`), 0o600); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+
+	got, err := NewFileStore(settingsPath).Load()
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
+	if got.UserID != "" {
+		t.Fatalf("user id from editable config should be ignored, got %q", got.UserID)
+	}
+}
+
+func TestServiceSanitizesConfigUserID(t *testing.T) {
+	settingsPath := filepath.Join(t.TempDir(), "settings.conf")
+	if err := os.WriteFile(settingsPath, []byte(`
+theme = light
+telemetry-enabled = true
+user-id = 17cef7e3-0e0f-4cf0-b0aa-869ad885c523
+`), 0o600); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+
+	if err := NewService(NewFileStore(settingsPath)).SanitizeSettingsFile(); err != nil {
+		t.Fatalf("sanitize settings: %v", err)
+	}
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("read settings: %v", err)
+	}
+	if strings.Contains(string(data), "user-id") || strings.Contains(string(data), "17cef7e3") {
+		t.Fatalf("settings config should not expose user id:\n%s", data)
+	}
+}
+
+func TestFileStoreMigratesLegacyJSONPath(t *testing.T) {
+	dir := t.TempDir()
+	legacyPath := filepath.Join(dir, "settings.json")
+	settingsPath := filepath.Join(dir, "settings.conf")
+	if err := os.WriteFile(legacyPath, []byte(`{"theme":"dark","queryLimit":125}`), 0o600); err != nil {
+		t.Fatalf("write legacy settings: %v", err)
+	}
+
+	store := NewFileStore(settingsPath, legacyPath)
+	got, err := store.Load()
+	if err != nil {
+		t.Fatalf("load legacy settings: %v", err)
+	}
+	if got.Theme != "dark" || got.QueryLimit != 125 {
+		t.Fatalf("did not load legacy settings: %#v", got)
+	}
+	if err := store.Save(got); err != nil {
+		t.Fatalf("save migrated settings: %v", err)
+	}
+	if _, err := os.Stat(settingsPath); err != nil {
+		t.Fatalf("expected migrated settings file: %v", err)
+	}
 }
 
 func TestServiceStoresUserIDWhenProvided(t *testing.T) {
 	dir := t.TempDir()
+	cacheDir := filepath.Join(dir, "cache")
 	service := NewService(
 		NewFileStore(filepath.Join(dir, "settings.json")),
-		filepath.Join(dir, "cache"),
+		cacheDir,
 	)
 
 	userID := uuid.NewString()
@@ -89,6 +201,53 @@ func TestServiceStoresUserIDWhenProvided(t *testing.T) {
 	}
 	if got.UserID != userID {
 		t.Fatalf("expected stored user id, got %q", got.UserID)
+	}
+
+	reloaded, err := NewService(NewFileStore(filepath.Join(dir, "settings.json")), cacheDir).GetSettings()
+	if err != nil {
+		t.Fatalf("reload settings: %v", err)
+	}
+	if reloaded.UserID != userID {
+		t.Fatalf("expected hidden user id to reload, got %q", reloaded.UserID)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "settings.json"))
+	if err != nil {
+		t.Fatalf("read settings: %v", err)
+	}
+	if strings.Contains(string(data), "user-id") || strings.Contains(string(data), "userId") {
+		t.Fatalf("settings file should not expose user id:\n%s", data)
+	}
+}
+
+func TestServiceWatchesSettingsFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.conf")
+	store := NewFileStore(path)
+	if err := store.Save(DefaultSettings()); err != nil {
+		t.Fatalf("save initial settings: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	changed := make(chan struct{}, 1)
+	service := NewService(store)
+	service.WatchSettingsFile(ctx, 10*time.Millisecond, func() {
+		select {
+		case changed <- struct{}{}:
+		default:
+		}
+	})
+
+	updated := DefaultSettings()
+	updated.Theme = "dark"
+	if err := store.Save(updated); err != nil {
+		t.Fatalf("save updated settings: %v", err)
+	}
+
+	select {
+	case <-changed:
+	case <-time.After(time.Second):
+		t.Fatalf("expected settings file change event")
 	}
 }
 

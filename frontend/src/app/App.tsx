@@ -17,7 +17,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { Toaster } from "sonner";
-import { BrowserOpenURL, EventsOn } from "../../wailsjs/runtime/runtime";
+import { BrowserOpenURL } from "../../wailsjs/runtime/runtime";
 import { AppSidebar } from "../components/AppSidebar";
 import { Button } from "../components/ui/Button";
 import { Modal } from "../components/ui/Modal";
@@ -31,7 +31,6 @@ import { ConnectionPanel } from "../features/connections/ConnectionPanel";
 import { QueryEditor } from "../features/query-editor/QueryEditor";
 import { QueryPlanView } from "../features/query-plan/QueryPlanView";
 import { ResultsGrid } from "../features/results-grid/ResultsGrid";
-import { SettingsPanel } from "../features/settings/SettingsPanel";
 import { appDataService } from "../lib/backend";
 import { cn } from "../lib/cn";
 import type {
@@ -69,7 +68,6 @@ interface QueryWorkspace {
 interface WailsRuntimeWindow extends Window {
   runtime?: {
     BrowserOpenURL?: unknown;
-    EventsOn?: unknown;
   };
 }
 
@@ -133,7 +131,6 @@ export function App() {
   const resolvedTheme = useResolvedTheme(model.settings?.theme);
   const [connectionModalOpen, setConnectionModalOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [rightPanel, setRightPanel] = useState<RightPanel | null>(null);
   const [assistantRequest, setAssistantRequest] =
     useState<AISQLAssistantRequest | null>(null);
@@ -186,17 +183,17 @@ export function App() {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setCommandOpen(true);
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key === ",") {
+        event.preventDefault();
+        void model.openSettingsFile();
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-  useEffect(() => {
-    if (!(window as WailsRuntimeWindow).runtime?.EventsOn) return undefined;
-    return EventsOn("datapanel:open-settings", () => setSettingsOpen(true));
-  }, []);
+  }, [model.openSettingsFile]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = resolvedTheme;
@@ -684,7 +681,7 @@ export function App() {
         onEditConnection={() => openEditConnection(model.activeProfile)}
         onOpenAI={() => openRightPanel("ai")}
         onOpenHistory={() => openRightPanel("history")}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={model.openSettingsFile}
         onRefreshMetadata={() => void model.refreshMetadata()}
         onSetTheme={(theme) => void setTheme(theme)}
         onSelectTable={(table) => void selectTableForEditing(table)}
@@ -762,8 +759,8 @@ export function App() {
               <Button
                 className="text-zinc-500"
                 size="icon"
-                onClick={() => setSettingsOpen(true)}
-                title="Settings"
+                onClick={() => void model.openSettingsFile()}
+                title="Open Settings"
               >
                 <Settings size={14} />
               </Button>
@@ -1073,20 +1070,6 @@ export function App() {
           </div>
         </Modal>
 
-        <Modal
-          title="Settings"
-          open={settingsOpen}
-          panelClassName="max-w-[920px]"
-          bodyClassName="p-0"
-          onClose={() => setSettingsOpen(false)}
-        >
-          <SettingsPanel
-            appUpdateStatus={model.appUpdateState}
-            settings={model.settings}
-            onCheckForUpdates={model.checkForAppUpdate}
-            onUpdate={model.updateSettings}
-          />
-        </Modal>
       </SidebarProvider>
       {model.workspaceSwitching ? (
         <WorkspaceSwitchOverlay

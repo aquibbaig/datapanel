@@ -681,6 +681,10 @@ export const settingsService = {
     if (!isWailsRuntime()) return normalizeSettings(defaultSettings);
     return normalizeSettings((await SettingsBindings.GetSettings()) as AppSettings);
   },
+  async openFile(): Promise<void> {
+    if (!isWailsRuntime()) return;
+    return SettingsBindings.OpenSettingsFile();
+  },
   async update(input: AppSettings): Promise<AppSettings> {
     if (!isWailsRuntime()) {
       const userId = defaultSettings.userId || input.userId || "";
