@@ -6,6 +6,18 @@ export function GetSettings() {
   return window['go']['settings']['Service']['GetSettings']();
 }
 
+export function OpenSettingsFile() {
+  return window['go']['settings']['Service']['OpenSettingsFile']();
+}
+
+export function SanitizeSettingsFile() {
+  return window['go']['settings']['Service']['SanitizeSettingsFile']();
+}
+
 export function UpdateSettings(arg1) {
   return window['go']['settings']['Service']['UpdateSettings'](arg1);
+}
+
+export function WatchSettingsFile(arg1, arg2, arg3) {
+  return window['go']['settings']['Service']['WatchSettingsFile'](arg1, arg2, arg3);
 }

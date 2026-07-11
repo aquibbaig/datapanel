@@ -11,13 +11,14 @@ import {
   Star,
 } from "lucide-react";
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { Toaster } from "sonner";
-import { BrowserOpenURL, EventsOn } from "../../wailsjs/runtime/runtime";
+import { BrowserOpenURL } from "../../wailsjs/runtime/runtime";
 import { AppSidebar } from "../components/AppSidebar";
 import { Button } from "../components/ui/Button";
 import { Modal } from "../components/ui/Modal";
@@ -69,7 +70,6 @@ interface QueryWorkspace {
 interface WailsRuntimeWindow extends Window {
   runtime?: {
     BrowserOpenURL?: unknown;
-    EventsOn?: unknown;
   };
 }
 
@@ -172,6 +172,10 @@ export function App() {
       (workspace) => workspace.id === activeQueryWorkspaceId,
     ) ?? queryWorkspaces[0];
   const sqlDraft = activeQueryWorkspace?.sql ?? "";
+  const openSettingsPanel = useCallback(() => {
+    setSettingsOpen(true);
+    void model.reloadSettings();
+  }, [model.reloadSettings]);
 
   useEffect(() => {
     activeQueryWorkspaceIdRef.current = activeQueryWorkspaceId;
@@ -186,17 +190,17 @@ export function App() {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setCommandOpen(true);
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key === ",") {
+        event.preventDefault();
+        void model.openSettingsFile();
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-  useEffect(() => {
-    if (!(window as WailsRuntimeWindow).runtime?.EventsOn) return undefined;
-    return EventsOn("datapanel:open-settings", () => setSettingsOpen(true));
-  }, []);
+  }, [model.openSettingsFile]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = resolvedTheme;
@@ -684,7 +688,7 @@ export function App() {
         onEditConnection={() => openEditConnection(model.activeProfile)}
         onOpenAI={() => openRightPanel("ai")}
         onOpenHistory={() => openRightPanel("history")}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={openSettingsPanel}
         onRefreshMetadata={() => void model.refreshMetadata()}
         onSetTheme={(theme) => void setTheme(theme)}
         onSelectTable={(table) => void selectTableForEditing(table)}
@@ -762,7 +766,7 @@ export function App() {
               <Button
                 className="text-zinc-500"
                 size="icon"
-                onClick={() => setSettingsOpen(true)}
+                onClick={openSettingsPanel}
                 title="Settings"
               >
                 <Settings size={14} />
@@ -1084,9 +1088,11 @@ export function App() {
             appUpdateStatus={model.appUpdateState}
             settings={model.settings}
             onCheckForUpdates={model.checkForAppUpdate}
+            onOpenSettingsFile={model.openSettingsFile}
             onUpdate={model.updateSettings}
           />
         </Modal>
+
       </SidebarProvider>
       {model.workspaceSwitching ? (
         <WorkspaceSwitchOverlay

@@ -431,6 +431,13 @@ export function useDataPanelState() {
     return nextProfiles;
   }, []);
 
+  const reloadSettings = useCallback(async () => {
+    const nextSettings = await settingsService.get();
+    const appliedSettings = await applyTelemetrySettings(nextSettings);
+    setSettings(appliedSettings);
+    return appliedSettings;
+  }, []);
+
   useEffect(() => {
     if (initializationStartedRef.current) return;
     initializationStartedRef.current = true;
@@ -542,26 +549,44 @@ export function useDataPanelState() {
     });
   }, [appUpdateQuery.refetch]);
 
+  const reloadSettingsOnActivation = useCallback(() => {
+    void reloadSettings().catch((error: unknown) => {
+      const message = errorMessage(error, "Could not reload settings");
+      console.warn("Settings reload failed", error);
+      setStatus({ tone: "danger", text: message });
+    });
+  }, [reloadSettings]);
+
   useEffect(() => {
+    function handleActivation() {
+      reloadSettingsOnActivation();
+      checkForAppUpdateOnActivation();
+    }
+
     function handleVisibilityChange() {
       if (document.visibilityState === "visible") {
-        checkForAppUpdateOnActivation();
+        handleActivation();
       }
     }
 
-    window.addEventListener("focus", checkForAppUpdateOnActivation);
+    window.addEventListener("focus", handleActivation);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     const unsubscribe =
       (window as { runtime?: { EventsOn?: unknown } }).runtime?.EventsOn
-        ? EventsOn("datapanel:app-activated", checkForAppUpdateOnActivation)
+        ? EventsOn("datapanel:app-activated", handleActivation)
+        : undefined;
+    const unsubscribeSettings =
+      (window as { runtime?: { EventsOn?: unknown } }).runtime?.EventsOn
+        ? EventsOn("datapanel:settings-changed", reloadSettingsOnActivation)
         : undefined;
 
     return () => {
-      window.removeEventListener("focus", checkForAppUpdateOnActivation);
+      window.removeEventListener("focus", handleActivation);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (typeof unsubscribe === "function") unsubscribe();
+      if (typeof unsubscribeSettings === "function") unsubscribeSettings();
     };
-  }, [checkForAppUpdateOnActivation]);
+  }, [checkForAppUpdateOnActivation, reloadSettingsOnActivation]);
 
   async function installAppUpdate(assetName: string) {
     if (isLocalDev()) return;
@@ -1215,6 +1240,18 @@ export function useDataPanelState() {
     setStatus({ tone: "success", text: "Settings updated" });
   }, []);
 
+  const openSettingsFile = useCallback(async () => {
+    try {
+      await settingsService.openFile();
+      setStatus({ tone: "success", text: "Settings file opened" });
+    } catch (error) {
+      const message = errorMessage(error, "Could not open settings file");
+      setStatus({ tone: "danger", text: message });
+      notify("danger", "Could not open settings file", message);
+      throw error;
+    }
+  }, []);
+
   return {
     profiles,
     activeProfile,
@@ -1250,6 +1287,8 @@ export function useDataPanelState() {
     commitSQL,
     cancelQuery,
     checkForAppUpdate,
+    openSettingsFile,
+    reloadSettings,
     updateSettings
   };
 }

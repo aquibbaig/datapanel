@@ -5,6 +5,7 @@ import (
 	"embed"
 	"log"
 	"runtime"
+	"time"
 
 	"datapanel/internal/ai"
 	appcore "datapanel/internal/app"
@@ -24,6 +25,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/menu/keys"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 //go:embed all:frontend/dist
@@ -35,7 +37,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	settingsStore := settings.NewFileStore(paths.SettingsPath)
+	settingsStore := settings.NewFileStore(paths.SettingsPath, appcore.LegacySettingsPath(paths.ConfigDir))
 	settingsService := settings.NewService(settingsStore, paths.CacheDir)
 	appDataService, err := appdata.NewService(paths.AppDatabasePath)
 	if err != nil {
@@ -74,7 +76,7 @@ func main() {
 		Height:    920,
 		MinWidth:  1040,
 		MinHeight: 720,
-		Menu:      applicationMenuForPlatform(application),
+		Menu:      applicationMenu(application, settingsService),
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
@@ -82,6 +84,12 @@ func main() {
 		OnStartup: func(ctx context.Context) {
 			application.Startup(ctx)
 			updater.Startup(updateService, ctx)
+			if err := settingsService.SanitizeSettingsFile(); err != nil {
+				log.Printf("sanitize settings: %v", err)
+			}
+			settingsService.WatchSettingsFile(ctx, time.Second, func() {
+				wailsruntime.EventsEmit(ctx, "datapanel:settings-changed")
+			})
 		},
 		OnShutdown: application.Shutdown,
 		SingleInstanceLock: &options.SingleInstanceLock{
@@ -107,23 +115,20 @@ func main() {
 	}
 }
 
-func applicationMenuForPlatform(application *appcore.Application) *menu.Menu {
-	if runtime.GOOS != "darwin" {
-		return nil
-	}
-	return applicationMenu(application)
-}
-
-func applicationMenu(application *appcore.Application) *menu.Menu {
+func applicationMenu(application *appcore.Application, settingsService *settings.Service) *menu.Menu {
 	appMenu := menu.NewMenu()
-	appMenu.AddText("Settings...", keys.CmdOrCtrl(","), func(_ *menu.CallbackData) {
-		application.OpenSettings()
+	appMenu.AddText("Open Settings", keys.CmdOrCtrl(","), func(_ *menu.CallbackData) {
+		if err := settingsService.OpenSettingsFile(); err != nil {
+			log.Printf("open settings: %v", err)
+		}
 	})
 	appMenu.AddSeparator()
-	appMenu.AddText("Hide DataPanel", keys.CmdOrCtrl("h"), func(_ *menu.CallbackData) {
-		application.Hide()
-	})
-	appMenu.AddSeparator()
+	if runtime.GOOS == "darwin" {
+		appMenu.AddText("Hide DataPanel", keys.CmdOrCtrl("h"), func(_ *menu.CallbackData) {
+			application.Hide()
+		})
+		appMenu.AddSeparator()
+	}
 	appMenu.AddText("Quit DataPanel", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
 		application.Quit()
 	})

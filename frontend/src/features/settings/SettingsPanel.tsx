@@ -1,21 +1,19 @@
 import {
-  Database,
-  Download,
-  Eye,
-  Keyboard,
-  Monitor,
-  Moon,
-  MousePointer,
+  FileText,
   RefreshCw,
   RotateCcw,
-  Shield,
-  Sun,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "../../components/ui/Button";
 import { cn } from "../../lib/cn";
 import { textInputBehaviorProps } from "../../lib/text-input";
 import type { AppSettings, AppVersionInfo, UpdateCheckResult } from "../../lib/types";
+import {
+  settingsFields,
+  settingsSections,
+  type SectionId,
+  type SettingsField,
+} from "./settingsConfig";
 
 interface AppUpdateStatus {
   checking: boolean;
@@ -29,16 +27,15 @@ interface Props {
   settings: AppSettings | null;
   appUpdateStatus: AppUpdateStatus;
   onCheckForUpdates(): Promise<unknown>;
+  onOpenSettingsFile(): Promise<unknown>;
   onUpdate(settings: AppSettings): Promise<void>;
 }
-
-type SectionId = "general" | "query" | "editor" | "exports" | "privacy";
-type IconComponent = typeof Monitor;
 
 export function SettingsPanel({
   settings,
   appUpdateStatus,
   onCheckForUpdates,
+  onOpenSettingsFile,
   onUpdate,
 }: Props) {
   const [draft, setDraft] = useState<AppSettings | null>(settings);
@@ -101,6 +98,8 @@ export function SettingsPanel({
     return <p className="p-5 text-sm text-muted">Loading settings...</p>;
   }
 
+  const currentDraft = draft;
+
   function saveDraft(nextDraft: AppSettings) {
     const draftJson = JSON.stringify(nextDraft);
     if (draftJson === lastSavedJsonRef.current) return;
@@ -153,6 +152,91 @@ export function SettingsPanel({
     saveDraft(nextDraft);
   }
 
+  const activeFields = settingsFields.filter(
+    (field) => field.section === activeSection,
+  );
+
+  function renderSettingControl(field: SettingsField) {
+    switch (field.kind) {
+      case "segment":
+        return (
+          <SegmentedControl
+            value={String(currentDraft[field.key] || "")}
+            options={field.options}
+            onChange={(value) =>
+              updateDraft({ [field.key]: value } as Partial<AppSettings>)
+            }
+          />
+        );
+      case "toggle":
+        return (
+          <ToggleSwitch
+            checked={Boolean(currentDraft[field.key])}
+            disabled={field.key === "telemetryEnabled" ? saving : undefined}
+            onChange={(value) =>
+              updateDraft({ [field.key]: value } as Partial<AppSettings>)
+            }
+          />
+        );
+      case "number":
+        return (
+          <NumberInput
+            value={Number(currentDraft[field.key])}
+            onChange={(value) =>
+              updateDraft({ [field.key]: value } as Partial<AppSettings>, true)
+            }
+          />
+        );
+      case "textarea":
+        return (
+          <textarea
+            {...textInputBehaviorProps}
+            className="min-h-24 rounded-ui p-2 text-sm"
+            placeholder={field.placeholder}
+            value={currentDraft[field.key] || ""}
+            onChange={(event) =>
+              updateDraft(
+                { [field.key]: event.target.value } as Partial<AppSettings>,
+                true,
+              )
+            }
+          />
+        );
+      case "text":
+        return (
+          <div className="flex items-center gap-2">
+            <input
+              {...textInputBehaviorProps}
+              className="min-w-0 flex-1"
+              placeholder={field.placeholder}
+              value={currentDraft[field.key] || ""}
+              onChange={(event) =>
+                updateDraft(
+                  { [field.key]: event.target.value } as Partial<AppSettings>,
+                  true,
+                )
+              }
+            />
+            {field.resetValue !== undefined ? (
+              <Button
+                disabled={currentDraft[field.key] === field.resetValue}
+                size="icon"
+                title={field.resetTitle}
+                type="button"
+                onClick={() =>
+                  updateDraft({
+                    [field.key]: field.resetValue,
+                  } as Partial<AppSettings>)
+                }
+              >
+                <RotateCcw size={14} />
+              </Button>
+            ) : null}
+          </div>
+        );
+    }
+  }
+
   return (
     <section className="grid h-[min(680px,78vh)] grid-cols-[190px_minmax(0,1fr)] overflow-hidden">
       <nav className="border-r border-line bg-surface-900/60 p-3">
@@ -182,169 +266,59 @@ export function SettingsPanel({
 
       <div className="flex min-h-0 flex-col bg-surface-850">
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-2">
-          {activeSection === "general" ? (
-            <div className="divide-y divide-line">
-              <SettingRow title="Theme" description="Choose the app color mode.">
-                <SegmentedControl
-                  value={draft.theme || "system"}
-                  options={themeOptions}
-                  onChange={(theme) => updateDraft({ theme })}
-                />
-              </SettingRow>
+          <div className="divide-y divide-line">
+            {activeFields.map((field) => (
               <SettingRow
-                title="Cursor style"
-                description="Choose how clickable controls present the pointer."
+                key={field.key}
+                title={field.title}
+                description={field.description}
+                wide={"wide" in field ? field.wide : undefined}
               >
-                <SegmentedControl
-                  value={draft.cursorMode || "default"}
-                  options={cursorModeOptions}
-                  onChange={(cursorMode) => updateDraft({ cursorMode })}
-                />
+                {renderSettingControl(field)}
               </SettingRow>
-              <SettingRow
-                title="Version"
-                description={versionDescription(appUpdateStatus.versionInfo)}
-              >
-                <span className="select-text text-sm font-medium text-zinc-200">
-                  {appUpdateStatus.versionInfo?.currentVersion || "dev"}
-                </span>
-              </SettingRow>
-              <SettingRow
-                title="App updates"
-                description={updateCheckDescription(appUpdateStatus)}
-              >
-                <Button
-                  disabled={appUpdateStatus.checking}
-                  type="button"
-                  onClick={() => void onCheckForUpdates()}
+            ))}
+
+            {activeSection === "general" ? (
+              <>
+                <SettingRow
+                  title="Settings file"
+                  description="Open the config file used for these options."
                 >
-                  <RefreshCw
-                    className={cn(appUpdateStatus.checking && "animate-spin")}
-                    size={14}
-                  />
-                  Check now
-                </Button>
-              </SettingRow>
-            </div>
-          ) : null}
-
-          {activeSection === "query" ? (
-            <div className="divide-y divide-line">
-              <SettingRow
-                title="Warn before destructive SQL"
-                description="Ask for confirmation before running destructive statements."
-              >
-                <ToggleSwitch
-                  checked={draft.confirmDestructiveSql}
-                  onChange={(confirmDestructiveSql) =>
-                    updateDraft({ confirmDestructiveSql })
-                  }
-                />
-              </SettingRow>
-              <SettingRow
-                title="Default row limit"
-                description="Rows returned by generated query limits."
-              >
-                <NumberInput
-                  value={draft.queryLimit}
-                  onChange={(queryLimit) => updateDraft({ queryLimit }, true)}
-                />
-              </SettingRow>
-              <SettingRow
-                title="Query timeout"
-                description="Seconds before a running query times out."
-              >
-                <NumberInput
-                  value={draft.queryTimeoutSeconds}
-                  onChange={(queryTimeoutSeconds) =>
-                    updateDraft({ queryTimeoutSeconds }, true)
-                  }
-                />
-              </SettingRow>
-            </div>
-          ) : null}
-
-          {activeSection === "editor" ? (
-            <div className="divide-y divide-line">
-              <SettingRow
-                title="Vim navigation in query writer"
-                description="Use Vim key bindings in the SQL editor."
-              >
-                <ToggleSwitch
-                  checked={draft.vimNavigationEnabled}
-                  onChange={(vimNavigationEnabled) =>
-                    updateDraft({ vimNavigationEnabled })
-                  }
-                />
-              </SettingRow>
-              <SettingRow
-                title="Chat response prompt"
-                description="Default style guidance for assistant replies."
-                wide
-              >
-                <textarea
-                  {...textInputBehaviorProps}
-                  className="min-h-24 rounded-ui p-2 text-sm"
-                  placeholder="Talk to me like Keanu Reeves"
-                  value={draft.chatResponsePrompt}
-                  onChange={(event) =>
-                    updateDraft(
-                      { chatResponsePrompt: event.target.value },
-                      true,
-                    )
-                  }
-                />
-              </SettingRow>
-            </div>
-          ) : null}
-
-          {activeSection === "exports" ? (
-            <div className="divide-y divide-line">
-              <SettingRow
-                title="Export folder"
-                description="Leave blank to use the system Downloads folder."
-                wide
-              >
-                <div className="flex items-center gap-2">
-                  <input
-                    {...textInputBehaviorProps}
-                    className="min-w-0 flex-1"
-                    placeholder="~/Downloads"
-                    value={draft.exportDirectory || ""}
-                    onChange={(event) =>
-                      updateDraft({ exportDirectory: event.target.value }, true)
-                    }
-                  />
                   <Button
-                    disabled={!draft.exportDirectory}
-                    size="icon"
-                    title="Use system Downloads folder"
                     type="button"
-                    onClick={() => updateDraft({ exportDirectory: "" })}
+                    onClick={() => void onOpenSettingsFile()}
                   >
-                    <RotateCcw size={14} />
+                    <FileText size={14} />
+                    Open file
                   </Button>
-                </div>
-              </SettingRow>
-            </div>
-          ) : null}
-
-          {activeSection === "privacy" ? (
-            <div className="divide-y divide-line">
-              <SettingRow
-                title="Share anonymous diagnostics"
-                description="Send install counts and crash reports without database content."
-              >
-                <ToggleSwitch
-                  checked={draft.telemetryEnabled}
-                  disabled={saving}
-                  onChange={(telemetryEnabled) =>
-                    updateDraft({ telemetryEnabled })
-                  }
-                />
-              </SettingRow>
-            </div>
-          ) : null}
+                </SettingRow>
+                <SettingRow
+                  title="Version"
+                  description={versionDescription(appUpdateStatus.versionInfo)}
+                >
+                  <span className="select-text text-sm font-medium text-zinc-200">
+                    {appUpdateStatus.versionInfo?.currentVersion || "dev"}
+                  </span>
+                </SettingRow>
+                <SettingRow
+                  title="App updates"
+                  description={updateCheckDescription(appUpdateStatus)}
+                >
+                  <Button
+                    disabled={appUpdateStatus.checking}
+                    type="button"
+                    onClick={() => void onCheckForUpdates()}
+                  >
+                    <RefreshCw
+                      className={cn(appUpdateStatus.checking && "animate-spin")}
+                      size={14}
+                    />
+                    Check now
+                  </Button>
+                </SettingRow>
+              </>
+            ) : null}
+          </div>
         </div>
       </div>
     </section>
@@ -489,30 +463,3 @@ function formatDateTime(value: string) {
     timeStyle: "short",
   }).format(new Date(value));
 }
-
-function sectionTitle(section: SectionId) {
-  return settingsSections.find((item) => item.id === section)?.label ?? "";
-}
-
-const settingsSections: readonly {
-  id: SectionId;
-  label: string;
-  icon: IconComponent;
-}[] = [
-  { id: "general", label: "General", icon: Monitor },
-  { id: "query", label: "Query", icon: Database },
-  { id: "editor", label: "Editor", icon: Keyboard },
-  { id: "exports", label: "Exports", icon: Download },
-  { id: "privacy", label: "Privacy", icon: Shield },
-];
-
-const themeOptions = [
-  { value: "system", label: "System", icon: <Monitor size={13} /> },
-  { value: "light", label: "Light", icon: <Sun size={13} /> },
-  { value: "dark", label: "Dark", icon: <Moon size={13} /> },
-] as const;
-
-const cursorModeOptions = [
-  { value: "default", label: "Default", icon: <Eye size={13} /> },
-  { value: "pointer", label: "Pointer", icon: <MousePointer size={13} /> },
-] as const;

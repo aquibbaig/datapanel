@@ -41,7 +41,6 @@ type Application struct {
 	ctx    context.Context
 }
 
-const OpenSettingsEvent = "datapanel:open-settings"
 const AppActivatedEvent = "datapanel:app-activated"
 
 func NewApplication(paths Paths, closer PoolCloser) *Application {
@@ -65,9 +64,13 @@ func NewPaths(appName string) (Paths, error) {
 		CacheDir:         cacheDir,
 		AppDatabasePath:  filepath.Join(configDir, "datapanel.sqlite3"),
 		ConnectionsPath:  filepath.Join(configDir, "connections.json"),
-		SettingsPath:     filepath.Join(configDir, "settings.json"),
+		SettingsPath:     filepath.Join(configDir, "settings.conf"),
 		SecretsVaultPath: filepath.Join(configDir, "secrets.vault.json"),
 	}, nil
+}
+
+func LegacySettingsPath(configDir string) string {
+	return filepath.Join(configDir, "settings.json")
 }
 
 func (a *Application) Startup(ctx context.Context) {
@@ -80,16 +83,6 @@ func (a *Application) Startup(ctx context.Context) {
 func (a *Application) Shutdown(ctx context.Context) {
 	_ = ctx
 	a.closer.CloseAll()
-}
-
-func (a *Application) OpenSettings() {
-	a.mu.RLock()
-	ctx := a.ctx
-	a.mu.RUnlock()
-	if ctx == nil {
-		return
-	}
-	wailsruntime.EventsEmit(ctx, OpenSettingsEvent)
 }
 
 func (a *Application) AppActivated() {
