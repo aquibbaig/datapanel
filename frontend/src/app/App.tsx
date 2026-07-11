@@ -11,6 +11,7 @@ import {
   Star,
 } from "lucide-react";
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -31,6 +32,7 @@ import { ConnectionPanel } from "../features/connections/ConnectionPanel";
 import { QueryEditor } from "../features/query-editor/QueryEditor";
 import { QueryPlanView } from "../features/query-plan/QueryPlanView";
 import { ResultsGrid } from "../features/results-grid/ResultsGrid";
+import { SettingsPanel } from "../features/settings/SettingsPanel";
 import { appDataService } from "../lib/backend";
 import { cn } from "../lib/cn";
 import type {
@@ -131,6 +133,7 @@ export function App() {
   const resolvedTheme = useResolvedTheme(model.settings?.theme);
   const [connectionModalOpen, setConnectionModalOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [rightPanel, setRightPanel] = useState<RightPanel | null>(null);
   const [assistantRequest, setAssistantRequest] =
     useState<AISQLAssistantRequest | null>(null);
@@ -169,6 +172,10 @@ export function App() {
       (workspace) => workspace.id === activeQueryWorkspaceId,
     ) ?? queryWorkspaces[0];
   const sqlDraft = activeQueryWorkspace?.sql ?? "";
+  const openSettingsPanel = useCallback(() => {
+    setSettingsOpen(true);
+    void model.reloadSettings();
+  }, [model.reloadSettings]);
 
   useEffect(() => {
     activeQueryWorkspaceIdRef.current = activeQueryWorkspaceId;
@@ -681,7 +688,7 @@ export function App() {
         onEditConnection={() => openEditConnection(model.activeProfile)}
         onOpenAI={() => openRightPanel("ai")}
         onOpenHistory={() => openRightPanel("history")}
-        onOpenSettings={model.openSettingsFile}
+        onOpenSettings={openSettingsPanel}
         onRefreshMetadata={() => void model.refreshMetadata()}
         onSetTheme={(theme) => void setTheme(theme)}
         onSelectTable={(table) => void selectTableForEditing(table)}
@@ -759,8 +766,8 @@ export function App() {
               <Button
                 className="text-zinc-500"
                 size="icon"
-                onClick={() => void model.openSettingsFile()}
-                title="Open Settings"
+                onClick={openSettingsPanel}
+                title="Settings"
               >
                 <Settings size={14} />
               </Button>
@@ -1068,6 +1075,22 @@ export function App() {
               </Button>
             </div>
           </div>
+        </Modal>
+
+        <Modal
+          title="Settings"
+          open={settingsOpen}
+          panelClassName="max-w-[920px]"
+          bodyClassName="p-0"
+          onClose={() => setSettingsOpen(false)}
+        >
+          <SettingsPanel
+            appUpdateStatus={model.appUpdateState}
+            settings={model.settings}
+            onCheckForUpdates={model.checkForAppUpdate}
+            onOpenSettingsFile={model.openSettingsFile}
+            onUpdate={model.updateSettings}
+          />
         </Modal>
 
       </SidebarProvider>
