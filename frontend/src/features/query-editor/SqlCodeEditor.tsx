@@ -69,12 +69,16 @@ const shikiHighlighter = createHighlighterCore({
 Vim.map("jk", "<Esc>", "insert");
 
 const vimFoldingGlobal = globalThis as typeof globalThis & {
-  __datapanelSQLVimFoldingSelectionSafe?: boolean;
+  __datapanelSQLVimFoldingLeaderSafe?: boolean;
 };
 
-if (!vimFoldingGlobal.__datapanelSQLVimFoldingSelectionSafe) {
-  Vim.unmap("zo", "normal");
-  Vim.unmap("za", "normal");
+if (!vimFoldingGlobal.__datapanelSQLVimFoldingLeaderSafe) {
+  const unmapVimKey = Vim.unmap as (lhs: string, ctx?: string) => unknown;
+  unmapVimKey("zo", "normal");
+  unmapVimKey("za", "normal");
+  unmapVimKey("zc", "normal");
+  unmapVimKey("<Space>zc", "normal");
+  unmapVimKey("<Space>");
   Vim.defineAction("datapanelFoldSQLStatement", (cm) => {
     foldSQLStatement(cm.cm6);
   });
@@ -87,7 +91,7 @@ if (!vimFoldingGlobal.__datapanelSQLVimFoldingSelectionSafe) {
   Vim.mapCommand("<Space>zc", "action", "datapanelToggleSQLStatementFold", {}, {
     context: "normal",
   });
-  vimFoldingGlobal.__datapanelSQLVimFoldingSelectionSafe = true;
+  vimFoldingGlobal.__datapanelSQLVimFoldingLeaderSafe = true;
 }
 
 export function SqlCodeEditor({
@@ -315,6 +319,22 @@ export function SqlCodeEditor({
         ".cm-tooltip-autocomplete ul li[aria-selected]": {
           backgroundColor: "rgb(var(--color-accent))",
           color: "rgb(var(--color-accent-foreground))"
+        },
+        ".cm-panels": {
+          backgroundColor: "rgb(var(--color-surface-950))",
+          color: "rgb(var(--color-foreground))"
+        },
+        ".cm-panels-bottom": {
+          borderTop: "1px solid rgb(var(--color-line))"
+        },
+        ".cm-vim-panel": {
+          backgroundColor: "rgb(var(--color-surface-950))",
+          color: "rgb(var(--color-foreground))"
+        },
+        ".cm-vim-panel input": {
+          backgroundColor: "rgb(var(--color-surface-950))",
+          caretColor: "rgb(var(--color-foreground))",
+          color: "rgb(var(--color-foreground))"
         }
       })
     ],
