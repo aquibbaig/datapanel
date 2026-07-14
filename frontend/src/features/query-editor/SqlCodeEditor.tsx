@@ -305,7 +305,8 @@ export function SqlCodeEditor({
           backgroundColor: "rgb(var(--color-surface-700))",
           color: "rgb(var(--color-foreground))",
           boxShadow: "0 18px 42px rgb(var(--color-overlay) / 0.35)",
-          overflow: "hidden"
+          overflow: "hidden",
+          zIndex: "40"
         },
         ".cm-tooltip-autocomplete ul": {
           fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
@@ -322,7 +323,8 @@ export function SqlCodeEditor({
         },
         ".cm-panels": {
           backgroundColor: "rgb(var(--color-surface-950))",
-          color: "rgb(var(--color-foreground))"
+          color: "rgb(var(--color-foreground))",
+          zIndex: "30"
         },
         ".cm-panels-bottom": {
           borderTop: "1px solid rgb(var(--color-line))"

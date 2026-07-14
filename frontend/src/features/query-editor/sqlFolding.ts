@@ -6,10 +6,13 @@ import {
   unfoldEffect,
 } from "@codemirror/language";
 import {
+  ChangeSet,
   EditorSelection,
   EditorState,
   RangeSet,
   RangeSetBuilder,
+  Text,
+  Transaction,
   type Extension,
   type SelectionRange,
 } from "@codemirror/state";
@@ -55,9 +58,11 @@ export const sqlFoldAtomicRanges: Extension = EditorView.atomicRanges.of(
 
 export const sqlFoldSelectionGuard: Extension = EditorState.transactionFilter.of(
   (transaction) => {
+    const foldedEdit = protectFoldedSQL(transaction);
+    if (foldedEdit) return foldedEdit;
+
     if (
       !transaction.selection ||
-      transaction.docChanged ||
       transaction.effects.some((effect) => effect.is(unfoldEffect))
     ) {
       return transaction;
@@ -78,6 +83,68 @@ export const sqlFoldSelectionGuard: Extension = EditorState.transactionFilter.of
     };
   }
 );
+
+function protectFoldedSQL(transaction: Transaction) {
+  if (!transaction.docChanged) return null;
+
+  const folds: { from: number; to: number }[] = [];
+  foldedRanges(transaction.startState).between(0, transaction.startState.doc.length, (from, to) => {
+    folds.push({ from, to });
+  });
+  if (!folds.length) return null;
+
+  let changed = false;
+  const relocatedInsertions: { fromB: number; toB: number; at: number; length: number }[] = [];
+  const specs: { from: number; to: number; insert: Text }[] = [];
+
+  transaction.changes.iterChanges((from, to, fromB, toB, insert) => {
+    for (const fold of folds) {
+      if (from === to && from === fold.from && insert.toString().startsWith("\n")) {
+        const indentation = transaction.startState.doc.lineAt(fold.from).text.match(/^\s*/)?.[0] ?? "";
+        insert = Text.of(["", indentation]);
+        relocatedInsertions.push({ fromB, toB, at: fold.to, length: insert.length });
+        from = to = fold.to;
+        changed = true;
+        break;
+      }
+      if (from <= fold.from && to > fold.from && to < fold.to) {
+        to = fold.to;
+        changed = true;
+      }
+    }
+    specs.push({ from, to, insert });
+  });
+
+  if (!changed) return null;
+
+  const changes = ChangeSet.of(specs, transaction.startState.doc.length);
+  const inverse = transaction.changes.invert(transaction.startState.doc);
+  const mapPosition = (position: number) => {
+    const insertion = relocatedInsertions.find(
+      ({ fromB, toB }) => position >= fromB && position <= toB
+    );
+    if (insertion) {
+      return changes.mapPos(insertion.at, -1) + Math.min(position - insertion.fromB, insertion.length);
+    }
+    return changes.mapPos(inverse.mapPos(position, -1), -1);
+  };
+  const selection = EditorSelection.create(
+    transaction.newSelection.ranges.map(({ anchor, head }) =>
+      EditorSelection.range(mapPosition(anchor), mapPosition(head))
+    ),
+    transaction.newSelection.mainIndex
+  );
+  const userEvent = transaction.annotation(Transaction.userEvent);
+
+  return {
+    changes,
+    effects: transaction.effects,
+    filter: false,
+    scrollIntoView: transaction.scrollIntoView,
+    selection,
+    ...(userEvent ? { userEvent } : {}),
+  };
+}
 
 export function sqlStatementFoldRange(
   state: EditorState,

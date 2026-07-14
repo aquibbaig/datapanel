@@ -295,7 +295,7 @@ td {
 }
 
 .cm-tooltip.cm-tooltip-autocomplete {
-  z-index: 1000;
+  z-index: 40;
   max-height: 320px;
   overflow: hidden;
   border: 1px solid rgb(var(--color-line));

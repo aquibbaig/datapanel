@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc && vite build",
+    "check:folding": "esbuild scripts/sqlFolding.check.ts --bundle --platform=node --format=esm --outfile=/tmp/datapanel-sql-folding-check.mjs && node /tmp/datapanel-sql-folding-check.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview --host 127.0.0.1"
   },
