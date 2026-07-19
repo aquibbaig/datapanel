@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc && vite build",
+    "check:completion": "esbuild scripts/sqlCompletion.check.ts --bundle --platform=node --format=esm --outfile=/tmp/datapanel-sql-completion-check.mjs && node /tmp/datapanel-sql-completion-check.mjs",
     "check:folding": "esbuild scripts/sqlFolding.check.ts --bundle --platform=node --format=esm --outfile=/tmp/datapanel-sql-folding-check.mjs && node /tmp/datapanel-sql-folding-check.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview --host 127.0.0.1"
@@ -23,6 +24,7 @@
     "@tanstack/react-virtual": "^3.14.2",
     "cmdk": "^1.1.1",
     "codemirror-shiki": "^0.3.0",
+    "dt-sql-parser": "^4.5.0",
     "lucide-react": "^0.468.0",
     "posthog-js": "^1.390.2",
     "react": "^18.3.1",

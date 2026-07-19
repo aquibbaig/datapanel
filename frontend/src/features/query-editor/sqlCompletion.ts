@@ -1,7 +1,16 @@
-import {
+import type {
+  Completion,
   CompletionContext,
   CompletionResult,
 } from "@codemirror/autocomplete";
+import type {
+  CaretPosition,
+  Suggestions,
+} from "dt-sql-parser/dist/parser/common/types";
+import type {
+  CommonEntityContext,
+  EntityContext,
+} from "dt-sql-parser/dist/parser/common/entityCollector";
 import { schemaService } from "../../lib/backend";
 import type {
   ConnectionProfile,
@@ -10,565 +19,237 @@ import type {
   TableSummary,
 } from "../../lib/types";
 
-const sqlKeywords = [
-  "SELECT",
-  "FROM",
-  "WHERE",
-  "JOIN",
-  "LEFT JOIN",
-  "RIGHT JOIN",
-  "INNER JOIN",
-  "GROUP BY",
-  "ORDER BY",
-  "LIMIT",
-  "OFFSET",
-  "INSERT INTO",
-  "UPDATE",
-  "DELETE FROM",
-  "CREATE TABLE",
-  "ALTER TABLE",
-  "DROP TABLE",
-  "COUNT",
-  "SUM",
-  "AVG",
-  "MIN",
-  "MAX",
-  "AND",
-  "OR",
-  "NOT",
-  "IN",
-  "BETWEEN",
-  "LIKE",
-  "ILIKE",
-  "EXISTS",
-  "TRUE",
-  "FALSE",
-  "NULL",
-  "IS NULL",
-  "IS NOT NULL",
-  "DISTINCT",
-  "HAVING",
-  "RETURNING",
-  "EXPLAIN",
-  "BEGIN",
-  "COMMIT",
-  "ROLLBACK"
-];
-
 interface SQLCompletionConfig {
   activeConnectionId: string;
   activeProfile: ConnectionProfile | null;
   schemas: SchemaSummary[];
-  schemaCompletions: CompletionOption[];
   tablesBySchema: Record<string, TableSummary[]>;
 }
+
+interface SQLParser {
+  getSuggestionAtCaretPosition(
+    sql: string,
+    position: CaretPosition,
+  ): Suggestions | null;
+  getAllEntities(sql: string, position?: CaretPosition): EntityContext[] | null;
+}
+
+const parserPromises = new Map<string, Promise<SQLParser>>();
 
 export function sqlCompletion({
   activeConnectionId,
   activeProfile,
   schemas,
-  schemaCompletions,
   tablesBySchema,
 }: SQLCompletionConfig) {
   return async function completeSQL(
     context: CompletionContext,
   ): Promise<CompletionResult | null> {
-    if (isCompletionSuppressedAtCursor(context)) {
-      return null;
-    }
+    const sql = context.state.doc.toString();
+    const position = caretPosition(context);
+    const parser = await parserFor(activeProfile);
+    const suggestions = parser.getSuggestionAtCaretPosition(sql, position);
+    if (!suggestions) return null;
 
-    const token = completionTokenBefore(context);
-    const from = token.from;
-    const fragment = normalizeCompletionFragment(token.text);
-    const completionContext = inferCompletionContext(context, from, token.text);
-
-    if (completionContext === "none") {
-      return null;
-    }
-
-    if (!token.text && !context.explicit && completionContext === "keyword") {
-      return null;
-    }
-
-    if (completionContext === "expression") {
-      const options = (
-        await expressionCompletionOptions(
-          context,
-          from,
-          token.text,
-          activeConnectionId,
-          activeProfile,
-          tablesBySchema,
-        )
-      ).slice(0, 80);
-
-      if (options.length > 0) {
-        return {
-          from,
-          options,
-          validFor: completionValidFor
-        };
-      }
-    }
-
-    if (completionContext === "table") {
-      const options = tableCompletionOptions(
-        activeProfile,
-        schemas,
-        tablesBySchema,
-        fragment,
-      ).slice(0, 80);
-
-      if (options.length === 0) {
-        return null;
-      }
-
-      return {
-        from,
-        options,
-        validFor: completionValidFor
-      };
-    }
-
-    const keywordOptions = sqlKeywords
-      .filter((keyword) => keyword.toLowerCase().startsWith(fragment))
-      .map((keyword) => ({
-        label: keyword,
-        type: "keyword",
-        apply: keyword,
-        detail: "keyword",
-        matchText: keyword.toLowerCase(),
-        boost: keywordBoost(keyword, context, from),
-      }));
-
-    const schemaOptions = schemaCompletions.filter((option) =>
-      matchesCompletion(option, fragment)
+    const token = context.matchBefore(/[A-Za-z0-9_$\."`\[\]]*/);
+    const from = token?.from ?? context.pos;
+    const rawFragment = token?.text ?? "";
+    const syntax = new Set<string>(
+      suggestions.syntax.map((suggestion) => suggestion.syntaxContextType),
     );
-    const options = [...keywordOptions, ...schemaOptions].slice(0, 80);
+    let options: Completion[] = [];
 
-    if (options.length === 0) {
-      return null;
+    if (syntax.has("column")) {
+      options = await columnOptions(
+        parser.getAllEntities(sql, position) ?? [],
+        rawFragment,
+        activeConnectionId,
+        activeProfile,
+        tablesBySchema,
+      );
     }
 
-    return {
-      from,
-      options,
-      validFor: completionValidFor
-    };
+    if (
+      syntax.has("table") ||
+      syntax.has("view") ||
+      syntax.has("database")
+    ) {
+      options.push(
+        ...tableOptions(activeProfile, schemas, tablesBySchema, rawFragment),
+      );
+    }
+
+    const unique = dedupeOptions(options).slice(0, 80);
+    if (unique.length === 0) return null;
+    return { from, options: unique, validFor: /^[A-Za-z0-9_$\."`\[\]]*$/ };
   };
 }
 
-const completionValidFor = /^[A-Za-z0-9_$."`\[\]]*$/;
-
-function completionTokenBefore(context: CompletionContext) {
-  const tokenCharacters = /[A-Za-z0-9_$."`\[\]]/;
-  let from = context.pos;
-  while (from > 0 && tokenCharacters.test(context.state.sliceDoc(from - 1, from))) {
-    from -= 1;
-  }
-  return {
-    from,
-    text: context.state.sliceDoc(from, context.pos),
-  };
+function parserFor(profile: ConnectionProfile | null) {
+  const driver = profile?.driver ?? "generic";
+  const cached = parserPromises.get(driver);
+  if (cached) return cached;
+  const parser =
+    driver === "mysql"
+      ? import("dt-sql-parser/dist/parser/mysql/index.js").then(
+          ({ MySQL }) => new MySQL(),
+        )
+      : driver === "postgres"
+        ? import("dt-sql-parser/dist/parser/postgresql/index.js").then(
+            ({ PostgreSQL }) => new PostgreSQL(),
+          )
+        : import("dt-sql-parser/dist/parser/generic/index.js").then(
+            ({ GenericSQL }) => new GenericSQL(),
+          );
+  parserPromises.set(driver, parser);
+  return parser;
 }
 
-function normalizeCompletionFragment(fragment: string) {
-  return fragment
-    .replace(/["`\[\]]/g, "")
-    .trim()
-    .toLowerCase();
+function caretPosition(context: CompletionContext): CaretPosition {
+  const line = context.state.doc.lineAt(context.pos);
+  return { lineNumber: line.number, column: context.pos - line.from + 1 };
 }
 
-type SQLCompletionContext = "keyword" | "table" | "expression" | "none";
-
-function inferCompletionContext(
-  context: CompletionContext,
-  fragmentFrom: number,
-  fragment: string,
-): SQLCompletionContext {
-  const maskedStatementBefore = currentMaskedStatementBefore(
-    context,
-    fragmentFrom,
-  ).toLowerCase();
-
-  if (isTableReferenceCompletionContext(maskedStatementBefore)) return "table";
-  if (
-    !context.explicit &&
-    isPredicateValueCompletionContext(maskedStatementBefore)
-  ) {
-    return "none";
-  }
-  if (isExpressionCompletionContext(maskedStatementBefore, fragment)) {
-    return "expression";
-  }
-  return "keyword";
-}
-
-function isTableReferenceCompletionContext(statementBefore: string) {
-  const beforeFragment = statementBefore.slice(-200);
-  return (
-    /\b(from|join|using|update|into)\s+$/.test(beforeFragment) ||
-    /\b(?:alter|drop|truncate)\s+table\s+$/.test(beforeFragment) ||
-    /\b(?:describe|desc)\s+$/.test(beforeFragment)
-  );
-}
-
-function isExpressionCompletionContext(
-  statement: string,
-  fragment: string,
-) {
-  if (qualifiedCompletionTarget(fragment)) return true;
-
-  const expressionIndex = Math.max(
-    lastKeywordIndex(statement, "select"),
-    lastKeywordIndex(statement, "set"),
-    lastKeywordIndex(statement, "where"),
-    lastKeywordIndex(statement, "having"),
-    lastKeywordIndex(statement, "on"),
-    lastKeywordIndex(statement, "group by"),
-    lastKeywordIndex(statement, "order by"),
-    lastKeywordIndex(statement, "returning"),
-  );
-  if (expressionIndex < 0) return false;
-
-  const terminatorIndex = Math.max(
-    lastKeywordIndex(statement, "from"),
-    lastKeywordIndex(statement, "join"),
-    lastKeywordIndex(statement, "where"),
-    lastKeywordIndex(statement, "group by"),
-    lastKeywordIndex(statement, "order by"),
-    lastKeywordIndex(statement, "having"),
-    lastKeywordIndex(statement, "limit"),
-    lastKeywordIndex(statement, "offset"),
-    lastKeywordIndex(statement, "fetch"),
-    lastKeywordIndex(statement, "for"),
-  );
-  if (lastKeywordIndex(statement, "select") === expressionIndex) {
-    return terminatorIndex < expressionIndex;
-  }
-
-  return true;
-}
-
-function isPredicateValueCompletionContext(statementBefore: string) {
-  const predicateTail = statementBefore.slice(
-    lastPredicateBoundaryEnd(statementBefore),
-  );
-  if (!predicateValuePatterns.some((pattern) => pattern.test(predicateTail))) {
-    return false;
-  }
-
-  return lastPredicateClause(statementBefore) !== "on";
-}
-
-const predicateValuePatterns = [
-  /(?:=|<>|!=|<=|>=|<|>)[\s\S]*$/,
-  /\b(?:not\s+)?(?:like|ilike)\s+[\s\S]*$/,
-  /\b(?:not\s+)?in\s*\([\s\S]*$/,
-  /\bis\s+(?:not\s+)?[\s\S]*$/,
-  /\bbetween\s+[\s\S]*$/,
-];
-
-function lastPredicateBoundaryEnd(statement: string) {
-  let boundaryEnd = 0;
-  for (const pattern of predicateBoundaryPatterns) {
-    let match: RegExpExecArray | null;
-    while ((match = pattern.exec(statement))) {
-      boundaryEnd = Math.max(boundaryEnd, match.index + match[0].length);
-    }
-  }
-
-  return Math.max(boundaryEnd, statement.lastIndexOf(",") + 1);
-}
-
-function lastPredicateClause(statement: string) {
-  let clause: PredicateClause | null = null;
-  let clauseIndex = -1;
-
-  for (const { keyword, pattern } of predicateClausePatterns) {
-    let match: RegExpExecArray | null;
-    while ((match = pattern.exec(statement))) {
-      if (match.index > clauseIndex) {
-        clause = keyword;
-        clauseIndex = match.index;
-      }
-    }
-  }
-
-  return clause;
-}
-
-const predicateBoundaryKeywords = [
-  "where",
-  "having",
-  "on",
-  "set",
-  "and",
-  "or",
-  "when",
-  "then",
-  "else",
-  "group by",
-  "order by",
-  "limit",
-  "offset",
-  "fetch",
-  "returning",
-  "values",
-];
-
-const predicateBoundaryPatterns = predicateBoundaryKeywords.map(
-  (keyword) => new RegExp(`\\b${keyword}\\b`, "gi"),
-);
-
-type PredicateClause = "where" | "having" | "on" | "set";
-
-const predicateClausePatterns: Array<{
-  keyword: PredicateClause;
-  pattern: RegExp;
-}> = (["where", "having", "on", "set"] as const).map((keyword) => ({
-  keyword,
-  pattern: new RegExp(`\\b${keyword}\\b`, "gi"),
-}));
-
-async function expressionCompletionOptions(
-  context: CompletionContext,
-  fragmentFrom: number,
+async function columnOptions(
+  entities: EntityContext[],
   rawFragment: string,
-  activeConnectionId: string,
-  activeProfile: ConnectionProfile | null,
+  connectionId: string,
+  profile: ConnectionProfile | null,
   tablesBySchema: Record<string, TableSummary[]>,
 ) {
-  const memberTarget = qualifiedCompletionTarget(rawFragment);
-  const fragment = memberTarget?.memberFragment ?? normalizeCompletionFragment(rawFragment);
-  const tableRefs = parseTableReferences(
-    currentStatementAround(context, fragmentFrom),
-    tablesBySchema,
-  );
-  const candidateRefs = memberTarget
-    ? tableRefs.filter((tableRef) => matchesTableQualifier(tableRef, memberTarget.qualifierParts))
-    : tableRefs;
-  const tableDetails = await Promise.all(
-    candidateRefs.map((tableRef) =>
-      loadTableDetails(activeConnectionId, tableRef.table).then((details) => ({
-        ...tableRef,
-        details,
+  const target = qualifiedTarget(rawFragment);
+  const refs = entities
+    .filter(
+      (entity): entity is CommonEntityContext =>
+        entity.entityContextType === "table" &&
+        entity.isAccessible === true,
+    )
+    .flatMap((entity): TableReference[] => {
+      const table = findTable(entity.text, tablesBySchema);
+      const alias = entity._alias?.text;
+      return table ? [{ table, alias }] : [];
+    })
+    .filter((ref) => !target || matchesQualifier(ref, target.qualifier));
+  const details = (
+    await Promise.all(
+      refs.map(async (ref) => ({
+        ...ref,
+        details: await loadTableDetails(connectionId, ref.table),
       })),
-    ),
+    )
+  ).filter(
+    (ref): ref is TableReference & { details: TableDetails } =>
+      Boolean(ref.details),
   );
-  const validDetails = tableDetails.filter(
-    (tableRef): tableRef is TableReference & { details: TableDetails } =>
-      Boolean(tableRef.details),
-  );
-  const quote =
-    activeProfile?.driver === "mysql" || activeProfile?.driver === "bigquery"
-      ? quoteBacktick
-      : quotePostgres;
-  const includeQualifier = validDetails.length > 1;
-  const options: CompletionOption[] = [];
-  const optionKeys = new Set<string>();
-  const columnOccurrences = columnNameCounts(validDetails);
+  const quote = quoteFor(profile);
+  const includeQualifier = details.length > 1;
+  const fragment = target?.fragment ?? completionFragment(rawFragment);
+  const columnCounts = new Map<string, number>();
 
-  function addOption(option: CompletionOption) {
-    const key = `${option.apply}:${option.label}`;
-    if (optionKeys.has(key)) return;
-    optionKeys.add(key);
-    options.push(option);
+  for (const ref of details) {
+    for (const column of ref.details.columns) {
+      const name = column.name.toLowerCase();
+      columnCounts.set(name, (columnCounts.get(name) ?? 0) + 1);
+    }
   }
 
-  for (const tableRef of validDetails) {
-    const qualifier = tableRef.alias || tableRef.table.name;
-    const qualifiedApply = memberTarget
-      ? [...memberTarget.qualifierParts, ""]
-      : [qualifier, ""];
-    for (const column of tableRef.details.columns) {
-      if (memberTarget) {
-        const applyParts = [...qualifiedApply.slice(0, -1), column.name];
-        addOption({
-          label: `${memberTarget.qualifier}.${column.name}`,
-          type: "property",
-          apply: applyParts.map(quote).join("."),
-          detail: `${tableRef.table.schema}.${tableRef.table.name} ${column.dataType}`,
-          matchText: column.name.toLowerCase(),
-          boost: column.isPrimary ? 110 : 105,
-        });
-        continue;
-      }
+  const options: Completion[] = [];
+  for (const ref of details) {
+    const qualifier = ref.alias ?? ref.table.name;
+    for (const column of ref.details.columns) {
+      if (!matches(column.name, fragment)) continue;
+      const detail = `${ref.table.schema}.${ref.table.name} ${column.dataType}`;
+      const baseBoost = column.isPrimary ? 110 : 100;
 
-      const columnDetail = `${tableRef.table.schema}.${tableRef.table.name} ${column.dataType}`;
-      if (includeQualifier) {
-        addOption({
+      if (target) {
+        options.push({
+          label: `${target.qualifier}.${column.name}`,
+          type: "property",
+          apply: `${target.qualifier.split(".").map(quote).join(".")}.${quote(column.name)}`,
+          detail,
+          boost: baseBoost,
+        });
+      } else if (includeQualifier) {
+        options.push({
           label: `${qualifier}.${column.name}`,
           type: "property",
           apply: `${quote(qualifier)}.${quote(column.name)}`,
-          detail: columnDetail,
-          matchText: `${qualifier}.${column.name}`.toLowerCase(),
-          boost: column.isPrimary ? 100 : 95,
+          detail,
+          boost: baseBoost,
         });
-        if (columnOccurrences.get(column.name.toLowerCase()) === 1) {
-          addOption({
+        if (columnCounts.get(column.name.toLowerCase()) === 1) {
+          options.push({
             label: column.name,
             type: "property",
             apply: quote(column.name),
-            detail: columnDetail,
-            matchText: column.name.toLowerCase(),
-            boost: column.isPrimary ? 86 : 82,
+            detail,
+            boost: baseBoost - 10,
           });
         }
-        continue;
-      }
-
-      addOption({
-        label: column.name,
-        type: "property",
-        apply: quote(column.name),
-        detail: columnDetail,
-        matchText: column.name.toLowerCase(),
-        boost: column.isPrimary ? 100 : 95,
-      });
-
-      if (tableRef.alias) {
-        addOption({
-          label: `${qualifier}.${column.name}`,
+      } else {
+        options.push({
+          label: column.name,
           type: "property",
-          apply: `${quote(qualifier)}.${quote(column.name)}`,
-          detail: columnDetail,
-          matchText: `${qualifier}.${column.name}`.toLowerCase(),
-          boost: column.isPrimary ? 84 : 80,
+          apply: quote(column.name),
+          detail,
+          boost: baseBoost + Math.max(0, 30 - column.name.length),
         });
       }
     }
   }
-
-  return options.filter((option) => matchesCompletion(option, fragment));
+  return options;
 }
 
-function tableCompletionOptions(
-  activeProfile: ConnectionProfile | null,
+function tableOptions(
+  profile: ConnectionProfile | null,
   schemas: SchemaSummary[],
   tablesBySchema: Record<string, TableSummary[]>,
-  fragment: string,
+  rawFragment: string,
 ) {
-  const quote =
-    activeProfile?.driver === "mysql" || activeProfile?.driver === "bigquery"
-      ? quoteBacktick
-      : quotePostgres;
-  const memberTarget = qualifiedCompletionTarget(fragment);
-  const options: CompletionOption[] = [];
+  const quote = quoteFor(profile);
+  const target = qualifiedTarget(rawFragment);
+  const fragment = target?.fragment ?? completionFragment(rawFragment);
+  const selectedSchemas = target
+    ? schemas.filter(
+        (schema) => schema.name.toLowerCase() === target.qualifier.toLowerCase(),
+      )
+    : schemas;
+  const options: Completion[] = [];
 
-  if (memberTarget) {
-    const schema = memberTarget.qualifierParts[memberTarget.qualifierParts.length - 1];
-    const schemaTables = tablesForSchema(schema, tablesBySchema);
-    for (const table of schemaTables) {
-      const qualified = `${table.schema}.${table.name}`;
+  for (const schema of selectedSchemas) {
+    if (!target && matches(schema.name, fragment)) {
       options.push({
-        label: qualified,
-        type: "variable",
-        apply: `${quote(table.schema)}.${quote(table.name)}`,
-        detail: table.type.replace("BASE ", ""),
-        matchText: table.name.toLowerCase(),
-        boost: 95,
+        label: schema.name,
+        type: "namespace",
+        apply: `${quote(schema.name)}.`,
+        detail: "schema",
+        boost: 75,
       });
     }
-    return options.filter((option) =>
-      matchesCompletion(option, memberTarget.memberFragment)
-    );
-  }
-
-  for (const schema of schemas) {
-    const schemaTables = tablesBySchema[schema.name] || [];
-    options.push({
-      label: schema.name,
-      type: "namespace",
-      apply: `${quote(schema.name)}.`,
-      detail: "schema",
-      matchText: schema.name.toLowerCase(),
-      boost: 75,
-    });
-
-    for (const table of schemaTables) {
+    for (const table of tablesForSchema(schema.name, tablesBySchema)) {
+      if (!matches(table.name, fragment)) continue;
       const qualified = `${schema.name}.${table.name}`;
-      const tableType = table.type.replace("BASE ", "");
       options.push({
-        label: table.name,
+        label: target ? qualified : table.name,
         type: "variable",
-        apply: quote(table.name),
-        detail: `${schema.name} ${tableType}`,
-        matchText: table.name.toLowerCase(),
+        apply: target
+          ? `${quote(schema.name)}.${quote(table.name)}`
+          : quote(table.name),
+        detail: target ? table.type.replace("BASE ", "") : `${schema.name} ${table.type.replace("BASE ", "")}`,
         boost: 100,
       });
-      options.push({
-        label: qualified,
-        type: "variable",
-        apply: `${quote(schema.name)}.${quote(table.name)}`,
-        detail: tableType,
-        matchText: qualified.toLowerCase(),
-        boost: 90,
-      });
+      if (!target) {
+        options.push({
+          label: qualified,
+          type: "variable",
+          apply: `${quote(schema.name)}.${quote(table.name)}`,
+          detail: table.type.replace("BASE ", ""),
+          boost: 90,
+        });
+      }
     }
   }
-
-  return options.filter((option) => matchesCompletion(option, fragment));
-}
-
-function columnNameCounts(
-  tableRefs: Array<TableReference & { details: TableDetails }>,
-) {
-  const counts = new Map<string, number>();
-  for (const tableRef of tableRefs) {
-    for (const column of tableRef.details.columns) {
-      const key = column.name.toLowerCase();
-      counts.set(key, (counts.get(key) || 0) + 1);
-    }
-  }
-  return counts;
-}
-
-function keywordBoost(
-  keyword: string,
-  context: CompletionContext,
-  fragmentFrom: number,
-) {
-  const before = currentStatementBefore(context, fragmentFrom).toLowerCase();
-  const normalizedKeyword = keyword.toLowerCase();
-
-  if (/\b(from|join|update|into)\s+\S+\s+$/.test(before)) {
-    const nextClauseKeywords = [
-      "where",
-      "join",
-      "left join",
-      "inner join",
-      "group by",
-      "order by",
-      "limit",
-    ];
-    if (nextClauseKeywords.includes(normalizedKeyword)) return 90;
-  }
-
-  if (/\b(where|having|on)\b/.test(before)) {
-    const predicateKeywords = [
-      "and",
-      "or",
-      "is null",
-      "is not null",
-      "in",
-      "between",
-    ];
-    if (predicateKeywords.includes(normalizedKeyword)) return 90;
-  }
-
-  if (/^\s*$/.test(before)) {
-    const statementKeywords = [
-      "select",
-      "insert into",
-      "update",
-      "delete from",
-      "explain",
-    ];
-    if (statementKeywords.includes(normalizedKeyword)) return 90;
-  }
-
-  return 0;
+  return options;
 }
 
 interface TableReference {
@@ -576,466 +257,73 @@ interface TableReference {
   alias?: string;
 }
 
-interface QualifiedCompletionTarget {
-  qualifier: string;
-  qualifierParts: string[];
-  memberFragment: string;
-}
-
-function qualifiedCompletionTarget(fragment: string): QualifiedCompletionTarget | null {
-  const parts = splitSQLIdentifierPath(fragment);
-  if (parts.length < 2) return null;
-
-  const memberFragment = parts[parts.length - 1] || "";
-  const qualifierParts = parts.slice(0, -1).filter(Boolean);
-  if (qualifierParts.length === 0) return null;
-
-  return {
-    qualifier: qualifierParts.join("."),
-    qualifierParts,
-    memberFragment: memberFragment.toLowerCase(),
-  };
-}
-
-function matchesTableQualifier(
-  tableRef: TableReference,
-  qualifierParts: string[],
+function findTable(
+  identifier: string,
+  tablesBySchema: Record<string, TableSummary[]>,
 ) {
-  const normalizedParts = qualifierParts.map((part) => part.toLowerCase());
-  const qualifier = normalizedParts.join(".");
-  const alias = tableRef.alias?.toLowerCase();
-  const schema = tableRef.table.schema.toLowerCase();
-  const table = tableRef.table.name.toLowerCase();
-
+  const parts = identifier
+    .split(".")
+    .map((part) => part.replace(/^["`\[]|["`\]]$/g, "").toLowerCase());
+  const tableName = parts[parts.length - 1];
+  const schemaName = parts.length > 1 ? parts[parts.length - 2] : undefined;
   return (
-    qualifier === alias ||
-    qualifier === table ||
-    qualifier === `${schema}.${table}` ||
-    (normalizedParts.length === 1 && normalizedParts[0] === schema)
+    Object.values(tablesBySchema)
+      .flat()
+      .find(
+        (table) =>
+          table.name.toLowerCase() === tableName &&
+          (!schemaName || table.schema.toLowerCase() === schemaName),
+      ) ?? null
   );
 }
 
-function parseTableReferences(
-  statement: string,
-  tablesBySchema: Record<string, TableSummary[]>,
-): TableReference[] {
-  const refs: TableReference[] = [];
-  const seen = new Set<string>();
-  const tablePattern =
-    /\b(?:from|join|update|into|using)\s+((?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[A-Za-z_][\w$]*)(?:\s*\.\s*(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[A-Za-z_][\w$]*))?)(?:\s+(?:as\s+)?("[^"]+"|`[^`]+`|\[[^\]]+\]|[A-Za-z_][\w$]*))?/gi;
-  let match: RegExpExecArray | null;
-
-  while ((match = tablePattern.exec(statement))) {
-    const identifier = parseSQLIdentifierPath(match[1]);
-    if (!identifier) continue;
-
-    const table = findTable(identifier, tablesBySchema);
-    if (!table) continue;
-
-    const alias = normalizeAlias(match[2]);
-    const key = `${table.schema}.${table.name}:${alias || ""}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    refs.push({ table, alias });
-  }
-
-  return refs;
+function matchesQualifier(ref: TableReference, qualifier: string) {
+  const normalized = qualifier.toLowerCase();
+  return (
+    ref.alias?.toLowerCase() === normalized ||
+    ref.table.name.toLowerCase() === normalized ||
+    `${ref.table.schema}.${ref.table.name}`.toLowerCase() === normalized
+  );
 }
 
-function parseSQLIdentifierPath(raw: string) {
-  const parts = splitSQLIdentifierPath(raw).filter(Boolean);
-  if (parts.length === 1) {
-    return { table: parts[0] };
-  }
-  if (parts.length === 2) {
-    return { schema: parts[0], table: parts[1] };
-  }
-  return null;
+function qualifiedTarget(fragment: string) {
+  const clean = fragment.replace(/["`\[\]]/g, "");
+  const dot = clean.lastIndexOf(".");
+  return dot === -1
+    ? null
+    : {
+        qualifier: clean.slice(0, dot),
+        fragment: clean.slice(dot + 1).toLowerCase(),
+      };
 }
 
-function splitSQLIdentifierPath(raw: string) {
-  const parts: string[] = [];
-  let current = "";
-  let quote: '"' | "`" | "]" | null = null;
-
-  for (const character of raw.trim()) {
-    if (quote) {
-      current += character;
-      if (character === quote) quote = null;
-      continue;
-    }
-
-    if (character === '"') {
-      quote = '"';
-      current += character;
-      continue;
-    }
-    if (character === "`") {
-      quote = "`";
-      current += character;
-      continue;
-    }
-    if (character === "[") {
-      quote = "]";
-      current += character;
-      continue;
-    }
-    if (character === ".") {
-      parts.push(unquoteSQLIdentifier(current.trim()));
-      current = "";
-      continue;
-    }
-    current += character;
-  }
-
-  parts.push(unquoteSQLIdentifier(current.trim()));
-  return parts;
+function completionFragment(fragment: string) {
+  return fragment.replace(/["`\[\]]/g, "").toLowerCase();
 }
 
-function normalizeAlias(raw: string | undefined) {
-  if (!raw) return undefined;
-  const alias = unquoteSQLIdentifier(raw.trim());
-  if (!alias || reservedAliasWords.has(alias.toLowerCase())) return undefined;
-  return alias;
-}
-
-const reservedAliasWords = new Set([
-  "where",
-  "join",
-  "using",
-  "left",
-  "right",
-  "inner",
-  "outer",
-  "full",
-  "cross",
-  "on",
-  "group",
-  "by",
-  "order",
-  "having",
-  "limit",
-  "offset",
-  "returning",
-  "set",
-  "values",
-  "as",
-]);
-
-function unquoteSQLIdentifier(identifier: string) {
-  if (
-    (identifier.startsWith('"') && identifier.endsWith('"')) ||
-    (identifier.startsWith("`") && identifier.endsWith("`")) ||
-    (identifier.startsWith("[") && identifier.endsWith("]"))
-  ) {
-    return identifier.slice(1, -1);
-  }
-  return identifier;
-}
-
-function findTable(
-  identifier: { schema?: string; table: string },
-  tablesBySchema: Record<string, TableSummary[]>,
-) {
-  const schema = identifier.schema?.toLowerCase();
-  const table = identifier.table.toLowerCase();
-
-  if (schema) {
-    return (tablesBySchema[identifier.schema || ""] || []).find(
-      (candidate) => candidate.name.toLowerCase() === table,
-    ) || tablesForSchema(schema, tablesBySchema).find(
-      (candidate) => candidate.name.toLowerCase() === table,
-    ) || null;
-  }
-
-  const matches = Object.values(tablesBySchema)
-    .flat()
-    .filter((candidate) => candidate.name.toLowerCase() === table);
-  return matches[0] || null;
+function matches(candidate: string, fragment: string) {
+  return !fragment || candidate.toLowerCase().startsWith(fragment);
 }
 
 function tablesForSchema(
   schema: string,
   tablesBySchema: Record<string, TableSummary[]>,
 ) {
-  const normalizedSchema = schema.toLowerCase();
-  return Object.entries(tablesBySchema)
-    .filter(([schemaName]) => schemaName.toLowerCase() === normalizedSchema)
-    .flatMap(([, tables]) => tables);
-}
-
-function isCompletionSuppressedAtCursor(context: CompletionContext) {
-  const beforeCursor = context.state.doc.sliceString(0, context.pos);
-  const lexicalContext = sqlLexicalContextAt(beforeCursor);
   return (
-    lexicalContext === "singleQuotedString" ||
-    lexicalContext === "lineComment" ||
-    lexicalContext === "blockComment"
+    Object.entries(tablesBySchema).find(
+      ([name]) => name.toLowerCase() === schema.toLowerCase(),
+    )?.[1] ?? []
   );
 }
 
-type SQLLexicalContext =
-  | "code"
-  | "singleQuotedString"
-  | "doubleQuotedIdentifier"
-  | "backtickIdentifier"
-  | "bracketIdentifier"
-  | "lineComment"
-  | "blockComment";
-
-function sqlLexicalContextAt(sql: string): SQLLexicalContext {
-  let context: SQLLexicalContext = "code";
-
-  for (let index = 0; index < sql.length; index += 1) {
-    const character = sql[index];
-    const nextCharacter = sql[index + 1];
-
-    if (context === "code") {
-      if (character === "'") {
-        context = "singleQuotedString";
-        continue;
-      }
-      if (character === '"') {
-        context = "doubleQuotedIdentifier";
-        continue;
-      }
-      if (character === "`") {
-        context = "backtickIdentifier";
-        continue;
-      }
-      if (character === "[") {
-        context = "bracketIdentifier";
-        continue;
-      }
-      if (character === "-" && nextCharacter === "-") {
-        context = "lineComment";
-        index += 1;
-        continue;
-      }
-      if (character === "/" && nextCharacter === "*") {
-        context = "blockComment";
-        index += 1;
-      }
-      continue;
-    }
-
-    if (context === "singleQuotedString") {
-      if (character === "'" && nextCharacter === "'") {
-        index += 1;
-        continue;
-      }
-      if (character === "'") {
-        context = "code";
-      }
-      continue;
-    }
-
-    if (context === "doubleQuotedIdentifier") {
-      if (character === '"' && nextCharacter === '"') {
-        index += 1;
-        continue;
-      }
-      if (character === '"') {
-        context = "code";
-      }
-      continue;
-    }
-
-    if (context === "backtickIdentifier") {
-      if (character === "`" && nextCharacter === "`") {
-        index += 1;
-        continue;
-      }
-      if (character === "`") {
-        context = "code";
-      }
-      continue;
-    }
-
-    if (context === "bracketIdentifier") {
-      if (character === "]" && nextCharacter === "]") {
-        index += 1;
-        continue;
-      }
-      if (character === "]") {
-        context = "code";
-      }
-      continue;
-    }
-
-    if (context === "lineComment") {
-      if (character === "\n" || character === "\r") {
-        context = "code";
-      }
-      continue;
-    }
-
-    if (character === "*" && nextCharacter === "/") {
-      context = "code";
-      index += 1;
-    }
-  }
-
-  return context;
-}
-
-function maskSQLValueLiteralsAndComments(sql: string) {
-  const masked: string[] = [];
-  let context: SQLLexicalContext = "code";
-
-  for (let index = 0; index < sql.length; index += 1) {
-    const character = sql[index];
-    const nextCharacter = sql[index + 1];
-
-    if (context === "code") {
-      if (character === "'") {
-        masked.push(" ");
-        context = "singleQuotedString";
-        continue;
-      }
-      if (character === '"') {
-        masked.push(character);
-        context = "doubleQuotedIdentifier";
-        continue;
-      }
-      if (character === "`") {
-        masked.push(character);
-        context = "backtickIdentifier";
-        continue;
-      }
-      if (character === "[") {
-        masked.push(character);
-        context = "bracketIdentifier";
-        continue;
-      }
-      if (character === "-" && nextCharacter === "-") {
-        masked.push(" ", " ");
-        context = "lineComment";
-        index += 1;
-        continue;
-      }
-      if (character === "/" && nextCharacter === "*") {
-        masked.push(" ", " ");
-        context = "blockComment";
-        index += 1;
-        continue;
-      }
-
-      masked.push(character);
-      continue;
-    }
-
-    if (context === "singleQuotedString") {
-      masked.push(character === "\n" || character === "\r" ? character : " ");
-      if (character === "'" && nextCharacter === "'") {
-        masked.push(" ");
-        index += 1;
-        continue;
-      }
-      if (character === "'") {
-        context = "code";
-      }
-      continue;
-    }
-
-    if (context === "doubleQuotedIdentifier") {
-      masked.push(character);
-      if (character === '"' && nextCharacter === '"') {
-        masked.push(nextCharacter);
-        index += 1;
-        continue;
-      }
-      if (character === '"') {
-        context = "code";
-      }
-      continue;
-    }
-
-    if (context === "backtickIdentifier") {
-      masked.push(character);
-      if (character === "`" && nextCharacter === "`") {
-        masked.push(nextCharacter);
-        index += 1;
-        continue;
-      }
-      if (character === "`") {
-        context = "code";
-      }
-      continue;
-    }
-
-    if (context === "bracketIdentifier") {
-      masked.push(character);
-      if (character === "]" && nextCharacter === "]") {
-        masked.push(nextCharacter);
-        index += 1;
-        continue;
-      }
-      if (character === "]") {
-        context = "code";
-      }
-      continue;
-    }
-
-    if (context === "lineComment") {
-      masked.push(character === "\n" || character === "\r" ? character : " ");
-      if (character === "\n" || character === "\r") {
-        context = "code";
-      }
-      continue;
-    }
-
-    masked.push(character === "\n" || character === "\r" ? character : " ");
-    if (character === "*" && nextCharacter === "/") {
-      masked.push(" ");
-      context = "code";
-      index += 1;
-    }
-  }
-
-  return masked.join("");
-}
-
-function currentStatementBefore(
-  context: CompletionContext,
-  fragmentFrom: number,
-) {
-  const beforeCursor = context.state.doc.sliceString(0, fragmentFrom);
-  const statementStart =
-    maskSQLValueLiteralsAndComments(beforeCursor).lastIndexOf(";") + 1;
-  return beforeCursor.slice(statementStart);
-}
-
-function currentMaskedStatementBefore(
-  context: CompletionContext,
-  fragmentFrom: number,
-) {
-  const beforeCursor = context.state.doc.sliceString(0, fragmentFrom);
-  const maskedBeforeCursor = maskSQLValueLiteralsAndComments(beforeCursor);
-  const statementStart = maskedBeforeCursor.lastIndexOf(";") + 1;
-  return maskedBeforeCursor.slice(statementStart);
-}
-
-function currentStatementAround(
-  context: CompletionContext,
-  fragmentFrom: number,
-) {
-  const doc = context.state.doc.toString();
-  const maskedDoc = maskSQLValueLiteralsAndComments(doc);
-  const statementStart = maskedDoc.lastIndexOf(";", fragmentFrom - 1) + 1;
-  const nextStatementEnd = maskedDoc.indexOf(";", fragmentFrom);
-  const statementEnd = nextStatementEnd === -1 ? doc.length : nextStatementEnd;
-  return doc.slice(statementStart, statementEnd);
-}
-
-function lastKeywordIndex(text: string, keyword: string) {
-  const pattern = new RegExp(`\\b${keyword}\\b`, "gi");
-  let index = -1;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(text))) {
-    index = match.index;
-  }
-  return index;
+function dedupeOptions(options: Completion[]) {
+  const seen = new Set<string>();
+  return options.filter((option) => {
+    const key = `${option.label}:${String(option.apply)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 const tableDetailsCache = new Map<string, Promise<TableDetails | null>>();
@@ -1045,95 +333,27 @@ async function loadTableDetails(connectionId: string, table: TableSummary) {
   const key = `${connectionId}:${table.schema}.${table.name}`;
   const cached = tableDetailsCache.get(key);
   if (cached) return cached;
-
-  const promise = schemaService
+  const details = schemaService
     .describe(connectionId, table.schema, table.name)
     .catch(() => null);
-  tableDetailsCache.set(key, promise);
-  return promise;
+  tableDetailsCache.set(key, details);
+  return details;
 }
 
-interface CompletionOption {
-  label: string;
-  type: string;
-  apply: string;
-  detail?: string;
-  matchText: string;
-  boost?: number;
-}
-
-export function buildSchemaCompletions(
-  activeProfile: ConnectionProfile | null,
-  schemas: SchemaSummary[],
-  tablesBySchema: Record<string, TableSummary[]>,
-): CompletionOption[] {
-  const quote =
-    activeProfile?.driver === "mysql" || activeProfile?.driver === "bigquery"
-      ? quoteBacktick
-      : quotePostgres;
-  const options: CompletionOption[] = [];
-
-  for (const schema of schemas) {
-    const schemaTables = tablesBySchema[schema.name] || [];
-    for (const table of schemaTables) {
-      const qualified = `${schema.name}.${table.name}`;
-      options.push({
-        label: table.name,
-        type: "variable",
-        apply: quote(table.name),
-        detail: `${schema.name} ${table.type.replace("BASE ", "")}`,
-        matchText: table.name.toLowerCase(),
-        boost: 80,
-      });
-      options.push({
-        label: qualified,
-        type: "variable",
-        apply: `${quote(schema.name)}.${quote(table.name)}`,
-        detail: table.type.replace("BASE ", ""),
-        matchText: qualified.toLowerCase(),
-        boost: 60,
-      });
-    }
-  }
-
-  return options;
-}
-
-function matchesCompletion(option: CompletionOption, fragment: string) {
-  if (!fragment) return true;
-  if (option.matchText.startsWith(fragment)) return true;
-  if (
-    option.label
-      .toLowerCase()
-      .split(".")
-      .some((part) => part.startsWith(fragment))
-  ) {
-    return true;
-  }
-  return camelCasePrefix(option.label, fragment);
-}
-
-function camelCasePrefix(label: string, fragment: string) {
-  const capitals = label
-    .replace(/[^A-Za-z0-9]+/g, " ")
-    .split(/\s+/)
-    .flatMap((part) => {
-      const upperLetters = part.match(/[A-Z0-9]/g);
-      return upperLetters && upperLetters.length > 0
-        ? upperLetters
-        : [part.charAt(0)];
-    })
-    .join("")
-    .toLowerCase();
-  return capitals.startsWith(fragment);
+function quoteFor(profile: ConnectionProfile | null) {
+  return profile?.driver === "mysql" || profile?.driver === "bigquery"
+    ? quoteBacktick
+    : quotePostgres;
 }
 
 function quotePostgres(identifier: string) {
-  if (/^[a-z_][a-z0-9_]*$/.test(identifier)) return identifier;
-  return `"${identifier.split('"').join('""')}"`;
+  return /^[a-z_][a-z0-9_]*$/.test(identifier)
+    ? identifier
+    : `"${identifier.split('"').join('""')}"`;
 }
 
 function quoteBacktick(identifier: string) {
-  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(identifier)) return identifier;
-  return `\`${identifier.split("`").join("``")}\``;
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(identifier)
+    ? identifier
+    : `\`${identifier.split("`").join("``")}\``;
 }
