@@ -32,7 +32,7 @@ import type {
   SchemaSummary,
   TableSummary,
 } from "../../lib/types";
-import { buildSchemaCompletions, sqlCompletion } from "./sqlCompletion";
+import { sqlCompletion } from "./sqlCompletion";
 import {
   sqlFoldAtomicRanges,
   sqlFoldSelectionGuard,
@@ -118,11 +118,6 @@ export function SqlCodeEditor({
   onRunRef.current = onRun;
   onSelectedSQLChangeRef.current = onSelectedSQLChange;
 
-  const schemaCompletions = useMemo(
-    () => buildSchemaCompletions(activeProfile, schemas, tablesBySchema),
-    [activeProfile, schemas, tablesBySchema]
-  );
-
   const extensions = useMemo<Extension[]>(
     () => [
       ...(vimNavigationEnabled ? [vim(), drawSelection()] : []),
@@ -191,7 +186,6 @@ export function SqlCodeEditor({
             activeConnectionId,
             activeProfile,
             schemas,
-            schemaCompletions,
             tablesBySchema,
           }),
         ],
@@ -340,7 +334,7 @@ export function SqlCodeEditor({
         }
       })
     ],
-    [activeConnectionId, activeProfile, schemaCompletions, schemas, tablesBySchema, theme, vimNavigationEnabled]
+    [activeConnectionId, activeProfile, schemas, tablesBySchema, theme, vimNavigationEnabled]
   );
 
   useEffect(() => {
