@@ -54,7 +54,6 @@ export function sqlCompletion({
     const token = context.matchBefore(/[A-Za-z0-9_$\."`\[\]]*/);
     const from = token?.from ?? context.pos;
     const rawFragment = token?.text ?? "";
-    const fragment = completionFragment(rawFragment);
     const syntax = new Set<string>(
       suggestions.syntax.map((suggestion) => suggestion.syntaxContextType),
     );
@@ -80,26 +79,8 @@ export function sqlCompletion({
       );
     }
 
-    const semanticOptionCount = options.length;
-    options.push(
-      ...suggestions.keywords
-        .filter((keyword) => keyword.toLowerCase().startsWith(fragment))
-        .map((keyword) => ({
-          label: keyword,
-          type: "keyword",
-          apply: keyword,
-          detail: "keyword",
-          boost: 0,
-        })),
-    );
-
     const unique = dedupeOptions(options).slice(0, 80);
-    if (
-      unique.length === 0 ||
-      (!rawFragment && !context.explicit && semanticOptionCount === 0)
-    ) {
-      return null;
-    }
+    if (unique.length === 0) return null;
     return { from, options: unique, validFor: /^[A-Za-z0-9_$\."`\[\]]*$/ };
   };
 }

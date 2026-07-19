@@ -11,7 +11,13 @@ import {
   indentWithTab,
 } from "@codemirror/commands";
 import { codeFolding } from "@codemirror/language";
-import { PostgreSQL, sql } from "@codemirror/lang-sql";
+import {
+  keywordCompletionSource,
+  MySQL,
+  PostgreSQL,
+  sql,
+  StandardSQL,
+} from "@codemirror/lang-sql";
 import { Compartment, EditorState, Extension } from "@codemirror/state";
 import {
   drawSelection,
@@ -117,6 +123,12 @@ export function SqlCodeEditor({
   onChangeRef.current = onChange;
   onRunRef.current = onRun;
   onSelectedSQLChangeRef.current = onSelectedSQLChange;
+  const sqlDialect =
+    activeProfile?.driver === "mysql"
+      ? MySQL
+      : activeProfile?.driver === "postgres"
+        ? PostgreSQL
+        : StandardSQL;
 
   const extensions = useMemo<Extension[]>(
     () => [
@@ -165,7 +177,7 @@ export function SqlCodeEditor({
           run: startCompletion
         }
       ]),
-      sql({ dialect: PostgreSQL }),
+      sql({ dialect: sqlDialect }),
       tooltips({
         parent: document.body,
         tooltipSpace: () => ({
@@ -188,6 +200,7 @@ export function SqlCodeEditor({
             schemas,
             tablesBySchema,
           }),
+          keywordCompletionSource(sqlDialect, true),
         ],
         activateOnTyping: true,
         icons: false
@@ -334,7 +347,7 @@ export function SqlCodeEditor({
         }
       })
     ],
-    [activeConnectionId, activeProfile, schemas, tablesBySchema, theme, vimNavigationEnabled]
+    [activeConnectionId, activeProfile, schemas, sqlDialect, tablesBySchema, theme, vimNavigationEnabled]
   );
 
   useEffect(() => {
