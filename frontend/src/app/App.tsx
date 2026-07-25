@@ -822,7 +822,6 @@ export function App() {
                   multiWorkspaceEnabled={multiQueryWorkspacesEnabled}
                   renamingWorkspaceId={renamingQueryWorkspaceId}
                   resizeEnabled={bottomPanelExpanded}
-                  schemas={model.schemas}
                   settings={model.settings}
                   tablesBySchema={model.tablesBySchema}
                   theme={resolvedTheme}
@@ -844,6 +843,7 @@ export function App() {
                   onExplain={explainTypedSQL}
                   onExplainWithAI={explainSelectedSQLWithAI}
                   onFixWithAI={fixSelectedSQLWithAI}
+                  onLoadTableDetails={model.loadTableDetails}
                   onRun={runTypedSQL}
                 />
                 <section

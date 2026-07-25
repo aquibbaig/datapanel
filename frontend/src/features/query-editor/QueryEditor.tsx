@@ -17,7 +17,7 @@ import { textInputBehaviorProps } from "../../lib/text-input";
 import type {
   AppSettings,
   ConnectionProfile,
-  SchemaSummary,
+  TableDetails,
   TableSummary,
 } from "../../lib/types";
 import { SqlCodeEditor } from "./SqlCodeEditor";
@@ -30,7 +30,6 @@ interface Props {
   multiWorkspaceEnabled: boolean;
   renamingWorkspaceId: string | null;
   resizeEnabled: boolean;
-  schemas: SchemaSummary[];
   settings: AppSettings | null;
   tablesBySchema: Record<string, TableSummary[]>;
   theme: "dark" | "light";
@@ -42,6 +41,7 @@ interface Props {
   onExplain(sql: string): Promise<unknown>;
   onExplainWithAI(sql: string): void;
   onFixWithAI(sql: string): void;
+  onLoadTableDetails(table: TableSummary): Promise<TableDetails | null>;
   onCancel(): Promise<void>;
   onCreateWorkspace(): void;
   onDeleteWorkspace(workspace: QueryWorkspace): void;
@@ -66,7 +66,6 @@ export function QueryEditor({
   multiWorkspaceEnabled,
   renamingWorkspaceId,
   resizeEnabled,
-  schemas,
   settings,
   tablesBySchema,
   theme,
@@ -78,6 +77,7 @@ export function QueryEditor({
   onExplain,
   onExplainWithAI,
   onFixWithAI,
+  onLoadTableDetails,
   onCancel,
   onCreateWorkspace,
   onDeleteWorkspace,
@@ -168,14 +168,13 @@ export function QueryEditor({
 
       <div className="relative min-h-0 overflow-hidden">
         <SqlCodeEditor
-          activeConnectionId={activeConnectionId}
           activeProfile={activeProfile}
-          schemas={schemas}
           tablesBySchema={tablesBySchema}
           theme={theme}
           value={value}
           vimNavigationEnabled={settings?.vimNavigationEnabled ?? false}
           onChange={onChange}
+          onLoadTableDetails={onLoadTableDetails}
           onRun={(selectedSQL) => void run(false, selectedSQL)}
           onSelectedSQLChange={setSelectedSQL}
         />

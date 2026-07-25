@@ -1,6 +1,7 @@
 import {
   acceptCompletion,
   autocompletion,
+  closeBrackets,
   moveCompletionSelection,
   startCompletion
 } from "@codemirror/autocomplete";
@@ -12,7 +13,6 @@ import {
 } from "@codemirror/commands";
 import { codeFolding } from "@codemirror/language";
 import {
-  keywordCompletionSource,
   MySQL,
   PostgreSQL,
   sql,
@@ -35,10 +35,10 @@ import { createHighlighterCore } from "shiki/core";
 import { createOnigurumaEngine } from "shiki/engine/oniguruma";
 import type {
   ConnectionProfile,
-  SchemaSummary,
+  TableDetails,
   TableSummary,
 } from "../../lib/types";
-import { sqlCompletion } from "./sqlCompletion";
+import { sqlColumnCompletion } from "./sqlCompletion";
 import {
   sqlFoldAtomicRanges,
   sqlFoldSelectionGuard,
@@ -49,16 +49,16 @@ import {
   sqlStatementFolding,
   toggleSQLStatementFold,
 } from "./sqlFolding";
+import { sqlCompletionConfig } from "./sqlCompletionConfig";
 
 interface Props {
-  activeConnectionId: string;
   activeProfile: ConnectionProfile | null;
-  schemas: SchemaSummary[];
   tablesBySchema: Record<string, TableSummary[]>;
   theme: "dark" | "light";
   value: string;
   vimNavigationEnabled: boolean;
   onChange(value: string): void;
+  onLoadTableDetails(table: TableSummary): Promise<TableDetails | null>;
   onRun(sql: string): void;
   onSelectedSQLChange(sql: string): void;
 }
@@ -101,14 +101,13 @@ if (!vimFoldingGlobal.__datapanelSQLVimFoldingLeaderSafe) {
 }
 
 export function SqlCodeEditor({
-  activeConnectionId,
   activeProfile,
-  schemas,
   tablesBySchema,
   theme,
   value,
   vimNavigationEnabled,
   onChange,
+  onLoadTableDetails,
   onRun,
   onSelectedSQLChange,
 }: Props) {
@@ -129,6 +128,17 @@ export function SqlCodeEditor({
       : activeProfile?.driver === "postgres"
         ? PostgreSQL
         : StandardSQL;
+  const completionConfig = useMemo(
+    () =>
+      sqlCompletionConfig(
+        sqlDialect,
+        tablesBySchema,
+        activeProfile?.driver === "postgres"
+          ? "public"
+          : activeProfile?.database,
+      ),
+    [activeProfile, sqlDialect, tablesBySchema],
+  );
 
   const extensions = useMemo<Extension[]>(
     () => [
@@ -144,6 +154,7 @@ export function SqlCodeEditor({
       lineNumbers(),
       highlightActiveLine(),
       history(),
+      closeBrackets(),
       keymap.of([
         {
           key: "Mod-Enter",
@@ -177,7 +188,14 @@ export function SqlCodeEditor({
           run: startCompletion
         }
       ]),
-      sql({ dialect: sqlDialect }),
+      sql(completionConfig),
+      sqlDialect.language.data.of({
+        autocomplete: sqlColumnCompletion({
+          driver: activeProfile?.driver,
+          tablesBySchema,
+          loadTableDetails: onLoadTableDetails,
+        }),
+      }),
       tooltips({
         parent: document.body,
         tooltipSpace: () => ({
@@ -193,15 +211,6 @@ export function SqlCodeEditor({
         theme: theme === "light" ? "github-light" : "github-dark-high-contrast",
       }),
       autocompletion({
-        override: [
-          sqlCompletion({
-            activeConnectionId,
-            activeProfile,
-            schemas,
-            tablesBySchema,
-          }),
-          keywordCompletionSource(sqlDialect, true),
-        ],
         activateOnTyping: true,
         icons: false
       }),
@@ -347,7 +356,7 @@ export function SqlCodeEditor({
         }
       })
     ],
-    [activeConnectionId, activeProfile, schemas, sqlDialect, tablesBySchema, theme, vimNavigationEnabled]
+    [activeProfile, completionConfig, onLoadTableDetails, sqlDialect, tablesBySchema, theme, vimNavigationEnabled]
   );
 
   useEffect(() => {
