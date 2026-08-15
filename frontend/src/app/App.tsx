@@ -149,6 +149,7 @@ export function App() {
     string | null
   >(null);
   const [queryWorkspaceTitleDraft, setQueryWorkspaceTitleDraft] = useState("");
+  const [editorFocusRequest, setEditorFocusRequest] = useState(0);
   const [editingProfile, setEditingProfile] =
     useState<ConnectionProfile | null>(null);
   const [deletingProfile, setDeletingProfile] =
@@ -525,6 +526,7 @@ export function App() {
 
   function loadSQL(sql: string) {
     appendSqlDraft(sql);
+    setEditorFocusRequest((current) => current + 1);
   }
 
   const hasRowResult =
@@ -548,10 +550,15 @@ export function App() {
       current.map((workspace) => {
         if (workspace.id !== activeQueryWorkspaceId) return workspace;
         const currentSql = workspace.sql;
-        const separator = currentSql.trim() ? "\n\n" : "";
+        const separator = sqlAppendSeparator(currentSql);
         return { ...workspace, sql: `${currentSql}${separator}${nextSql}` };
       }),
     );
+  }
+
+  function sqlAppendSeparator(currentSql: string) {
+    if (!currentSql.trim() || currentSql.endsWith("\n\n")) return "";
+    return currentSql.endsWith("\n") ? "\n" : "\n\n";
   }
 
   function createQueryWorkspace() {
@@ -822,6 +829,7 @@ export function App() {
                   onResizeStart={startBottomPanelResize}
                   onSelectWorkspace={setActiveQueryWorkspaceId}
                   onTitleDraftChange={setQueryWorkspaceTitleDraft}
+                  focusAtEndRequest={editorFocusRequest}
                   value={sqlDraft}
                   workspaces={queryWorkspaces}
                   onChange={setSqlDraft}

@@ -32,15 +32,22 @@ type SchemaContextRequest struct {
 }
 
 type SchemaContextTable struct {
-	Schema string `json:"schema"`
-	Name   string `json:"name"`
+	Schema     string  `json:"schema"`
+	Name       string  `json:"name"`
+	Confidence float64 `json:"confidence"`
+	Reason     string  `json:"reason"`
 }
 
 type SchemaContext struct {
-	Context        string `json:"context"`
-	DetailedTables int    `json:"detailedTables"`
-	TotalTables    int    `json:"totalTables"`
-	Truncated      bool   `json:"truncated"`
+	Context         string               `json:"context"`
+	DetailedTables  int                  `json:"detailedTables"`
+	TotalTables     int                  `json:"totalTables"`
+	Truncated       bool                 `json:"truncated"`
+	RequestedTables []SchemaContextTable `json:"requestedTables"`
+	LoadedTables    []SchemaContextTable `json:"loadedTables"`
+	MissingTables   []SchemaContextTable `json:"missingTables"`
+	InvalidTables   []SchemaContextTable `json:"invalidTables"`
+	Ready           bool                 `json:"ready"`
 }
 
 type ColumnSummary struct {

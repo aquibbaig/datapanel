@@ -537,7 +537,12 @@ export const schemaService = {
         ].join("\n"),
         detailedTables: 1,
         totalTables: 1,
-        truncated: false
+        truncated: false,
+        requestedTables: [{ schema: "public", name: "users", confidence: 1, reason: "Direct match." }],
+        loadedTables: [{ schema: "public", name: "users", confidence: 1, reason: "Direct match." }],
+        missingTables: [],
+        invalidTables: [],
+        ready: true,
       };
     }
     return SchemaBindings.BuildSchemaContext(

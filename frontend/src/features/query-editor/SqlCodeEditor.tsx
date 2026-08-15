@@ -18,7 +18,12 @@ import {
   sql,
   StandardSQL,
 } from "@codemirror/lang-sql";
-import { Compartment, EditorState, Extension } from "@codemirror/state";
+import {
+  Compartment,
+  EditorSelection,
+  EditorState,
+  Extension,
+} from "@codemirror/state";
 import {
   drawSelection,
   EditorView,
@@ -55,6 +60,7 @@ interface Props {
   activeConnectionId: string;
   activeWorkspaceId: string;
   activeProfile: ConnectionProfile | null;
+  focusAtEndRequest: number;
   tablesBySchema: Record<string, TableSummary[]>;
   theme: "dark" | "light";
   value: string;
@@ -106,6 +112,7 @@ export function SqlCodeEditor({
   activeConnectionId,
   activeWorkspaceId,
   activeProfile,
+  focusAtEndRequest,
   tablesBySchema,
   theme,
   value,
@@ -426,14 +433,38 @@ export function SqlCodeEditor({
     if (!view) return;
     const currentValue = view.state.doc.toString();
     if (currentValue === value) return;
+    const change = minimalTextChange(currentValue, value);
     view.dispatch({
       changes: {
-        from: 0,
-        to: currentValue.length,
-        insert: value
+        from: change.from,
+        to: change.to,
+        insert: change.insert,
       }
     });
   }, [value]);
+
+  useEffect(() => {
+    if (focusAtEndRequest === 0) return;
+    const focusFrame = window.requestAnimationFrame(() => {
+      const view = viewRef.current;
+      if (!view) return;
+      const end = view.state.doc.length;
+      const foldPosition = Math.max(0, end - 1);
+      view.dispatch({
+        selection: EditorSelection.cursor(foldPosition),
+        scrollIntoView: true,
+      });
+      const folded = foldSQLStatement(view);
+      if (!folded) {
+        view.dispatch({
+          selection: EditorSelection.cursor(end),
+          scrollIntoView: true,
+        });
+      }
+      view.focus();
+    });
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, [focusAtEndRequest]);
 
   useEffect(() => {
     const focusFrame = window.requestAnimationFrame(() => {
@@ -449,6 +480,31 @@ function selectedSQL(view: EditorView) {
   const selection = view.state.selection.main;
   const selectedText = view.state.sliceDoc(selection.from, selection.to).trim();
   return selectedText || view.state.doc.toString().trim();
+}
+
+function minimalTextChange(currentValue: string, nextValue: string) {
+  let from = 0;
+  const sharedLength = Math.min(currentValue.length, nextValue.length);
+  while (from < sharedLength && currentValue[from] === nextValue[from]) {
+    from += 1;
+  }
+
+  let currentTo = currentValue.length;
+  let nextTo = nextValue.length;
+  while (
+    currentTo > from &&
+    nextTo > from &&
+    currentValue[currentTo - 1] === nextValue[nextTo - 1]
+  ) {
+    currentTo -= 1;
+    nextTo -= 1;
+  }
+
+  return {
+    from,
+    to: currentTo,
+    insert: nextValue.slice(from, nextTo),
+  };
 }
 
 function explicitlySelectedSQL(view: EditorView) {
