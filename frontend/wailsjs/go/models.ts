@@ -99,11 +99,11 @@ export namespace ai {
 	    name: string;
 	    confidence: number;
 	    reason: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new PlanTable(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.schema = source["schema"];
@@ -247,7 +247,6 @@ export namespace ai {
 	        this.label = source["label"];
 	    }
 	}
-
 }
 
 export namespace appdata {

@@ -135,17 +135,23 @@ jobs:
           CGO_ENABLED=1 wails build -clean -skipbindings -nosyncgomod -platform "${{ matrix.platform }}" -nsis -webview2 embed -ldflags "$ldflags"
 
       - name: Rename installer
-        working-directory: ./build/bin
         shell: powershell
         run: |
           $installerName = "DataPanel_Setup_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.exe"
-          $installer = Get-ChildItem -Filter "*installer.exe" | Select-Object -First 1
+          $installerPath = Join-Path $env:GITHUB_WORKSPACE "build/bin/$installerName"
+          $installer = Get-ChildItem -Path $env:GITHUB_WORKSPACE -Recurse -File -Filter "*installer.exe" |
+            Where-Object { $_.FullName -ne $installerPath } |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -First 1
           if (-not $installer) {
+            Write-Host "Executables produced by the Windows build:"
+            Get-ChildItem -Path (Join-Path $env:GITHUB_WORKSPACE "build") -Recurse -File -Filter "*.exe" |
+              ForEach-Object { Write-Host " - $($_.FullName)" }
             throw "No NSIS installer was produced."
           }
-          Rename-Item -Path $installer.FullName -NewName $installerName
-          $hash = Get-FileHash -Algorithm SHA256 $installerName
-          "$($hash.Hash.ToLower())  $installerName" | Set-Content -Encoding ascii "$installerName.sha256"
+          Move-Item -Path $installer.FullName -Destination $installerPath -Force
+          $hash = Get-FileHash -Algorithm SHA256 $installerPath
+          "$($hash.Hash.ToLower())  $installerName" | Set-Content -Encoding ascii "$installerPath.sha256"
 
       - name: Upload release asset (Installer)
         uses: softprops/action-gh-release@v2
