@@ -100,18 +100,16 @@ func (s *SchemaService) BuildSchemaContext(input SchemaContextRequest) (SchemaCo
 		return SchemaContext{}, err
 	}
 
-	tablesBySchema := map[string][]TableSummary{}
 	allTables := []TableSummary{}
 	for _, schema := range schemas {
 		tables, err := s.adapter.ListTables(ctx, connectionID, schema.Name)
 		if err != nil {
 			return SchemaContext{}, err
 		}
-		tablesBySchema[schema.Name] = tables
 		allTables = append(allTables, tables...)
 	}
 
-	selectedTables, err := selectTablesForSchemaContext(input, allTables, maxDetailedTables)
+	selectedTables, missingTables, err := selectTablesForSchemaContext(input, allTables, maxDetailedTables)
 	if err != nil {
 		return SchemaContext{}, err
 	}
@@ -123,12 +121,30 @@ func (s *SchemaService) BuildSchemaContext(input SchemaContextRequest) (SchemaCo
 		selectedTables = expandSelectedTablesForRelationships(input, selectedTables, allTables, foreignKeys, maxDetailedTables)
 	}
 	detailsByKey := map[string]TableDetails{}
+	requestedByKey := map[string]SchemaContextTable{}
+	for _, table := range normalizeContextTables(input.Tables) {
+		requestedByKey[schemaTableKey(table.Schema, table.Name)] = table
+	}
+	loadedTables := make([]SchemaContextTable, 0, len(selectedTables))
+	invalidTables := []SchemaContextTable{}
 	for _, table := range selectedTables {
 		details, err := s.adapter.DescribeTable(ctx, connectionID, table.Schema, table.Name)
 		if err != nil {
 			return SchemaContext{}, err
 		}
+		contextTable, planned := requestedByKey[schemaTableKey(table.Schema, table.Name)]
+		if !planned {
+			contextTable = SchemaContextTable{
+				Schema: table.Schema, Name: table.Name, Confidence: 0.5,
+				Reason: "Related through a foreign-key relationship.",
+			}
+		}
+		if len(details.Columns) == 0 {
+			invalidTables = append(invalidTables, contextTable)
+			continue
+		}
 		detailsByKey[schemaTableKey(table.Schema, table.Name)] = details
+		loadedTables = append(loadedTables, contextTable)
 	}
 
 	lines := []string{
@@ -145,38 +161,43 @@ func (s *SchemaService) BuildSchemaContext(input SchemaContextRequest) (SchemaCo
 		"- If a requested column, metric, or join key is not listed, return an empty sql string and state the missing schema item instead of guessing.",
 		"- Prefer listed FOREIGN KEY constraints for joins.",
 		"",
-		"Schemas and tables:",
+		"Verified table DDL:",
 	}
 
-	for _, schema := range schemas {
-		lines = append(lines, "- "+schema.Name)
-		for _, table := range tablesBySchema[schema.Name] {
-			lines = append(lines, fmt.Sprintf("  - %s.%s (%s, estimated rows: %d)", table.Schema, table.Name, table.Type, table.RowEstimate))
-			details, ok := detailsByKey[schemaTableKey(table.Schema, table.Name)]
-			if !ok {
-				lines = append(lines, "    DDL: not loaded. Do not generate SQL against this table.")
-				continue
-			}
-			appendTableDDL(&lines, details, input.Dialect, "    ")
+	for _, table := range selectedTables {
+		details, ok := detailsByKey[schemaTableKey(table.Schema, table.Name)]
+		if !ok {
+			continue
 		}
+		manifest := requestedByKey[schemaTableKey(table.Schema, table.Name)]
+		if manifest.Schema == "" {
+			manifest = SchemaContextTable{Schema: table.Schema, Name: table.Name, Confidence: 0.5, Reason: "Related through a foreign-key relationship."}
+		}
+		lines = append(lines, fmt.Sprintf("- %s.%s (confidence: %.2f; reason: %s; %s, estimated rows: %d)", table.Schema, table.Name, manifest.Confidence, manifest.Reason, table.Type, table.RowEstimate))
+		appendTableDDL(&lines, details, input.Dialect, "  ")
 	}
 
-	truncated := len(selectedTables) < len(allTables)
+	truncated := len(loadedTables) < len(allTables)
 	lines = append(lines, "")
-	lines = append(lines, fmt.Sprintf("Detailed DDL included for %d of %d table(s).", len(selectedTables), len(allTables)))
-	if truncated {
-		lines = append(lines, "Some table DDL was omitted because the schema is large; only listed DDL blocks are queryable.")
-	}
+	lines = append(lines, fmt.Sprintf("Verified DDL included for %d table(s).", len(loadedTables)))
+
+	requestedTables := normalizeContextTables(input.Tables)
+	ready := len(missingTables) == 0 && len(invalidTables) == 0 && len(loadedTables) > 0
 
 	return SchemaContext{
-		Context:        strings.Join(lines, "\n"),
-		DetailedTables: len(selectedTables),
-		TotalTables:    len(allTables),
-		Truncated:      truncated,
+		Context:         strings.Join(lines, "\n"),
+		DetailedTables:  len(loadedTables),
+		TotalTables:     len(allTables),
+		Truncated:       truncated,
+		RequestedTables: requestedTables,
+		LoadedTables:    loadedTables,
+		MissingTables:   missingTables,
+		InvalidTables:   invalidTables,
+		Ready:           ready,
 	}, nil
 }
 
-func selectTablesForSchemaContext(input SchemaContextRequest, allTables []TableSummary, maxDetailedTables int) ([]TableSummary, error) {
+func selectTablesForSchemaContext(input SchemaContextRequest, allTables []TableSummary, maxDetailedTables int) ([]TableSummary, []SchemaContextTable, error) {
 	if len(input.Tables) > 0 {
 		return selectExplicitTablesForSchemaContext(input.Tables, allTables, maxDetailedTables)
 	}
@@ -206,10 +227,10 @@ func selectTablesForSchemaContext(input SchemaContextRequest, allTables []TableS
 		addTable(table)
 	}
 
-	return selected, nil
+	return selected, nil, nil
 }
 
-func selectExplicitTablesForSchemaContext(requestedTables []SchemaContextTable, allTables []TableSummary, maxDetailedTables int) ([]TableSummary, error) {
+func selectExplicitTablesForSchemaContext(requestedTables []SchemaContextTable, allTables []TableSummary, maxDetailedTables int) ([]TableSummary, []SchemaContextTable, error) {
 	tablesByKey := map[string]TableSummary{}
 	for _, table := range allTables {
 		tablesByKey[schemaTableKey(table.Schema, table.Name)] = table
@@ -217,6 +238,7 @@ func selectExplicitTablesForSchemaContext(requestedTables []SchemaContextTable, 
 
 	selectedKeys := map[string]bool{}
 	selected := make([]TableSummary, 0, minInt(len(requestedTables), maxDetailedTables))
+	missing := []SchemaContextTable{}
 	for _, requested := range requestedTables {
 		if len(selected) >= maxDetailedTables {
 			break
@@ -227,12 +249,35 @@ func selectExplicitTablesForSchemaContext(requestedTables []SchemaContextTable, 
 		}
 		table, ok := tablesByKey[key]
 		if !ok {
-			return nil, apperrors.New(apperrors.CodeValidation, "planned table is not present in schema: "+requested.Schema+"."+requested.Name)
+			missing = append(missing, requested)
+			continue
 		}
 		selectedKeys[key] = true
 		selected = append(selected, table)
 	}
-	return selected, nil
+	return selected, missing, nil
+}
+
+func normalizeContextTables(tables []SchemaContextTable) []SchemaContextTable {
+	seen := map[string]bool{}
+	result := []SchemaContextTable{}
+	for _, table := range tables {
+		schema := strings.TrimSpace(table.Schema)
+		name := strings.TrimSpace(table.Name)
+		key := schemaTableKey(schema, name)
+		if schema == "" || name == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		confidence := table.Confidence
+		if confidence < 0 {
+			confidence = 0
+		} else if confidence > 1 {
+			confidence = 1
+		}
+		result = append(result, SchemaContextTable{Schema: schema, Name: name, Confidence: confidence, Reason: strings.TrimSpace(table.Reason)})
+	}
+	return result
 }
 
 func expandSelectedTablesForRelationships(input SchemaContextRequest, selectedTables []TableSummary, allTables []TableSummary, foreignKeys []ForeignKeySummary, maxDetailedTables int) []TableSummary {

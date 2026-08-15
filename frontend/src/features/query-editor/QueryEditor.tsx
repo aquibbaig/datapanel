@@ -27,6 +27,7 @@ interface Props {
   activeProfile: ConnectionProfile | null;
   activeWorkspaceId: string;
   busy: boolean;
+  focusAtEndRequest: number;
   multiWorkspaceEnabled: boolean;
   renamingWorkspaceId: string | null;
   resizeEnabled: boolean;
@@ -64,6 +65,7 @@ export function QueryEditor({
   activeProfile,
   activeWorkspaceId,
   busy,
+  focusAtEndRequest,
   multiWorkspaceEnabled,
   renamingWorkspaceId,
   resizeEnabled,
@@ -173,6 +175,7 @@ export function QueryEditor({
           activeConnectionId={activeConnectionId}
           activeWorkspaceId={activeWorkspaceId}
           activeProfile={activeProfile}
+          focusAtEndRequest={focusAtEndRequest}
           tablesBySchema={tablesBySchema}
           theme={theme}
           value={value}

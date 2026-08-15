@@ -49,6 +49,7 @@ import type {
   AIGenerateResponse,
   AppSettings,
   ConnectionProfile,
+  SchemaContext,
   SchemaSummary,
   TableDetails,
   TableSummary,
@@ -120,6 +121,8 @@ interface AskAIOptions {
 type PlannedTable = {
   schema: string;
   name: string;
+  confidence?: number;
+  reason?: string;
 };
 
 type RuntimeBridge = {
@@ -669,34 +672,31 @@ export function AiAssistantPanel({
         schemaSnapshot.schemas,
         schemaSnapshot.tablesBySchema,
       );
-      const tablePlan =
-        deterministicTables.length > 0
-          ? {
-              assumptions: [
-                "Matched table names directly from the user request before planning.",
-              ],
-              needsClarification: false,
-              question: "",
-              tables: deterministicTables.map((table) => ({
-                schema: table.schema,
-                name: table.name,
-                confidence: 1,
-                reason: "The request references this table name.",
-              })),
-              tokenUsage: zeroTokenUsage(),
-            }
-          : await aiCredentialService.plan({
-              provider: selected.id,
-              model: requestModel,
-              prompt,
-              dialect: activeProfile.driver,
-              conversation,
-              tableContext: buildTablePlanningContext(
-                activeProfile,
-                schemaSnapshot.schemas,
-                schemaSnapshot.tablesBySchema,
-              ),
-            });
+      const plannedTables = await aiCredentialService.plan({
+        provider: selected.id,
+        model: requestModel,
+        prompt,
+        dialect: activeProfile.driver,
+        conversation,
+        tableContext: buildTablePlanningContext(
+          activeProfile,
+          schemaSnapshot.schemas,
+          schemaSnapshot.tablesBySchema,
+        ),
+      });
+      const directTables = deterministicTables.map((table) => ({
+        schema: table.schema,
+        name: table.name,
+        confidence: 1,
+        reason: "The request directly references this table name.",
+      }));
+      const tablePlan = {
+        ...plannedTables,
+        needsClarification:
+          directTables.length === 0 && plannedTables.needsClarification,
+        question: directTables.length > 0 ? "" : plannedTables.question,
+        tables: uniquePlannedTables([...directTables, ...plannedTables.tables]),
+      };
       if (tablePlan.needsClarification || tablePlan.tables.length === 0) {
         const response = clarificationResponse(
           tablePlan.question || "Which table should I use for this request?",
@@ -1908,22 +1908,23 @@ async function generateWithDDLRecovery({
   let tokenUsage = zeroTokenUsage();
 
   for (let retry = 0; ; retry += 1) {
-    const schemaContext = (
-      await schemaService.context({
-        connectionId,
-        prompt,
-        dialect,
-        maxDetailedTables: Math.max(selectedTables.length, 1),
-        tables: selectedTables,
-      })
-    ).context;
+    const preparedSchema = await schemaService.context({
+      connectionId,
+      prompt,
+      dialect,
+      maxDetailedTables: Math.max(selectedTables.length, 1),
+      tables: selectedTables,
+    });
+    if (!preparedSchema.ready) {
+      throw new Error(schemaPreparationError(preparedSchema));
+    }
     const response = await aiCredentialService.generate({
       provider,
       model,
       prompt,
       dialect,
       responseStyle,
-      schemaContext,
+      schemaContext: preparedSchema.context,
       conversation,
     });
 
@@ -1940,6 +1941,22 @@ async function generateWithDDLRecovery({
     if (sameTableSet(selectedTables, nextTables)) return response;
     selectedTables = nextTables;
   }
+}
+
+function schemaPreparationError(schema: SchemaContext) {
+  const missing = schema.missingTables.map(qualifiedTableName);
+  const invalid = schema.invalidTables.map(qualifiedTableName);
+  const problems = [
+    missing.length > 0 ? `not found: ${missing.join(", ")}` : "",
+    invalid.length > 0 ? `DDL has no columns: ${invalid.join(", ")}` : "",
+  ].filter(Boolean);
+  return problems.length > 0
+    ? `Could not prepare schema context (${problems.join("; ")}). Refresh the schema and try again.`
+    : "Could not prepare schema context because no table DDL was loaded.";
+}
+
+function qualifiedTableName(table: PlannedTable) {
+  return `${table.schema}.${table.name}`;
 }
 
 function resolveTablesFromPrompt(
@@ -2011,7 +2028,12 @@ function uniquePlannedTables(tables: PlannedTable[]) {
     const key = tableKey(schema, name);
     if (!schema || !name || seen.has(key)) continue;
     seen.add(key);
-    unique.push({ schema, name });
+    unique.push({
+      schema,
+      name,
+      confidence: table.confidence,
+      reason: table.reason,
+    });
   }
   return unique;
 }
@@ -2027,6 +2049,8 @@ function mergeKnownMissingTables(
       knownTables.set(tableKey(table.schema, table.name), {
         schema: table.schema,
         name: table.name,
+        confidence: 0.5,
+        reason: "Requested by SQL generation as additional schema context.",
       });
     }
   }

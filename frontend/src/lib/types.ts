@@ -115,13 +115,18 @@ export type ConnectionStatus = connections.ConnectionStatus;
 
 export type SchemaSummary = postgres.SchemaSummary;
 export type SchemaFingerprint = postgres.SchemaFingerprint;
-export type SchemaContext = postgres.SchemaContext;
+export type SchemaContext = Omit<postgres.SchemaContext, "convertValues">;
 export interface SchemaContextRequest {
   connectionId: string;
   prompt: string;
   dialect: string;
   maxDetailedTables: number;
-  tables?: Array<{ schema: string; name: string }>;
+  tables?: Array<{
+    schema: string;
+    name: string;
+    confidence?: number;
+    reason?: string;
+  }>;
 }
 export type TableSummary = postgres.TableSummary;
 export type ColumnSummary = postgres.ColumnSummary;

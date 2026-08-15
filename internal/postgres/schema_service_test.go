@@ -123,6 +123,35 @@ func TestBuildSchemaContextUsesExplicitPlannedTables(t *testing.T) {
 	}
 }
 
+func TestBuildSchemaContextAuditsMissingPlannedTable(t *testing.T) {
+	provider := fakeMetadataProvider{
+		schemas: []SchemaSummary{{Name: "public"}},
+		tables: map[string][]TableSummary{
+			"public": {{Schema: "public", Name: "users", Type: "BASE TABLE"}},
+		},
+		details: map[string]TableDetails{},
+	}
+
+	contextResult, err := NewSchemaService(provider).BuildSchemaContext(SchemaContextRequest{
+		ConnectionID: "connection-1",
+		Prompt:       "show orders",
+		Dialect:      "postgres",
+		Tables:       []SchemaContextTable{{Schema: "public", Name: "orders"}},
+	})
+	if err != nil {
+		t.Fatalf("BuildSchemaContext returned error: %v", err)
+	}
+	if contextResult.Ready {
+		t.Fatal("expected schema context not to be ready")
+	}
+	if len(contextResult.MissingTables) != 1 || contextResult.MissingTables[0].Name != "orders" {
+		t.Fatalf("expected orders in missing table audit, got %#v", contextResult.MissingTables)
+	}
+	if strings.Contains(contextResult.Context, "DDL: not loaded") {
+		t.Fatalf("did not expect missing-DDL warnings in model context:\n%s", contextResult.Context)
+	}
+}
+
 func TestBuildSchemaContextExpandsExplicitTablesWithSharedForeignKeyTable(t *testing.T) {
 	provider := fakeMetadataProvider{
 		schemas: []SchemaSummary{{Name: "typehero"}},
