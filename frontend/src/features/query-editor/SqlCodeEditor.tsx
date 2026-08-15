@@ -52,6 +52,8 @@ import {
 import { sqlCompletionConfig } from "./sqlCompletionConfig";
 
 interface Props {
+  activeConnectionId: string;
+  activeWorkspaceId: string;
   activeProfile: ConnectionProfile | null;
   tablesBySchema: Record<string, TableSummary[]>;
   theme: "dark" | "light";
@@ -101,6 +103,8 @@ if (!vimFoldingGlobal.__datapanelSQLVimFoldingLeaderSafe) {
 }
 
 export function SqlCodeEditor({
+  activeConnectionId,
+  activeWorkspaceId,
   activeProfile,
   tablesBySchema,
   theme,
@@ -430,6 +434,13 @@ export function SqlCodeEditor({
       }
     });
   }, [value]);
+
+  useEffect(() => {
+    const focusFrame = window.requestAnimationFrame(() => {
+      viewRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, [activeConnectionId, activeWorkspaceId]);
 
   return <div className="h-full min-h-0 w-full overflow-hidden" ref={containerRef} />;
 }

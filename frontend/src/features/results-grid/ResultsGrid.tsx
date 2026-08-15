@@ -121,6 +121,8 @@ export function ResultsGrid({
     null,
   );
   const [scrollLeft, setScrollLeft] = useState(0);
+  const [maxScrollLeft, setMaxScrollLeft] = useState(0);
+  const [scrollViewportWidth, setScrollViewportWidth] = useState(0);
   const [inspectedCell, setInspectedCell] = useState<{
     columnName: string;
     value: unknown;
@@ -174,6 +176,20 @@ export function ResultsGrid({
   useEffect(() => {
     selectedRowKeysRef.current = selectedRowKeys;
   }, [selectedRowKeys]);
+
+  useEffect(() => {
+    function clearSelectionOutsideRows(event: MouseEvent) {
+      if (selectedRowKeysRef.current.size === 0) return;
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-results-row]")) {
+        return;
+      }
+      setSelectedRowKeys(new Set());
+    }
+
+    document.addEventListener("click", clearSelectionOutsideRows);
+    return () => document.removeEventListener("click", clearSelectionOutsideRows);
+  }, []);
 
   const driver = normalizeDriver(activeProfile?.driver);
   const primaryColumns = useMemo(
@@ -803,6 +819,33 @@ export function ResultsGrid({
   const virtualColumns = columnVirtualizer.getVirtualItems();
   const totalColumnWidth = columnVirtualizer.getTotalSize();
   const totalGridHeight = rowVirtualizer.getTotalSize();
+
+  useEffect(() => {
+    const viewport = scrollRef.current;
+    if (!viewport) return;
+
+    const updateScrollRange = () => {
+      const nextMax = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+      setMaxScrollLeft(nextMax);
+      setScrollViewportWidth(viewport.clientWidth);
+      setScrollLeft(viewport.scrollLeft);
+    };
+    updateScrollRange();
+    const observer = new ResizeObserver(updateScrollRange);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [totalColumnWidth]);
+  const scrollbarThumbWidth =
+    maxScrollLeft > 0
+      ? Math.max(
+          5,
+          (scrollViewportWidth / (scrollViewportWidth + maxScrollLeft)) * 100,
+        )
+      : 100;
+  const scrollbarThumbLeft =
+    maxScrollLeft > 0
+      ? (scrollLeft / maxScrollLeft) * (100 - scrollbarThumbWidth)
+      : 0;
   const normalizedFinderQuery = finderQuery.trim().toLowerCase();
   const findMatches = useMemo(
     () =>
@@ -1048,7 +1091,7 @@ export function ResultsGrid({
             />
           </div>
         ) : null}
-        <div className="grid min-h-0 grid-rows-[34px_minmax(0,1fr)] overflow-hidden">
+        <div className="relative grid min-h-0 grid-rows-[34px_minmax(0,1fr)] overflow-hidden">
           <div className="relative overflow-hidden border-b border-line bg-surface-800 text-xs">
             <div
               className="relative"
@@ -1127,7 +1170,7 @@ export function ResultsGrid({
           </div>
           <div
             ref={scrollRef}
-            className="datapanel-results-scroll min-h-0 overflow-auto"
+            className="datapanel-results-scroll min-h-0 overflow-y-auto overflow-x-auto"
             onScroll={(event) => setScrollLeft(event.currentTarget.scrollLeft)}
           >
             <div
@@ -1152,6 +1195,7 @@ export function ResultsGrid({
                 const rowSelected = selectedRowKeys.has(rowKey);
                 return (
                   <div
+                    data-results-row
                     className={cn(
                       "absolute left-0 cursor-default border-b border-line",
                       rowSelected &&
@@ -1262,6 +1306,35 @@ export function ResultsGrid({
                 );
               })}
             </div>
+          </div>
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex h-2 items-end px-1">
+            {maxScrollLeft > 0 ? (
+              <div className="relative h-1.5 w-full rounded-full bg-surface-700">
+                <div
+                  className="absolute inset-y-0 rounded-full bg-scrollbar-thumb"
+                  style={{
+                    left: `${scrollbarThumbLeft}%`,
+                    width: `${scrollbarThumbWidth}%`,
+                  }}
+                />
+                <input
+                  aria-label="Scroll results horizontally"
+                  className="datapanel-horizontal-scrollbar pointer-events-auto absolute inset-0 h-full w-full"
+                  max={maxScrollLeft}
+                  min={0}
+                  step={1}
+                  type="range"
+                  value={Math.min(scrollLeft, maxScrollLeft)}
+                  onChange={(event) => {
+                    const nextScrollLeft = Number(event.currentTarget.value);
+                    if (scrollRef.current) {
+                      scrollRef.current.scrollLeft = nextScrollLeft;
+                    }
+                    setScrollLeft(nextScrollLeft);
+                  }}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

@@ -30,6 +30,7 @@ interface Props {
   multiWorkspaceEnabled: boolean;
   renamingWorkspaceId: string | null;
   resizeEnabled: boolean;
+  resultMode: "results" | "plan";
   settings: AppSettings | null;
   tablesBySchema: Record<string, TableSummary[]>;
   theme: "dark" | "light";
@@ -66,6 +67,7 @@ export function QueryEditor({
   multiWorkspaceEnabled,
   renamingWorkspaceId,
   resizeEnabled,
+  resultMode,
   settings,
   tablesBySchema,
   theme,
@@ -168,6 +170,8 @@ export function QueryEditor({
 
       <div className="relative min-h-0 overflow-hidden">
         <SqlCodeEditor
+          activeConnectionId={activeConnectionId}
+          activeWorkspaceId={activeWorkspaceId}
           activeProfile={activeProfile}
           tablesBySchema={tablesBySchema}
           theme={theme}
@@ -212,8 +216,12 @@ export function QueryEditor({
         <div className="absolute left-0 right-0 top-0 h-px bg-line transition group-hover:bg-accent" />
       </div>
 
-      <div className="flex justify-end gap-2 p-2">
-        <Button
+      <div className="flex items-center justify-between gap-2 p-2">
+        <span className="text-xs font-medium text-muted">
+          {resultMode === "plan" ? "Plan mode" : "Query results"}
+        </span>
+        <div className="flex items-center justify-end gap-2">
+          <Button
           disabled={!activeConnectionId || busy || !selectedActionSQL}
           onClick={() => void explain()}
           title={
@@ -284,10 +292,11 @@ export function QueryEditor({
           <Play size={14} />
           Run
         </Button>
-        <Button disabled={!busy} onClick={() => void onCancel()}>
-          <Square size={14} />
-          Cancel
-        </Button>
+          <Button disabled={!busy} onClick={() => void onCancel()}>
+            <Square size={14} />
+            Cancel
+          </Button>
+        </div>
       </div>
     </section>
   );
