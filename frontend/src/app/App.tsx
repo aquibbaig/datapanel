@@ -27,6 +27,7 @@ import {
 } from "../components/ui/sidebar";
 import type { AISQLAssistantRequest } from "../features/ai-assistant/AiAssistantPanel";
 import { ConnectionPanel } from "../features/connections/ConnectionPanel";
+import { FeedbackPopover } from "../features/feedback/FeedbackPopover";
 import { QueryEditor } from "../features/query-editor/QueryEditor";
 import { QueryPlanView } from "../features/query-plan/QueryPlanView";
 import { ResultsGrid } from "../features/results-grid/ResultsGrid";
@@ -718,9 +719,14 @@ export function App() {
             </div>
 
             <div className="flex min-w-0 items-center gap-2">
+              <FeedbackPopover
+                version={
+                  model.appUpdateState.versionInfo?.currentVersion || "dev"
+                }
+              />
               <a
                 aria-label="Star DataPanel on GitHub"
-                className="hidden h-7 items-center gap-2 rounded-md border border-line bg-control/[0.04] px-3 text-sm font-medium text-zinc-200 transition hover:bg-control/[0.07] hover:text-zinc-100 lg:inline-flex [&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:shrink-0"
+                className="hidden h-7 items-center gap-2 rounded-md border border-line bg-control/[0.04] px-3 text-sm font-medium text-zinc-200 transition hover:bg-control/[0.07] hover:text-zinc-100 xl:inline-flex [&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:shrink-0"
                 href={githubRepositoryUrl}
                 onClick={openGitHubRepository}
                 rel="noreferrer"
