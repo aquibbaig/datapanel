@@ -145,6 +145,12 @@
   height: 0;
 }
 
+.datapanel-horizontal-scrollbar {
+  cursor: ew-resize;
+  opacity: 0;
+  appearance: none;
+}
+
 html,
 body,
 #root {

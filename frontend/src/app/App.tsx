@@ -2,8 +2,6 @@ import {
   Bot,
   Clock3,
   KeyRound,
-  Maximize2,
-  Minimize2,
   PanelRight,
   RefreshCw,
   Search,
@@ -138,7 +136,6 @@ export function App() {
   const [assistantRequest, setAssistantRequest] =
     useState<AISQLAssistantRequest | null>(null);
   const [bottomView, setBottomView] = useState<"results" | "plan">("results");
-  const [bottomPanelExpanded, setBottomPanelExpanded] = useState(true);
   const [bottomPanelHeight, setBottomPanelHeight] = useState<number | null>(
     null,
   );
@@ -232,7 +229,6 @@ export function App() {
     setEditableResultTable(null);
     setEditableResultTableDetails(null);
     setBottomView("results");
-    setBottomPanelExpanded(true);
 
     if (!nextConnectionId) {
       queryDraftLoadSequenceRef.current += 1;
@@ -381,7 +377,6 @@ export function App() {
         setEditableResultTableDetails(null);
       }
       setBottomView("results");
-      setBottomPanelExpanded(true);
     }
   }
 
@@ -398,7 +393,6 @@ export function App() {
     setEditableResultTable(null);
     setEditableResultTableDetails(null);
     setBottomView(isExplainSQL(sql) ? "plan" : "results");
-    setBottomPanelExpanded(true);
 
     if (editableTarget && !isExplainSQL(sql)) {
       editableTable = editableTarget.table;
@@ -446,7 +440,6 @@ export function App() {
         setEditableResultTableDetails(null);
       }
       setBottomView(isExplainSQL(sql) ? "plan" : "results");
-      setBottomPanelExpanded(true);
     }
     return result;
   }
@@ -455,7 +448,6 @@ export function App() {
     setEditableResultTable(null);
     setEditableResultTableDetails(null);
     setBottomView("plan");
-    setBottomPanelExpanded(true);
     const result = await model.explainQuery(sql, {
       historyMode: "explain",
       recordHistory: true,
@@ -464,7 +456,6 @@ export function App() {
       setEditableResultTable(null);
       setEditableResultTableDetails(null);
       setBottomView("plan");
-      setBottomPanelExpanded(true);
     }
     return result;
   }
@@ -473,7 +464,6 @@ export function App() {
     setEditableResultTable(null);
     setEditableResultTableDetails(null);
     setBottomView(isExplainSQL(sql) ? "plan" : "results");
-    setBottomPanelExpanded(true);
     const result = await model.runQuery(sql, true, {
       historyMode: "query",
       recordHistory: true,
@@ -482,7 +472,6 @@ export function App() {
       setEditableResultTable(null);
       setEditableResultTableDetails(null);
       setBottomView(isExplainSQL(sql) ? "plan" : "results");
-      setBottomPanelExpanded(true);
     }
     return result;
   }
@@ -538,8 +527,6 @@ export function App() {
     appendSqlDraft(sql);
   }
 
-  const hasPlanResult =
-    model.queryResultMode === "explain" && Boolean(model.queryResult);
   const hasRowResult =
     model.queryResultMode === "query" && Boolean(model.queryResult);
   const rowResult = hasRowResult ? model.queryResult : null;
@@ -617,7 +604,6 @@ export function App() {
   }
 
   function startBottomPanelResize(event: ReactMouseEvent<HTMLDivElement>) {
-    if (!bottomPanelExpanded) return;
     const container = workspaceGridRef.current;
     if (!container) return;
 
@@ -807,11 +793,9 @@ export function App() {
                 className="grid min-h-0 min-w-0 flex-1"
                 ref={workspaceGridRef}
                 style={{
-                  gridTemplateRows: bottomPanelExpanded
-                    ? bottomPanelHeight
-                      ? `minmax(180px, 1fr) minmax(120px, ${bottomPanelHeight}px)`
-                      : "48% minmax(0, 1fr)"
-                    : "minmax(0, 1fr) 44px",
+                  gridTemplateRows: bottomPanelHeight
+                    ? `minmax(180px, 1fr) minmax(120px, ${bottomPanelHeight}px)`
+                    : "48% minmax(0, 1fr)",
                 }}
               >
                 <QueryEditor
@@ -821,7 +805,8 @@ export function App() {
                   busy={Boolean(model.runningRequestId)}
                   multiWorkspaceEnabled={multiQueryWorkspacesEnabled}
                   renamingWorkspaceId={renamingQueryWorkspaceId}
-                  resizeEnabled={bottomPanelExpanded}
+                  resizeEnabled
+                  resultMode={bottomView}
                   settings={model.settings}
                   tablesBySchema={model.tablesBySchema}
                   theme={resolvedTheme}
@@ -847,65 +832,9 @@ export function App() {
                   onRun={runTypedSQL}
                 />
                 <section
-                  className={cn(
-                    "grid min-h-0 overflow-hidden bg-surface-900",
-                    bottomPanelExpanded
-                      ? "grid-rows-[44px_minmax(0,1fr)]"
-                      : "grid-rows-[44px_0px]",
-                  )}
+                  className="grid min-h-0 overflow-hidden bg-surface-900"
                   ref={bottomPanelRef}
                 >
-                  <div className="flex h-11 shrink-0 items-center justify-between border-b border-line px-2">
-                    <div className="flex items-center gap-1">
-                      <Button
-                        className="h-7"
-                        disabled={!hasRowResult}
-                        variant={bottomView === "results" ? "primary" : "ghost"}
-                        onClick={() => {
-                          setBottomView("results");
-                          setBottomPanelExpanded(true);
-                        }}
-                      >
-                        Results
-                      </Button>
-                      <Button
-                        className="h-7"
-                        disabled={!hasPlanResult}
-                        variant={bottomView === "plan" ? "primary" : "ghost"}
-                        onClick={() => {
-                          setBottomView("plan");
-                          setBottomPanelExpanded(true);
-                        }}
-                      >
-                        Plan
-                      </Button>
-                    </div>
-                    <div className="flex min-w-0 items-center gap-2">
-                      {editableResultTable ? (
-                        <span className="truncate px-2 text-xs text-muted">
-                          {editableResultTable.schema}.
-                          {editableResultTable.name}
-                        </span>
-                      ) : null}
-                      <Button
-                        size="icon"
-                        title={
-                          bottomPanelExpanded
-                            ? "Collapse bottom panel"
-                            : "Expand bottom panel"
-                        }
-                        onClick={() =>
-                          setBottomPanelExpanded((expanded) => !expanded)
-                        }
-                      >
-                        {bottomPanelExpanded ? (
-                          <Minimize2 size={14} />
-                        ) : (
-                          <Maximize2 size={14} />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
                   {bottomView === "plan" ? (
                     <QueryPlanView
                       driver={model.activeProfile?.driver}
@@ -1233,7 +1162,7 @@ function resolveEditableResultTableFromSources(
 }
 
 function parseSingleTableSelectTarget(sql: string) {
-  const identifier = String.raw`(?:"(?:[^"]|"")+"|[A-Za-z_][\w$]*)`;
+  const identifier = sqlIdentifierPattern;
   const pattern = new RegExp(
     String.raw`^\s*select\s+([\s\S]+?)\s+from\s+(${identifier})(?:\s*\.\s*(${identifier}))?([\s\S]*)$`,
     "i",
@@ -1268,7 +1197,7 @@ function parseReturningMutationTarget(sql: string) {
 }
 
 function parseInsertReturningTarget(sql: string) {
-  const identifier = String.raw`(?:"(?:[^"]|"")+"|[A-Za-z_][\w$]*)`;
+  const identifier = sqlIdentifierPattern;
   const pattern = new RegExp(
     String.raw`^\s*insert\s+into\s+(?:only\s+)?(${identifier})(?:\s*\.\s*(${identifier}))?[\s\S]*?\breturning\s+([\s\S]+?)\s*;?\s*$`,
     "i",
@@ -1292,7 +1221,7 @@ function parseInsertReturningTarget(sql: string) {
 }
 
 function parseUpdateReturningTarget(sql: string) {
-  const identifier = String.raw`(?:"(?:[^"]|"")+"|[A-Za-z_][\w$]*)`;
+  const identifier = sqlIdentifierPattern;
   const pattern = new RegExp(
     String.raw`^\s*update\s+(?:only\s+)?(${identifier})(?:\s*\.\s*(${identifier}))?(?:\s+(?:as\s+)?${identifier})?\s+set\s+[\s\S]*?\breturning\s+([\s\S]+?)\s*;?\s*$`,
     "i",
@@ -1325,19 +1254,21 @@ function isSimpleEditableSelectList(selectList: string) {
 function splitSelectList(selectList: string) {
   const items: string[] = [];
   let item = "";
-  let quoted = false;
+  let quote: '"' | "`" | null = null;
 
   for (let index = 0; index < selectList.length; index += 1) {
     const char = selectList[index];
-    if (char === '"') {
+    if (char === '"' || char === "`") {
       item += char;
-      if (quoted && selectList[index + 1] === '"') {
+      if (quote === char && selectList[index + 1] === char) {
         item += selectList[index + 1];
         index += 1;
-      } else {
-        quoted = !quoted;
+      } else if (quote === char) {
+        quote = null;
+      } else if (quote === null) {
+        quote = char;
       }
-    } else if (char === "," && !quoted) {
+    } else if (char === "," && quote === null) {
       items.push(item.trim());
       item = "";
     } else {
@@ -1350,7 +1281,7 @@ function splitSelectList(selectList: string) {
 }
 
 function isColumnSelectItem(item: string) {
-  const identifier = String.raw`(?:"(?:[^"]|"")+"|[A-Za-z_][\w$]*)`;
+  const identifier = sqlIdentifierPattern;
   const qualifiedColumn = new RegExp(
     String.raw`^${identifier}(?:\s*\.\s*${identifier}){0,2}$`,
     "i",
@@ -1404,8 +1335,14 @@ function unquoteIdentifier(identifier: string) {
   if (identifier.startsWith('"') && identifier.endsWith('"')) {
     return identifier.slice(1, -1).replace(/""/g, '"');
   }
+  if (identifier.startsWith("`") && identifier.endsWith("`")) {
+    return identifier.slice(1, -1).replace(/``/g, "`");
+  }
   return identifier;
 }
+
+const sqlIdentifierPattern =
+  '(?:"(?:[^"]|"")+"|`(?:[^`]|``)+`|[A-Za-z_][\\w$]*)';
 
 function namesEqual(left: string, right: string) {
   return left.toLowerCase() === right.toLowerCase();

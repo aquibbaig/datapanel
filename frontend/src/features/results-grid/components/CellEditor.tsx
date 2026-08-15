@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "../../../lib/cn";
 import { textInputBehaviorProps } from "../../../lib/text-input";
 import { isTypedNull } from "../lib/drafts";
@@ -20,6 +20,13 @@ export function CellEditor({
   onCommit(draft: CellDraft): void;
 }) {
   const [localDraft, setLocalDraft] = useState(draft);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!autoFocus) return;
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, [autoFocus]);
 
   function commit() {
     onCommit(localDraft);
@@ -36,6 +43,7 @@ export function CellEditor({
       <input
         {...textInputBehaviorProps}
         autoFocus={autoFocus}
+        ref={inputRef}
         className="h-full min-w-0 flex-1 border-0 bg-transparent px-2 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-transparent focus:shadow-none"
         disabled={disabled}
         onBlur={commit}
