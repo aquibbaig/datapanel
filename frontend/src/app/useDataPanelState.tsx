@@ -321,20 +321,6 @@ export function useDataPanelState() {
     return snapshot;
   }, [applySchemaSnapshot, fetchSchemaSnapshot]);
 
-  const loadCachedMetadata = useCallback(async (profileId: string) => {
-    const requestId = metadataRequestRef.current + 1;
-    metadataRequestRef.current = requestId;
-    const snapshot = await readSchemaSnapshotCache(profileId);
-    if (metadataRequestRef.current !== requestId) return snapshot;
-    if (snapshot) {
-      applySchemaSnapshot(profileId, snapshot);
-    } else if (activeConnectionIdRef.current === profileId) {
-      setSchemas([]);
-      setTablesBySchema({});
-    }
-    return snapshot;
-  }, [applySchemaSnapshot, readSchemaSnapshotCache]);
-
   const invalidateSchemaSnapshot = useCallback(async (profileId: string) => {
     queryClient.removeQueries({ queryKey: schemaSnapshotQueryKey(profileId) });
     queryClient.removeQueries({ queryKey: ["tableDetails", profileId] });
@@ -394,6 +380,7 @@ export function useDataPanelState() {
       password,
       reconnectSecureStorage: Boolean(options.reconnectSecureStorage),
     });
+
     const now = new Date().toISOString();
     activeConnectionIdRef.current = profileId;
     saveLastActiveWorkspaceId(profileId);
@@ -407,15 +394,12 @@ export function useDataPanelState() {
       lastPingAt: now,
       connectedAt: now,
     });
-    if (options.refresh) {
-      await loadMetadata(profileId, options);
-    } else {
-      await loadCachedMetadata(profileId);
-    }
+
+    await loadMetadata(profileId, options);
+
     return result;
   }, [
     clearSelectedTable,
-    loadCachedMetadata,
     loadMetadata,
   ]);
 
