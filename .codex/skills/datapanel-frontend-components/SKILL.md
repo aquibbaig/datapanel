@@ -19,7 +19,7 @@ Follow these rules whenever modifying DataPanel frontend components.
 
 - Treat database results as WYSIWYG table data. Do not render synthetic row-number columns or other fake table fields inside the grid.
 - Use virtualization for large result sets, but keep headers outside the vertical scroll coordinate system so row content cannot disappear behind sticky headers.
-- Hide visual scrollbars for the results grid unless the design explicitly calls for them; scrolling should still work with trackpads, wheels, and keyboard navigation.
+- Keep results-grid scrollbars visible when content overflows, with the horizontal scrollbar accessible at the bottom of the viewport. Preserve trackpad, wheel, and keyboard scrolling.
 - Keep sticky or fixed surfaces opaque. Never rely on inherited transparent row backgrounds for headers or pinned areas.
 - Render exact data semantics clearly: `NULL` for null/undefined and the app's null-equivalent display, not explanatory labels like `(empty)`.
 - Editing is staged locally until Save. Database permissions are enforced by executing generated SQL through the active connection user.
