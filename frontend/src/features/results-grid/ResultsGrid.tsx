@@ -121,8 +121,6 @@ export function ResultsGrid({
     null,
   );
   const [scrollLeft, setScrollLeft] = useState(0);
-  const [maxScrollLeft, setMaxScrollLeft] = useState(0);
-  const [scrollViewportWidth, setScrollViewportWidth] = useState(0);
   const [inspectedCell, setInspectedCell] = useState<{
     columnName: string;
     value: unknown;
@@ -820,32 +818,6 @@ export function ResultsGrid({
   const totalColumnWidth = columnVirtualizer.getTotalSize();
   const totalGridHeight = rowVirtualizer.getTotalSize();
 
-  useEffect(() => {
-    const viewport = scrollRef.current;
-    if (!viewport) return;
-
-    const updateScrollRange = () => {
-      const nextMax = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
-      setMaxScrollLeft(nextMax);
-      setScrollViewportWidth(viewport.clientWidth);
-      setScrollLeft(viewport.scrollLeft);
-    };
-    updateScrollRange();
-    const observer = new ResizeObserver(updateScrollRange);
-    observer.observe(viewport);
-    return () => observer.disconnect();
-  }, [totalColumnWidth]);
-  const scrollbarThumbWidth =
-    maxScrollLeft > 0
-      ? Math.max(
-          5,
-          (scrollViewportWidth / (scrollViewportWidth + maxScrollLeft)) * 100,
-        )
-      : 100;
-  const scrollbarThumbLeft =
-    maxScrollLeft > 0
-      ? (scrollLeft / maxScrollLeft) * (100 - scrollbarThumbWidth)
-      : 0;
   const normalizedFinderQuery = finderQuery.trim().toLowerCase();
   const findMatches = useMemo(
     () =>
@@ -1306,35 +1278,6 @@ export function ResultsGrid({
                 );
               })}
             </div>
-          </div>
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex h-2 items-end px-1">
-            {maxScrollLeft > 0 ? (
-              <div className="relative h-1.5 w-full rounded-full bg-surface-700">
-                <div
-                  className="absolute inset-y-0 rounded-full bg-scrollbar-thumb"
-                  style={{
-                    left: `${scrollbarThumbLeft}%`,
-                    width: `${scrollbarThumbWidth}%`,
-                  }}
-                />
-                <input
-                  aria-label="Scroll results horizontally"
-                  className="datapanel-horizontal-scrollbar pointer-events-auto absolute inset-0 h-full w-full"
-                  max={maxScrollLeft}
-                  min={0}
-                  step={1}
-                  type="range"
-                  value={Math.min(scrollLeft, maxScrollLeft)}
-                  onChange={(event) => {
-                    const nextScrollLeft = Number(event.currentTarget.value);
-                    if (scrollRef.current) {
-                      scrollRef.current.scrollLeft = nextScrollLeft;
-                    }
-                    setScrollLeft(nextScrollLeft);
-                  }}
-                />
-              </div>
-            ) : null}
           </div>
         </div>
       </div>
