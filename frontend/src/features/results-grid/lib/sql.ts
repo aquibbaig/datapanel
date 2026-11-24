@@ -82,7 +82,7 @@ export function buildMutationSQL({
           ? mutationColumnName(resultColumn)
           : columnName;
         const column = getColumnDetail(columnDetails, mutationName);
-        return `${quoteIdentifier(driver, mutationName)} = ${sqlValue(draft, column)}`;
+        return `${quoteIdentifier(driver, mutationName)} = ${sqlValue(driver, draft, column)}`;
       },
     );
     statements.push(
@@ -112,6 +112,7 @@ export function buildMutationSQL({
     const values = columns
       .map((column) =>
         sqlValue(
+          driver,
           insertedRow.values[column.name],
           getColumnDetail(columnDetails, mutationColumnName(column)),
         ),
@@ -171,7 +172,11 @@ function whereClause(
     primaryColumns.every((column) =>
       columnIndexes.has(column.name.toLowerCase()),
     );
-  if (!hasPrimaryKeyValues && rowLocatorIndex !== undefined) {
+  if (
+    driver === "postgres" &&
+    !hasPrimaryKeyValues &&
+    rowLocatorIndex !== undefined
+  ) {
     return `ctid = ${sqlRowLocatorValue(row[rowLocatorIndex])}`;
   }
 
@@ -179,12 +184,12 @@ function whereClause(
     .map((column) => {
       const index = columnIndexes.get(column.name.toLowerCase());
       const value = index === undefined ? null : row[index];
-      return `${quoteIdentifier(driver, column.name)} = ${sqlValue(toDraft(value), column)}`;
+      return `${quoteIdentifier(driver, column.name)} = ${sqlValue(driver, toDraft(value), column)}`;
     })
     .join(" and ");
 }
 
-function sqlValue(draft: CellDraft, column?: ColumnSummary) {
+function sqlValue(driver: SQLDriver, draft: CellDraft, column?: ColumnSummary) {
   if (isNullDraft(draft)) return "null";
   const value = draft.value;
   const dataType = column?.dataType.toLowerCase() || "";
@@ -199,6 +204,12 @@ function sqlValue(draft: CellDraft, column?: ColumnSummary) {
     const normalized = value.trim().toLowerCase();
     if (["true", "t", "1", "yes"].includes(normalized)) return "true";
     if (["false", "f", "0", "no"].includes(normalized)) return "false";
+  }
+  if (driver === "mysql") {
+    // Hex keeps value bytes out of the SQL syntax in either MySQL escape mode.
+    const bytes = new TextEncoder().encode(value);
+    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"));
+    return `_utf8mb4 X'${hex.join("")}'`;
   }
   return `'${value.split("'").join("''")}'`;
 }
