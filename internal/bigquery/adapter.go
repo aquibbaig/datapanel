@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"net"
@@ -323,10 +324,18 @@ func bigQueryAuthOptions(ctx context.Context, credentialsSource string, endpoint
 	}
 
 	if credentialsSource != "" {
-		if looksLikeCredentialsJSON(credentialsSource) {
-			return []option.ClientOption{option.WithCredentialsJSON([]byte(credentialsSource))}, nil
+		data := []byte(credentialsSource)
+		if !looksLikeCredentialsJSON(credentialsSource) {
+			var err error
+			data, err = os.ReadFile(expandCredentialsFilePath(credentialsSource))
+			if err != nil {
+				return nil, apperrors.New(apperrors.CodeValidation, "could not read BigQuery credentials file")
+			}
 		}
-		return []option.ClientOption{option.WithCredentialsFile(expandCredentialsFilePath(credentialsSource))}, nil
+		if err := validateBigQueryCredentials(data); err != nil {
+			return nil, err
+		}
+		return []option.ClientOption{option.WithCredentialsJSON(data)}, nil
 	}
 
 	tokenSource := &gcloudTokenSource{}
@@ -337,6 +346,33 @@ func bigQueryAuthOptions(ctx context.Context, credentialsSource string, endpoint
 		)
 	}
 	return []option.ClientOption{option.WithTokenSource(tokenSource)}, nil
+}
+
+func validateBigQueryCredentials(data []byte) error {
+	var config struct {
+		Type           string          `json:"type"`
+		TokenURI       string          `json:"token_uri"`
+		UniverseDomain string          `json:"universe_domain"`
+		Web            json.RawMessage `json:"web"`
+		Installed      json.RawMessage `json:"installed"`
+	}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return apperrors.New(apperrors.CodeValidation, "invalid BigQuery credentials JSON")
+	}
+	// The legacy auth parser checks OAuth client configurations before the type field.
+	if (config.Type != "service_account" && config.Type != "authorized_user") ||
+		config.Web != nil || config.Installed != nil {
+		return apperrors.New(apperrors.CodeValidation, "BigQuery credentials must be a Google service account key or authorized user credentials")
+	}
+	if config.UniverseDomain != "" && config.UniverseDomain != "googleapis.com" {
+		return apperrors.New(apperrors.CodeValidation, "BigQuery credentials must use the googleapis.com universe")
+	}
+	switch config.TokenURI {
+	case "", "https://oauth2.googleapis.com/token", "https://accounts.google.com/o/oauth2/token", "https://oauth2.mtls.googleapis.com/token":
+		return nil
+	default:
+		return apperrors.New(apperrors.CodeValidation, "BigQuery credentials must use a trusted Google OAuth token endpoint")
+	}
 }
 
 type gcloudTokenSource struct {

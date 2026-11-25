@@ -2,7 +2,9 @@ package bigquery
 
 import (
 	"context"
+	"datapanel/internal/apperrors"
 	"datapanel/internal/connections"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -168,6 +170,44 @@ func TestBigQueryAuthOptionsRejectCredentialsForUntrustedEndpoint(t *testing.T) 
 func TestBigQueryAuthOptionsAllowsUnauthenticatedLocalEndpoint(t *testing.T) {
 	if _, err := bigQueryAuthOptions(context.Background(), "", "http://localhost:9050"); err != nil {
 		t.Fatalf("expected local unauthenticated endpoint to be allowed: %v", err)
+	}
+}
+
+func TestBigQueryAuthOptionsValidatesInlineAndFileCredentials(t *testing.T) {
+	tests := []struct {
+		name      string
+		data      string
+		wantError bool
+	}{
+		{name: "service account", data: `{"type":"service_account","token_uri":"https://oauth2.googleapis.com/token","universe_domain":"googleapis.com"}`},
+		{name: "authorized user default endpoint", data: `{"type":"authorized_user"}`},
+		{name: "legacy Google endpoint", data: `{"type":"service_account","token_uri":"https://accounts.google.com/o/oauth2/token"}`},
+		{name: "external account", data: `{"type":"external_account"}`, wantError: true},
+		{name: "impersonation", data: `{"type":"impersonated_service_account"}`, wantError: true},
+		{name: "alternate token destination", data: `{"type":"authorized_user","token_uri":"https://example.invalid/token"}`, wantError: true},
+		{name: "alternate universe", data: `{"type":"service_account","universe_domain":"example.invalid"}`, wantError: true},
+		{name: "mixed OAuth client format", data: `{"type":"authorized_user","installed":{}}`, wantError: true},
+		{name: "malformed JSON", data: `{"type":`, wantError: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "credentials.json")
+			if err := os.WriteFile(path, []byte(tt.data), 0600); err != nil {
+				t.Fatal(err)
+			}
+			for _, source := range []string{tt.data, path} {
+				opts, err := bigQueryAuthOptions(context.Background(), source, "https://bigquery.googleapis.com")
+				if tt.wantError {
+					var validationErr apperrors.Error
+					if !errors.As(err, &validationErr) || validationErr.Code != apperrors.CodeValidation || len(opts) != 0 {
+						t.Fatalf("expected validation error and no SDK options, got %v", err)
+					}
+				} else if err != nil || len(opts) != 1 {
+					t.Fatalf("expected credentials option, got %v", err)
+				}
+			}
+		})
 	}
 }
 
